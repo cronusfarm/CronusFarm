@@ -26,6 +26,14 @@ git push -u origin main
 
 `git status` 에 `secrets.h` 가 보이면 **커밋하지 말고** `.gitignore` 와 파일 경로를 확인한다.
 
+일부 드라이브(소유권 정보가 없는 볼륨 등)에서는 `fatal: detected dubious ownership` 이 나올 수 있다. Git이 제시하는 대로 한 번만 허용한다:
+
+```powershell
+git config --global --add safe.directory "D:/WorkSpace/Study/MyCode/Cursor/CronusFarm"
+```
+
+(실제 경로에 맞게 바꾼다.)
+
 ## 맥 — 나중에 (다른 Cursor 계정에서)
 
 1. [Git](https://git-scm.com/) 설치, 터미널에서 `git --version` 확인.
