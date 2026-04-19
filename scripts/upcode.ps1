@@ -67,23 +67,31 @@ if (-not (Test-Path $localSketchDir)) {
 
 
 
-# /home/.../CronusFarm/arduino/CronusFarm -> .../CronusFarm/scripts
+# Windows에서 Split-Path이 '\'를 섞으면 Pi(리눅스) 경로가 깨지므로 원격은 항상 POSIX로 맞춘다.
 
-$farmRoot = Split-Path (Split-Path $RemoteSketchDir)
+$RemoteSketchUnix = ($RemoteSketchDir -replace '\\', '/').TrimEnd('/')
 
-$RemoteScriptsDir = "$farmRoot/scripts"
+if ($RemoteSketchUnix -notmatch '/arduino/CronusFarm$') {
+
+  throw "RemoteSketchDir는 .../arduino/CronusFarm 로 끝나야 합니다: $RemoteSketchDir"
+
+}
+
+$RemoteFarmRoot = $RemoteSketchUnix -replace '/arduino/CronusFarm$', ''
+
+$RemoteScriptsDir = "$RemoteFarmRoot/scripts"
 
 
 
 Write-Host "로컬 스케치 폴더: $localSketchDir"
 
-Write-Host "원격 스케치 폴더: $RemoteSketchDir"
+Write-Host "원격 스케치 폴더: $RemoteSketchUnix"
 
 Write-Host "원격 스크립트 폴더: $RemoteScriptsDir"
 
 
 
-& ssh @SshOpts "${PiUser}@${PiHost}" "mkdir -p '$RemoteSketchDir' '$RemoteScriptsDir'"
+& ssh @SshOpts "${PiUser}@${PiHost}" "mkdir -p '$RemoteSketchUnix' '$RemoteScriptsDir'"
 
 
 
@@ -101,7 +109,7 @@ if (-not (Test-Path $piBuild)) {
 
 
 
-& scp @SshOpts -r "$localSketchDir/*" "${PiUser}@${PiHost}:$RemoteSketchDir/"
+& scp @SshOpts -r "$localSketchDir/*" "${PiUser}@${PiHost}:$RemoteSketchUnix/"
 
 
 
@@ -120,10 +128,12 @@ if ($StopNodeRedDuringUpload) {
 
 
 # AutoPort: 두 번째 인자 생략 -> pi 스크립트가 ttyACM 자동 탐지
+# CRLF가 남아 있어도 동작하도록 bash로 명시 실행(쉐뱅 exec 경로 회피)
+
 if ($AutoPort) {
-  & ssh @SshOpts "${PiUser}@${PiHost}" "bash -lc 'export FQBN=$Fqbn; $RemoteScriptsDir/pi-arduino-build.sh $RemoteSketchDir'"
+  & ssh @SshOpts "${PiUser}@${PiHost}" "bash -lc 'export FQBN=$Fqbn; bash $RemoteScriptsDir/pi-arduino-build.sh $RemoteSketchUnix'"
 } else {
-  & ssh @SshOpts "${PiUser}@${PiHost}" "bash -lc 'export FQBN=$Fqbn; $RemoteScriptsDir/pi-arduino-build.sh $RemoteSketchDir $Port'"
+  & ssh @SshOpts "${PiUser}@${PiHost}" "bash -lc 'export FQBN=$Fqbn; bash $RemoteScriptsDir/pi-arduino-build.sh $RemoteSketchUnix $Port'"
 }
 
 
