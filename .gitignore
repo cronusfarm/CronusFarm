@@ -1,0 +1,22 @@
+# Arduino — 로컬 비밀(원격 저장소에 올리지 말 것)
+arduino/CronusFarm/secrets.h
+
+# 빌드 산출물
+build/
+*.o
+*.elf
+*.hex
+*.map
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Node (향후 확장 대비)
+node_modules/
+
+# 로그·임시
+*.log
+*.tmp
+*.bak

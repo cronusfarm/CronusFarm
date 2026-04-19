@@ -1,0 +1,46 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "upcode (copy->compile->upload Pi)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\\\scripts\\\\upcode.ps1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "deploy Pi: arduino + nodered JSON 동기화",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\\\scripts\\\\deploy-cronusfarm-pi.ps1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "deploy Pi: 전체(Arduino + Node-RED POST 적용)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\\\scripts\\\\deploy-cronusfarm-pi.ps1",
+        "-ApplyNodeRed"
+      ],
+      "problemMatcher": []
+    }
+  ]
+}
+

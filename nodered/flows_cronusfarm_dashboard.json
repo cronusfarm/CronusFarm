@@ -1,0 +1,1539 @@
+[
+  {
+    "id": "ui_grp_a",
+    "type": "ui_group",
+    "name": "A Bed",
+    "tab": "ui_tab_monitor",
+    "order": 3,
+    "disp": true,
+    "width": "6",
+    "collapse": false
+  },
+  {
+    "id": "ui_grp_b",
+    "type": "ui_group",
+    "name": "B Bed",
+    "tab": "ui_tab_monitor",
+    "order": 4,
+    "disp": true,
+    "width": "6",
+    "collapse": false
+  },
+  {
+    "id": "ui_grp_manual",
+    "type": "ui_group",
+    "name": "수동 제어",
+    "tab": "ui_tab_settings",
+    "order": 3,
+    "disp": true,
+    "width": "12",
+    "collapse": false
+  },
+  {
+    "id": "inj_sys_10s",
+    "type": "inject",
+    "z": "tab_cronus_dash",
+    "name": "Pi 상태 갱신(10s)",
+    "props": [
+      {
+        "p": "payload"
+      },
+      {
+        "p": "topic",
+        "vt": "str"
+      }
+    ],
+    "repeat": "10",
+    "once": true,
+    "onceDelay": "2",
+    "topic": "tick",
+    "payload": "",
+    "payloadType": "date",
+    "x": 170,
+    "y": 80,
+    "wires": [
+      [
+        "exec_uptime"
+      ],
+      [
+        "exec_ssid"
+      ],
+      [
+        "exec_ip"
+      ],
+      [
+        "exec_srv_nodered"
+      ],
+      [
+        "exec_srv_mosquitto"
+      ]
+    ]
+  },
+  {
+    "id": "exec_uptime",
+    "type": "exec",
+    "z": "tab_cronus_dash",
+    "command": "uptime -p",
+    "addpay": false,
+    "append": "",
+    "useSpawn": "false",
+    "timer": "",
+    "winHide": true,
+    "oldrc": false,
+    "name": "부팅 시간",
+    "x": 390,
+    "y": 40,
+    "wires": [
+      [
+        "fn_trim_uptime"
+      ],
+      [],
+      []
+    ]
+  },
+  {
+    "id": "exec_ssid",
+    "type": "exec",
+    "z": "tab_cronus_dash",
+    "command": "/usr/sbin/iwgetid -r",
+    "addpay": false,
+    "append": "",
+    "useSpawn": "false",
+    "timer": "",
+    "winHide": true,
+    "oldrc": false,
+    "name": "WiFi SSID",
+    "x": 380,
+    "y": 80,
+    "wires": [
+      [
+        "fn_trim_ssid"
+      ],
+      [],
+      []
+    ]
+  },
+  {
+    "id": "exec_ip",
+    "type": "exec",
+    "z": "tab_cronus_dash",
+    "command": "/usr/bin/hostname -I",
+    "addpay": false,
+    "append": "",
+    "useSpawn": "false",
+    "timer": "",
+    "winHide": true,
+    "oldrc": false,
+    "name": "IP",
+    "x": 360,
+    "y": 120,
+    "wires": [
+      [
+        "fn_trim_ip"
+      ],
+      [],
+      []
+    ]
+  },
+  {
+    "id": "exec_srv_nodered",
+    "type": "exec",
+    "z": "tab_cronus_dash",
+    "command": "/bin/systemctl is-active nodered",
+    "addpay": false,
+    "append": "",
+    "useSpawn": "false",
+    "timer": "",
+    "winHide": true,
+    "oldrc": false,
+    "name": "Node-RED 서비스",
+    "x": 400,
+    "y": 160,
+    "wires": [
+      [
+        "fn_trim_nodered"
+      ],
+      [],
+      []
+    ]
+  },
+  {
+    "id": "exec_srv_mosquitto",
+    "type": "exec",
+    "z": "tab_cronus_dash",
+    "command": "/bin/systemctl is-active mosquitto",
+    "addpay": false,
+    "append": "",
+    "useSpawn": "false",
+    "timer": "",
+    "winHide": true,
+    "oldrc": false,
+    "name": "Mosquitto 서비스",
+    "x": 410,
+    "y": 200,
+    "wires": [
+      [
+        "fn_trim_mosq"
+      ],
+      [],
+      []
+    ]
+  },
+  {
+    "id": "ui_txt_uptime",
+    "type": "ui_text",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_pi",
+    "order": 1,
+    "width": 0,
+    "height": 0,
+    "name": "Uptime",
+    "label": "부팅",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 820,
+    "y": 40,
+    "wires": []
+  },
+  {
+    "id": "ui_txt_ssid",
+    "type": "ui_text",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_pi",
+    "order": 2,
+    "width": 0,
+    "height": 0,
+    "name": "SSID",
+    "label": "WiFi SSID",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 810,
+    "y": 80,
+    "wires": []
+  },
+  {
+    "id": "ui_txt_ip",
+    "type": "ui_text",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_pi",
+    "order": 3,
+    "width": 0,
+    "height": 0,
+    "name": "IP",
+    "label": "IP",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 800,
+    "y": 120,
+    "wires": []
+  },
+  {
+    "id": "ui_txt_nodered",
+    "type": "ui_text",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_pi",
+    "order": 4,
+    "width": 0,
+    "height": 0,
+    "name": "Node-RED",
+    "label": "Node-RED",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 820,
+    "y": 160,
+    "wires": []
+  },
+  {
+    "id": "ui_txt_mosq",
+    "type": "ui_text",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_pi",
+    "order": 5,
+    "width": 0,
+    "height": 0,
+    "name": "Mosquitto",
+    "label": "Mosquitto",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 820,
+    "y": 200,
+    "wires": []
+  },
+  {
+    "id": "mqtt_in_status",
+    "type": "mqtt in",
+    "z": "tab_cronus_dash",
+    "name": "Arduino status",
+    "topic": "cronusfarm/cronusfarm-01/status",
+    "qos": "1",
+    "datatype": "utf8",
+    "broker": "mqtt_broker_pi",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 170,
+    "y": 360,
+    "wires": [
+      [
+        "fn_seen_status",
+        "ui_txt_status_raw",
+        "ui_tpl_status_line"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_in_tele",
+    "type": "mqtt in",
+    "z": "tab_cronus_dash",
+    "name": "Arduino tele",
+    "topic": "cronusfarm/cronusfarm-01/tele",
+    "qos": "1",
+    "datatype": "utf8",
+    "broker": "mqtt_broker_pi",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 160,
+    "y": 420,
+    "wires": [
+      [
+        "fn_seen_tele",
+        "fn_parse_tele_v2",
+        "ui_txt_tele_raw"
+      ]
+    ]
+  },
+  {
+    "id": "ui_txt_status_raw",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_arduino",
+    "order": 1,
+    "width": 0,
+    "height": 0,
+    "name": "status raw",
+    "label": "status(raw)",
+    "format": "<div class=\"cf-raw\"><div class=\"cf-raw-title\">status(raw)</div><pre>{{msg.payload}}</pre></div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 740,
+    "y": 360,
+    "wires": []
+  },
+  {
+    "id": "ui_txt_tele_raw",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_arduino",
+    "order": 2,
+    "width": 0,
+    "height": 0,
+    "name": "tele raw",
+    "label": "tele(raw)",
+    "format": "<div class=\"cf-raw\"><div class=\"cf-raw-title\">tele(raw)</div><pre>{{msg.payload}}</pre></div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 730,
+    "y": 420,
+    "wires": []
+  },
+  {
+    "id": "inj_arduino_tick",
+    "type": "inject",
+    "z": "tab_cronus_dash",
+    "name": "Arduino online(1s)",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "1",
+    "once": true,
+    "onceDelay": "1",
+    "payload": "",
+    "payloadType": "date",
+    "x": 180,
+    "y": 520,
+    "wires": [
+      [
+        "fn_calc_online"
+      ]
+    ]
+  },
+  {
+    "id": "ui_txt_arduino_state",
+    "type": "ui_text",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_arduino",
+    "order": 3,
+    "width": 0,
+    "height": 0,
+    "name": "arduino state",
+    "label": "Arduino 연결",
+    "format": "{{msg.payload}} (tele {{msg.teleAge}}s / status {{msg.statusAge}}s)",
+    "layout": "row-spread",
+    "x": 740,
+    "y": 520,
+    "wires": []
+  },
+  {
+    "id": "mqtt_out_cmd",
+    "type": "mqtt out",
+    "z": "tab_cronus_dash",
+    "name": "cmd publish",
+    "topic": "",
+    "qos": "1",
+    "retain": "",
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "mqtt_broker_pi",
+    "x": 760,
+    "y": 780,
+    "wires": []
+  },
+  {
+    "id": "ui_txt_cmd_preview",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_arduino",
+    "order": 5,
+    "width": 0,
+    "height": 0,
+    "name": "cmd preview",
+    "label": "cmd(미리보기)",
+    "format": "<div class=\"cf-raw\"><div class=\"cf-raw-title\">cmd(미리보기)</div><pre>{{msg.payload}}</pre></div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 770,
+    "y": 820,
+    "wires": []
+  },
+  {
+    "id": "tab_cronus_dash",
+    "type": "tab",
+    "label": "CronusFarm Dashboard v2",
+    "disabled": false,
+    "info": "CronusFarm Dashboard (A/B Bed)\n\n- 모니터 탭: A/B Bed 출력 상태 표시 + 수동 제어\n- 설정 탭: 채널별 AUTO + 펌프별 ON/OFF(초) 설정\n\nMQTT\n- status: cronusfarm/<DEVICE_ID>/status\n- tele  : cronusfarm/<DEVICE_ID>/tele\n- cmd   : cronusfarm/<DEVICE_ID>/cmd\n\nDEVICE_ID 기본: cronusfarm-01\n브로커 기본: ida.mango-larch.ts.net:1883\n"
+  },
+  {
+    "id": "mqtt_broker_pi",
+    "type": "mqtt-broker",
+    "name": "Mosquitto (Pi Tailscale)",
+    "broker": "ida.mango-larch.ts.net",
+    "port": "1883",
+    "clientid": "nodered-cronusfarm-v2",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "autoUnsubscribe": true,
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthPayload": "",
+    "birthMsg": {},
+    "closeTopic": "",
+    "closeQos": "0",
+    "closePayload": "",
+    "closeMsg": {},
+    "willTopic": "",
+    "willQos": "0",
+    "willPayload": "",
+    "willMsg": {},
+    "userProps": "",
+    "sessionExpiry": ""
+  },
+  {
+    "id": "ui_tab_monitor",
+    "type": "ui_tab",
+    "name": "CronusFarm-모니터",
+    "icon": "dashboard",
+    "disabled": false,
+    "hidden": false
+  },
+  {
+    "id": "ui_tab_settings",
+    "type": "ui_tab",
+    "name": "CronusFarm-설정",
+    "icon": "tune",
+    "disabled": false,
+    "hidden": false
+  },
+  {
+    "id": "ui_grp_pi",
+    "type": "ui_group",
+    "name": "시스템(Pi)",
+    "tab": "ui_tab_monitor",
+    "order": 1,
+    "disp": true,
+    "width": "12",
+    "collapse": false
+  },
+  {
+    "id": "ui_grp_arduino",
+    "type": "ui_group",
+    "name": "Arduino(MQTT)",
+    "tab": "ui_tab_monitor",
+    "order": 2,
+    "disp": true,
+    "width": "12",
+    "collapse": false
+  },
+  {
+    "id": "ui_grp_cfg_auto",
+    "type": "ui_group",
+    "name": "AUTO(채널별)",
+    "tab": "ui_tab_settings",
+    "order": 1,
+    "disp": true,
+    "width": "12",
+    "collapse": false
+  },
+  {
+    "id": "ui_grp_cfg_timer",
+    "type": "ui_group",
+    "name": "펌프 주기(채널별)",
+    "tab": "ui_tab_settings",
+    "order": 2,
+    "disp": true,
+    "width": "12",
+    "collapse": false
+  },
+  {
+    "id": "fn_trim_uptime",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "uptime 정리",
+    "func": "msg.payload = (msg.payload||'').toString().trim() || '-';\nreturn msg;",
+    "outputs": 1,
+    "x": 600,
+    "y": 40,
+    "wires": [
+      [
+        "ui_txt_uptime"
+      ]
+    ]
+  },
+  {
+    "id": "fn_trim_ssid",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "ssid 정리",
+    "func": "msg.payload = (msg.payload||'').toString().trim() || '(미연결)';\nreturn msg;",
+    "outputs": 1,
+    "x": 590,
+    "y": 80,
+    "wires": [
+      [
+        "ui_txt_ssid"
+      ]
+    ]
+  },
+  {
+    "id": "fn_trim_ip",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "ip 정리",
+    "func": "const s=(msg.payload||'').toString().trim();\nmsg.payload = (s.split(/\\s+/)[0]||'-');\nreturn msg;",
+    "outputs": 1,
+    "x": 580,
+    "y": 120,
+    "wires": [
+      [
+        "ui_txt_ip"
+      ]
+    ]
+  },
+  {
+    "id": "fn_trim_nodered",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "nodered 정리",
+    "func": "const s=(msg.payload||'').toString().trim();\nmsg.payload = (s==='active')?'정상':('비정상');\nmsg._ok = (s==='active');\nreturn msg;",
+    "outputs": 1,
+    "x": 610,
+    "y": 160,
+    "wires": [
+      [
+        "ui_txt_nodered",
+        "ui_led_nodered"
+      ]
+    ]
+  },
+  {
+    "id": "fn_trim_mosq",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "mosquitto 정리",
+    "func": "const s=(msg.payload||'').toString().trim();\nmsg.payload = (s==='active')?'정상':('비정상');\nmsg._ok = (s==='active');\nreturn msg;",
+    "outputs": 1,
+    "x": 630,
+    "y": 200,
+    "wires": [
+      [
+        "ui_txt_mosq",
+        "ui_led_mosq"
+      ]
+    ]
+  },
+  {
+    "id": "ui_led_nodered",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_pi",
+    "name": "Node-RED LED",
+    "order": 6,
+    "width": "3",
+    "height": "1",
+    "format": "<div style=\"display:flex;align-items:center;gap:8px;\">\n  <div style=\"width:12px;height:12px;border-radius:50%;background:{{msg._ok ? '#28a745' : '#dc3545'}};\"></div>\n  <div style=\"font-size:12px;\">{{msg._ok ? '정상' : '비정상'}}</div>\n</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 820,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "ui_led_mosq",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_pi",
+    "name": "Mosquitto LED",
+    "order": 7,
+    "width": "3",
+    "height": "1",
+    "format": "<div style=\"display:flex;align-items:center;gap:8px;\">\n  <div style=\"width:12px;height:12px;border-radius:50%;background:{{msg._ok ? '#28a745' : '#dc3545'}};\"></div>\n  <div style=\"font-size:12px;\">{{msg._ok ? '정상' : '비정상'}}</div>\n</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 820,
+    "y": 280,
+    "wires": []
+  },
+  {
+    "id": "fn_seen_status",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "status 수신시각",
+    "func": "flow.set('arduinoLastStatusMs', Date.now());\nreturn msg;",
+    "outputs": 1,
+    "x": 420,
+    "y": 360,
+    "wires": []
+  },
+  {
+    "id": "fn_seen_tele",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "tele 수신시각",
+    "func": "flow.set('arduinoLastTeleMs', Date.now());\nreturn msg;",
+    "outputs": 1,
+    "x": 410,
+    "y": 420,
+    "wires": []
+  },
+  {
+    "id": "fn_calc_online",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "online 계산",
+    "func": "const now=Date.now();\nconst ls=flow.get('arduinoLastStatusMs')||0;\nconst lt=flow.get('arduinoLastTeleMs')||0;\nconst ok=((now-ls)<30000)||((now-lt)<5000);\nmsg._ok=ok;\nmsg.payload=ok?'정상':'미수신';\nmsg.statusAge=ls?Math.floor((now-ls)/1000):null;\nmsg.teleAge=lt?Math.floor((now-lt)/1000):null;\nreturn msg;",
+    "outputs": 1,
+    "x": 420,
+    "y": 520,
+    "wires": [
+      [
+        "ui_txt_arduino_state",
+        "ui_led_arduino",
+        "ui_tpl_conn_line"
+      ]
+    ]
+  },
+  {
+    "id": "ui_tpl_status_line",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_arduino",
+    "name": "status online 표시",
+    "order": 3,
+    "width": "12",
+    "height": "1",
+    "format": "<div class=\"cf-row\"><div class=\"cf-label\">status</div><div style=\"display:flex;align-items:center;gap:10px;\"><div class=\"cf-dot\" ng-class=\"(msg.payload||'').toString().trim()==='online' ? 'cf-dot-on' : 'cf-dot-off'\"></div><div style=\"font-size:12px;color:var(--cf-text);\">{{(msg.payload||'').toString().trim()}}</div></div></div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "ui_tpl_conn_line",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_arduino",
+    "name": "연결 상태 표시",
+    "order": 4,
+    "width": "12",
+    "height": "1",
+    "format": "<div class=\"cf-row\"><div class=\"cf-label\">Arduino 연결</div><div style=\"display:flex;align-items:center;gap:10px;\"><div class=\"cf-dot\" ng-class=\"msg._ok ? 'cf-dot-on' : 'cf-dot-off'\"></div><div style=\"font-size:12px;color:var(--cf-text);\">{{msg._ok ? 'online' : 'offline'}} (tele {{msg.teleAge}}s / status {{msg.statusAge}}s)</div></div></div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "ui_led_arduino",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_arduino",
+    "name": "Arduino LED",
+    "order": 4,
+    "width": "3",
+    "height": "1",
+    "format": "<div style=\"display:flex;align-items:center;gap:8px;\">\n  <div style=\"width:12px;height:12px;border-radius:50%;background:{{msg._ok ? '#28a745' : '#dc3545'}};\"></div>\n  <div style=\"font-size:12px;\">{{msg._ok ? 'online' : 'offline'}}</div>\n</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 730,
+    "y": 560,
+    "wires": []
+  },
+  {
+    "id": "fn_parse_tele_v2",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "tele 파싱(v2)",
+    "func": "// tele 예)\n// S:led_a1=0 ... pump_b2=1 | A:led_a1=0 ... | T:pump_a1=30/90 ...\n//\n// 중요: 수신 tele로 UI를 갱신할 때, ui_switch(passthru=true)이면 다시 cmd가 발행되어 되돌림 루프가 생길 수 있습니다.\n// 이 플로우는 passthru=false로 바꾸고, 여기서 flow context를 최신 상태로 유지합니다.\n\nconst s=(msg.payload||'').toString();\nfunction parseKV(part){\n  const out={};\n  (part||'').trim().split(/\\s+/).forEach(tok=>{\n    const m=tok.match(/^([^=]+)=(.+)$/);\n    if(!m) return;\n    out[m[1]] = m[2];\n  });\n  return out;\n}\n\nconst ps = s.split('|').map(x=>x.trim());\nconst pS = ps.find(x=>x.startsWith('S:'));\nconst pA = ps.find(x=>x.startsWith('A:'));\nconst pT = ps.find(x=>x.startsWith('T:'));\n\nconst kvS = parseKV(pS ? pS.slice(2) : '');\nconst kvA = parseKV(pA ? pA.slice(2) : '');\nconst kvT = parseKV(pT ? pT.slice(2) : '');\n\nconst chKeys = ['led_a1','led_a2','pump_a1','pump_a2','led_b1','pump_b1','pump_b2'];\n\nconst out=[];\nchKeys.forEach(k=>{\n  if(k in kvS) {\n    const v = (kvS[k]==='1')?1:0;\n    flow.set(k, v);\n    out.push({topic:k, payload: v});\n  }\n});\nchKeys.forEach(k=>{\n  const ak = 'auto_'+k;\n  if(k in kvA) {\n    const v = (kvA[k]==='1')?1:0;\n    flow.set(ak, v);\n    out.push({topic:ak, payload: v});\n  }\n});\n\nObject.keys(kvT).forEach(k=>{\n  // pump_x=30/90\n  const m = (kvT[k]||'').match(/^(\\d+)\\/(\\d+)$/);\n  if(!m) return;\n  const onV = parseInt(m[1],10);\n  const offV = parseInt(m[2],10);\n  const onK = 'on_'+k;\n  const offK = 'off_'+k;\n  flow.set(onK, onV);\n  flow.set(offK, offV);\n  out.push({topic:onK, payload: onV});\n  out.push({topic:offK, payload: offV});\n});\n\nreturn [out];",
+    "outputs": 1,
+    "x": 430,
+    "y": 460,
+    "wires": [
+      [
+        "link_out_to_ui"
+      ]
+    ]
+  },
+  {
+    "id": "link_out_to_ui",
+    "type": "link out",
+    "z": "tab_cronus_dash",
+    "name": "UI 반영",
+    "mode": "link",
+    "links": [
+      "link_in_to_ui"
+    ],
+    "x": 655,
+    "y": 460,
+    "wires": []
+  },
+  {
+    "id": "link_in_to_ui",
+    "type": "link in",
+    "z": "tab_cronus_dash",
+    "name": "UI 반영(수신)",
+    "links": [],
+    "x": 115,
+    "y": 700,
+    "wires": [
+      [
+        "ui_tpl_state_led_a1",
+        "ui_tpl_state_led_a2",
+        "ui_tpl_state_pump_a1",
+        "ui_tpl_state_pump_a2",
+        "ui_tpl_state_led_b1",
+        "ui_tpl_state_pump_b1",
+        "ui_tpl_state_pump_b2",
+        "sw_led_a1",
+        "sw_led_a2",
+        "sw_pump_a1",
+        "sw_pump_a2",
+        "sw_led_b1",
+        "sw_pump_b1",
+        "sw_pump_b2",
+        "sw_auto_led_a1",
+        "sw_auto_led_a2",
+        "sw_auto_pump_a1",
+        "sw_auto_pump_a2",
+        "sw_auto_led_b1",
+        "sw_auto_pump_b1",
+        "sw_auto_pump_b2",
+        "num_on_pump_a1",
+        "num_off_pump_a1",
+        "num_on_pump_a2",
+        "num_off_pump_a2",
+        "num_on_pump_b1",
+        "num_off_pump_b1",
+        "num_on_pump_b2",
+        "num_off_pump_b2"
+      ]
+    ]
+  },
+  {
+    "id": "sw_led_a1",
+    "type": "ui_switch",
+    "z": "tab_cronus_dash",
+    "name": "LED A1",
+    "label": "LED A1",
+    "group": "ui_grp_manual",
+    "order": 1,
+    "width": "6",
+    "height": 0,
+    "passthru": false,
+    "decouple": "false",
+    "topic": "led_a1",
+    "style": "",
+    "onvalue": "1",
+    "onvalueType": "num",
+    "offvalue": "0",
+    "offvalueType": "num",
+    "x": 220,
+    "y": 660,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "sw_led_a2",
+    "type": "ui_switch",
+    "z": "tab_cronus_dash",
+    "name": "LED A2",
+    "label": "LED A2",
+    "group": "ui_grp_manual",
+    "order": 2,
+    "width": "6",
+    "height": 0,
+    "passthru": false,
+    "decouple": "false",
+    "topic": "led_a2",
+    "style": "",
+    "onvalue": "1",
+    "onvalueType": "num",
+    "offvalue": "0",
+    "offvalueType": "num",
+    "x": 220,
+    "y": 700,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "sw_pump_a1",
+    "type": "ui_switch",
+    "z": "tab_cronus_dash",
+    "name": "PUMP A1",
+    "label": "PUMP A1",
+    "group": "ui_grp_manual",
+    "order": 3,
+    "width": "6",
+    "height": 0,
+    "passthru": false,
+    "decouple": "false",
+    "topic": "pump_a1",
+    "style": "",
+    "onvalue": "1",
+    "onvalueType": "num",
+    "offvalue": "0",
+    "offvalueType": "num",
+    "x": 230,
+    "y": 740,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "sw_pump_a2",
+    "type": "ui_switch",
+    "z": "tab_cronus_dash",
+    "name": "PUMP A2",
+    "label": "PUMP A2",
+    "group": "ui_grp_manual",
+    "order": 4,
+    "width": "6",
+    "height": 0,
+    "passthru": false,
+    "decouple": "false",
+    "topic": "pump_a2",
+    "style": "",
+    "onvalue": "1",
+    "onvalueType": "num",
+    "offvalue": "0",
+    "offvalueType": "num",
+    "x": 230,
+    "y": 780,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "sw_led_b1",
+    "type": "ui_switch",
+    "z": "tab_cronus_dash",
+    "name": "LED B1",
+    "label": "LED B1",
+    "group": "ui_grp_manual",
+    "order": 1,
+    "width": "6",
+    "height": 0,
+    "passthru": false,
+    "decouple": "false",
+    "topic": "led_b1",
+    "style": "",
+    "onvalue": "1",
+    "onvalueType": "num",
+    "offvalue": "0",
+    "offvalueType": "num",
+    "x": 220,
+    "y": 820,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "sw_pump_b1",
+    "type": "ui_switch",
+    "z": "tab_cronus_dash",
+    "name": "PUMP B1",
+    "label": "PUMP B1",
+    "group": "ui_grp_manual",
+    "order": 2,
+    "width": "6",
+    "height": 0,
+    "passthru": false,
+    "decouple": "false",
+    "topic": "pump_b1",
+    "style": "",
+    "onvalue": "1",
+    "onvalueType": "num",
+    "offvalue": "0",
+    "offvalueType": "num",
+    "x": 230,
+    "y": 860,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "sw_pump_b2",
+    "type": "ui_switch",
+    "z": "tab_cronus_dash",
+    "name": "PUMP B2",
+    "label": "PUMP B2",
+    "group": "ui_grp_manual",
+    "order": 3,
+    "width": "6",
+    "height": 0,
+    "passthru": false,
+    "decouple": "false",
+    "topic": "pump_b2",
+    "style": "",
+    "onvalue": "1",
+    "onvalueType": "num",
+    "offvalue": "0",
+    "offvalueType": "num",
+    "x": 230,
+    "y": 900,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "ui_tpl_state_led_a1",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_a",
+    "name": "LED A1 상태",
+    "order": 1,
+    "width": "6",
+    "height": "1",
+    "format": "<div class=\"cf-row\"><div class=\"cf-label\">LED A1</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "ui_tpl_state_led_a2",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_a",
+    "name": "LED A2 상태",
+    "order": 2,
+    "width": "6",
+    "height": "1",
+    "format": "<div class=\"cf-row\"><div class=\"cf-label\">LED A2</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "ui_tpl_state_pump_a1",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_a",
+    "name": "PUMP A1 상태",
+    "order": 3,
+    "width": "6",
+    "height": "1",
+    "format": "<div class=\"cf-row\"><div class=\"cf-label\">PUMP A1</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "ui_tpl_state_pump_a2",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_a",
+    "name": "PUMP A2 상태",
+    "order": 4,
+    "width": "6",
+    "height": "1",
+    "format": "<div class=\"cf-row\"><div class=\"cf-label\">PUMP A2</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "ui_tpl_state_led_b1",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_b",
+    "name": "LED B1 상태",
+    "order": 1,
+    "width": "6",
+    "height": "1",
+    "format": "<div class=\"cf-row\"><div class=\"cf-label\">LED B1</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "ui_tpl_state_pump_b1",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_b",
+    "name": "PUMP B1 상태",
+    "order": 2,
+    "width": "6",
+    "height": "1",
+    "format": "<div class=\"cf-row\"><div class=\"cf-label\">PUMP B1</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "ui_tpl_state_pump_b2",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_b",
+    "name": "PUMP B2 상태",
+    "order": 3,
+    "width": "6",
+    "height": "1",
+    "format": "<div class=\"cf-row\"><div class=\"cf-label\">PUMP B2</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "sw_auto_led_a1",
+    "type": "ui_switch",
+    "z": "tab_cronus_dash",
+    "name": "AUTO LED A1",
+    "label": "AUTO LED A1",
+    "group": "ui_grp_cfg_auto",
+    "order": 1,
+    "width": "6",
+    "height": 0,
+    "passthru": false,
+    "decouple": "false",
+    "topic": "auto_led_a1",
+    "style": "",
+    "onvalue": "1",
+    "onvalueType": "num",
+    "offvalue": "0",
+    "offvalueType": "num",
+    "x": 260,
+    "y": 980,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "sw_auto_led_a2",
+    "type": "ui_switch",
+    "z": "tab_cronus_dash",
+    "name": "AUTO LED A2",
+    "label": "AUTO LED A2",
+    "group": "ui_grp_cfg_auto",
+    "order": 2,
+    "width": "6",
+    "height": 0,
+    "passthru": false,
+    "decouple": "false",
+    "topic": "auto_led_a2",
+    "style": "",
+    "onvalue": "1",
+    "onvalueType": "num",
+    "offvalue": "0",
+    "offvalueType": "num",
+    "x": 260,
+    "y": 1020,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "sw_auto_pump_a1",
+    "type": "ui_switch",
+    "z": "tab_cronus_dash",
+    "name": "AUTO PUMP A1",
+    "label": "AUTO PUMP A1",
+    "group": "ui_grp_cfg_auto",
+    "order": 3,
+    "width": "6",
+    "height": 0,
+    "passthru": false,
+    "decouple": "false",
+    "topic": "auto_pump_a1",
+    "style": "",
+    "onvalue": "1",
+    "onvalueType": "num",
+    "offvalue": "0",
+    "offvalueType": "num",
+    "x": 270,
+    "y": 1060,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "sw_auto_pump_a2",
+    "type": "ui_switch",
+    "z": "tab_cronus_dash",
+    "name": "AUTO PUMP A2",
+    "label": "AUTO PUMP A2",
+    "group": "ui_grp_cfg_auto",
+    "order": 4,
+    "width": "6",
+    "height": 0,
+    "passthru": false,
+    "decouple": "false",
+    "topic": "auto_pump_a2",
+    "style": "",
+    "onvalue": "1",
+    "onvalueType": "num",
+    "offvalue": "0",
+    "offvalueType": "num",
+    "x": 270,
+    "y": 1100,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "sw_auto_led_b1",
+    "type": "ui_switch",
+    "z": "tab_cronus_dash",
+    "name": "AUTO LED B1",
+    "label": "AUTO LED B1",
+    "group": "ui_grp_cfg_auto",
+    "order": 5,
+    "width": "6",
+    "height": 0,
+    "passthru": false,
+    "decouple": "false",
+    "topic": "auto_led_b1",
+    "style": "",
+    "onvalue": "1",
+    "onvalueType": "num",
+    "offvalue": "0",
+    "offvalueType": "num",
+    "x": 260,
+    "y": 1140,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "sw_auto_pump_b1",
+    "type": "ui_switch",
+    "z": "tab_cronus_dash",
+    "name": "AUTO PUMP B1",
+    "label": "AUTO PUMP B1",
+    "group": "ui_grp_cfg_auto",
+    "order": 6,
+    "width": "6",
+    "height": 0,
+    "passthru": false,
+    "decouple": "false",
+    "topic": "auto_pump_b1",
+    "style": "",
+    "onvalue": "1",
+    "onvalueType": "num",
+    "offvalue": "0",
+    "offvalueType": "num",
+    "x": 270,
+    "y": 1180,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "sw_auto_pump_b2",
+    "type": "ui_switch",
+    "z": "tab_cronus_dash",
+    "name": "AUTO PUMP B2",
+    "label": "AUTO PUMP B2",
+    "group": "ui_grp_cfg_auto",
+    "order": 7,
+    "width": "6",
+    "height": 0,
+    "passthru": false,
+    "decouple": "false",
+    "topic": "auto_pump_b2",
+    "style": "",
+    "onvalue": "1",
+    "onvalueType": "num",
+    "offvalue": "0",
+    "offvalueType": "num",
+    "x": 270,
+    "y": 1220,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "num_on_pump_a1",
+    "type": "ui_numeric",
+    "z": "tab_cronus_dash",
+    "name": "ON pump_a1",
+    "label": "PUMP A1 ON(초)",
+    "tooltip": "",
+    "group": "ui_grp_cfg_timer",
+    "order": 1,
+    "width": "3",
+    "height": 0,
+    "wrap": false,
+    "passthru": false,
+    "topic": "on_pump_a1",
+    "format": "{{value}}",
+    "min": 1,
+    "max": 3600,
+    "step": 1,
+    "x": 300,
+    "y": 1300,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "num_off_pump_a1",
+    "type": "ui_numeric",
+    "z": "tab_cronus_dash",
+    "name": "OFF pump_a1",
+    "label": "PUMP A1 OFF(초)",
+    "tooltip": "",
+    "group": "ui_grp_cfg_timer",
+    "order": 2,
+    "width": "3",
+    "height": 0,
+    "wrap": false,
+    "passthru": false,
+    "topic": "off_pump_a1",
+    "format": "{{value}}",
+    "min": 1,
+    "max": 3600,
+    "step": 1,
+    "x": 310,
+    "y": 1340,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "num_on_pump_a2",
+    "type": "ui_numeric",
+    "z": "tab_cronus_dash",
+    "name": "ON pump_a2",
+    "label": "PUMP A2 ON(초)",
+    "tooltip": "",
+    "group": "ui_grp_cfg_timer",
+    "order": 3,
+    "width": "3",
+    "height": 0,
+    "wrap": false,
+    "passthru": false,
+    "topic": "on_pump_a2",
+    "format": "{{value}}",
+    "min": 1,
+    "max": 3600,
+    "step": 1,
+    "x": 300,
+    "y": 1380,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "num_off_pump_a2",
+    "type": "ui_numeric",
+    "z": "tab_cronus_dash",
+    "name": "OFF pump_a2",
+    "label": "PUMP A2 OFF(초)",
+    "tooltip": "",
+    "group": "ui_grp_cfg_timer",
+    "order": 4,
+    "width": "3",
+    "height": 0,
+    "wrap": false,
+    "passthru": false,
+    "topic": "off_pump_a2",
+    "format": "{{value}}",
+    "min": 1,
+    "max": 3600,
+    "step": 1,
+    "x": 310,
+    "y": 1420,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "num_on_pump_b1",
+    "type": "ui_numeric",
+    "z": "tab_cronus_dash",
+    "name": "ON pump_b1",
+    "label": "PUMP B1 ON(초)",
+    "tooltip": "",
+    "group": "ui_grp_cfg_timer",
+    "order": 5,
+    "width": "3",
+    "height": 0,
+    "wrap": false,
+    "passthru": false,
+    "topic": "on_pump_b1",
+    "format": "{{value}}",
+    "min": 1,
+    "max": 3600,
+    "step": 1,
+    "x": 300,
+    "y": 1460,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "num_off_pump_b1",
+    "type": "ui_numeric",
+    "z": "tab_cronus_dash",
+    "name": "OFF pump_b1",
+    "label": "PUMP B1 OFF(초)",
+    "tooltip": "",
+    "group": "ui_grp_cfg_timer",
+    "order": 6,
+    "width": "3",
+    "height": 0,
+    "wrap": false,
+    "passthru": false,
+    "topic": "off_pump_b1",
+    "format": "{{value}}",
+    "min": 1,
+    "max": 3600,
+    "step": 1,
+    "x": 310,
+    "y": 1500,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "num_on_pump_b2",
+    "type": "ui_numeric",
+    "z": "tab_cronus_dash",
+    "name": "ON pump_b2",
+    "label": "PUMP B2 ON(초)",
+    "tooltip": "",
+    "group": "ui_grp_cfg_timer",
+    "order": 7,
+    "width": "3",
+    "height": 0,
+    "wrap": false,
+    "passthru": false,
+    "topic": "on_pump_b2",
+    "format": "{{value}}",
+    "min": 1,
+    "max": 3600,
+    "step": 1,
+    "x": 300,
+    "y": 1540,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "num_off_pump_b2",
+    "type": "ui_numeric",
+    "z": "tab_cronus_dash",
+    "name": "OFF pump_b2",
+    "label": "PUMP B2 OFF(초)",
+    "tooltip": "",
+    "group": "ui_grp_cfg_timer",
+    "order": 8,
+    "width": "3",
+    "height": 0,
+    "wrap": false,
+    "passthru": false,
+    "topic": "off_pump_b2",
+    "format": "{{value}}",
+    "min": 1,
+    "max": 3600,
+    "step": 1,
+    "x": 310,
+    "y": 1580,
+    "wires": [
+      [
+        "fn_cmd_merge_v2"
+      ]
+    ]
+  },
+  {
+    "id": "fn_cmd_merge_v2",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "cmd 만들기(v2)",
+    "func": "const devId = flow.get('deviceId') || 'cronusfarm-01';\nflow.set('deviceId', devId);\n\nconst key = (msg.topic||'').toString();\nconst val = msg.payload;\nif (key) flow.set(key, val);\n\nconst keys = [\n  'led_a1','led_a2','pump_a1','pump_a2','led_b1','pump_b1','pump_b2',\n  'auto_led_a1','auto_led_a2','auto_pump_a1','auto_pump_a2','auto_led_b1','auto_pump_b1','auto_pump_b2',\n  'on_pump_a1','off_pump_a1','on_pump_a2','off_pump_a2','on_pump_b1','off_pump_b1','on_pump_b2','off_pump_b2'\n];\n\nconst parts=[];\nkeys.forEach(k=>{\n  const v = flow.get(k);\n  if (v === undefined || v === null) return;\n  parts.push(`${k}=${v}`);\n});\n\nmsg.topic = `cronusfarm/${devId}/cmd`;\nmsg.payload = parts.join(' ');\nreturn msg;",
+    "outputs": 1,
+    "x": 520,
+    "y": 780,
+    "wires": [
+      [
+        "mqtt_out_cmd",
+        "ui_txt_cmd_preview"
+      ]
+    ]
+  },
+  {
+    "id": "ui_tpl_css_cronus",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_pi",
+    "name": "CronusFarm CSS",
+    "order": 0,
+    "width": "12",
+    "height": "1",
+    "format": "<style>\n:root{\n  --cf-bg:#0b1220;\n  --cf-card:#0f1b31;\n  --cf-text:#e6edf7;\n  --cf-muted:#9db0cc;\n  --cf-accent:#4f8cff;\n}\nbody.nr-dashboard-theme md-content{\n  background: linear-gradient(180deg, #070c15 0%, var(--cf-bg) 60%, #070c15 100%) !important;\n  color: var(--cf-text) !important;\n}\n.nr-dashboard-theme .nr-dashboard-cardpanel,\n.nr-dashboard-theme .nr-dashboard-template{\n  background: var(--cf-card) !important;\n  border-radius: 14px !important;\n  box-shadow: 0 10px 30px rgba(0,0,0,.35) !important;\n  border: 1px solid rgba(255,255,255,.06) !important;\n}\n.nr-dashboard-theme .nr-dashboard-cardpanel .md-title{ color: var(--cf-text) !important; font-weight: 700 !important; }\n.nr-dashboard-theme .nr-dashboard-cardpanel .md-subhead{ color: var(--cf-muted) !important; }\n.nr-dashboard-theme md-switch .md-bar{ opacity:.75; }\n.nr-dashboard-theme md-switch.md-checked .md-bar{ background: rgba(79,140,255,.55) !important; }\n.nr-dashboard-theme md-switch.md-checked .md-thumb{ background: var(--cf-accent) !important; }\n\n/* raw text blocks (status/tele/cmd): wrap + thin font + scroll */\n.cf-raw{ width:100%; }\n.cf-raw-title{ color: var(--cf-muted); font-size: 12px; margin-bottom: 6px; }\n.cf-raw pre{\n  margin:0;\n  padding:10px 12px;\n  background: rgba(255,255,255,.04);\n  border: 1px solid rgba(255,255,255,.06);\n  border-radius: 12px;\n  color: var(--cf-text);\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace;\n  font-size: 12px;\n  font-weight: 400;\n  line-height: 1.35;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  max-height: 140px;\n  overflow: auto;\n}\n</style>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "global",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "ui_tpl_css_pills",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_pi",
+    "name": "CronusFarm Pills CSS",
+    "order": 0,
+    "width": "12",
+    "height": "1",
+    "format": "<style>\n/* common row */\n.cf-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 0; }\n.cf-label{ color: var(--cf-text); font-size: 13px; font-weight: 500; }\n\n/* ON/OFF status pills */\n.cf-pill{ min-width:54px; text-align:center; padding:6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing:.2px; }\n.cf-on{ background: rgba(40,167,69,.18); border:1px solid rgba(40,167,69,.45); color:#7CFF9C; }\n.cf-off{ background: rgba(220,53,69,.14); border:1px solid rgba(220,53,69,.45); color:#FF7C88; }\n\n/* dot lamps */\n.cf-dot{ width:12px; height:12px; border-radius:50%; box-shadow: 0 0 0 1px rgba(255,255,255,.12) inset; }\n.cf-dot-on{ background: rgba(40,167,69,1); box-shadow: 0 0 14px rgba(40,167,69,.55); }\n.cf-dot-off{ background: rgba(220,53,69,1); box-shadow: 0 0 14px rgba(220,53,69,.35); }\n</style>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "global",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  }
+]

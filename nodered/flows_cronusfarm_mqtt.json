@@ -1,0 +1,292 @@
+[
+  {
+    "id": "b1c5a1f1d7a2a3a1",
+    "type": "tab",
+    "label": "CronusFarm MQTT",
+    "disabled": false,
+    "info": "UNO R4 WiFi ↔ Node-RED (MQTT)\n- cmd 토픽: cronusfarm/<DEVICE_ID>/cmd\n- tele 토픽: cronusfarm/<DEVICE_ID>/tele\n\n기본 DEVICE_ID는 cronusfarm-01 입니다."
+  },
+  {
+    "id": "d6b7f6c1b2b3c4d5",
+    "type": "mqtt-broker",
+    "name": "Mosquitto (Pi Tailscale)",
+    "broker": "ida.mango-larch.ts.net",
+    "port": "1883",
+    "clientid": "",
+    "autoConnect": true,
+    "usetls": false,
+    "protocolVersion": "4",
+    "keepalive": "60",
+    "cleansession": true,
+    "autoUnsubscribe": true,
+    "birthTopic": "",
+    "birthQos": "0",
+    "birthPayload": "",
+    "birthMsg": {},
+    "closeTopic": "",
+    "closeQos": "0",
+    "closePayload": "",
+    "closeMsg": {},
+    "willTopic": "",
+    "willQos": "0",
+    "willPayload": "",
+    "willMsg": {},
+    "userProps": "",
+    "sessionExpiry": ""
+  },
+  {
+    "id": "c0d6f35bdbd7d7c1",
+    "type": "ui_tab",
+    "name": "CronusFarm",
+    "icon": "dashboard",
+    "disabled": false,
+    "hidden": false
+  },
+  {
+    "id": "d1f9b55a9843c0a1",
+    "type": "ui_group",
+    "name": "제어",
+    "tab": "c0d6f35bdbd7d7c1",
+    "order": 1,
+    "disp": true,
+    "width": "6",
+    "collapse": false
+  },
+  {
+    "id": "a3d2cf2a6f27a2b1",
+    "type": "ui_group",
+    "name": "상태",
+    "tab": "c0d6f35bdbd7d7c1",
+    "order": 2,
+    "disp": true,
+    "width": "6",
+    "collapse": false
+  },
+  {
+    "id": "c7b2b8e7cc1b92a1",
+    "type": "ui_switch",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "펌프",
+    "label": "펌프",
+    "tooltip": "",
+    "group": "d1f9b55a9843c0a1",
+    "order": 1,
+    "width": 0,
+    "height": 0,
+    "passthru": true,
+    "decouple": "false",
+    "topic": "",
+    "style": "",
+    "onvalue": "1",
+    "onvalueType": "str",
+    "offvalue": "0",
+    "offvalueType": "str",
+    "x": 150,
+    "y": 120,
+    "wires": [
+      [
+        "c2d5b8a8b3cc12a1"
+      ]
+    ]
+  },
+  {
+    "id": "a8c1c0fe3cc39d21",
+    "type": "ui_slider",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "팬 PWM",
+    "label": "팬(0~255)",
+    "tooltip": "",
+    "group": "d1f9b55a9843c0a1",
+    "order": 2,
+    "width": 0,
+    "height": 0,
+    "passthru": true,
+    "outs": "all",
+    "topic": "",
+    "min": 0,
+    "max": 255,
+    "step": 1,
+    "x": 160,
+    "y": 180,
+    "wires": [
+      [
+        "c2d5b8a8b3cc12a1"
+      ]
+    ]
+  },
+  {
+    "id": "c2d5b8a8b3cc12a1",
+    "type": "function",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "cmd payload 만들기",
+    "func": "// Arduino가 기대하는 형식: \"pump=1 fan=128\"\n// switch/slider가 각각 들어올 수 있어 마지막 값을 context에 저장해서 합칩니다.\n\nconst devId = flow.get('deviceId') || 'cronusfarm-01';\nflow.set('deviceId', devId);\n\nconst pump = (msg._ui && msg._ui.type === 'switch') ? msg.payload : flow.get('pump');\nconst fan  = (msg._ui && msg._ui.type === 'slider') ? msg.payload : flow.get('fan');\n\nif (msg._ui && msg._ui.type === 'switch') flow.set('pump', pump);\nif (msg._ui && msg._ui.type === 'slider') flow.set('fan', fan);\n\nconst p = (pump === undefined) ? (flow.get('pump') ?? '0') : pump;\nconst f = (fan === undefined)  ? (flow.get('fan')  ?? '0') : fan;\n\nmsg.topic = `cronusfarm/${devId}/cmd`;\nmsg.payload = `pump=${p} fan=${f}`;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 400,
+    "y": 150,
+    "wires": [
+      [
+        "c9f2442f2d2fa2a1"
+      ]
+    ]
+  },
+  {
+    "id": "c9f2442f2d2fa2a1",
+    "type": "mqtt out",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "cmd publish",
+    "topic": "",
+    "qos": "1",
+    "retain": "",
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "d6b7f6c1b2b3c4d5",
+    "x": 610,
+    "y": 150,
+    "wires": []
+  },
+  {
+    "id": "d1e4c46e7a9c11a1",
+    "type": "mqtt in",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "tele subscribe",
+    "topic": "cronusfarm/cronusfarm-01/tele",
+    "qos": "1",
+    "datatype": "utf8",
+    "broker": "d6b7f6c1b2b3c4d5",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 150,
+    "y": 260,
+    "wires": [
+      [
+        "a0c388b3a7d9b2a1",
+        "a9a2b2c3d4e5f6a1"
+      ]
+    ]
+  },
+  {
+    "id": "a0c388b3a7d9b2a1",
+    "type": "ui_text",
+    "z": "b1c5a1f1d7a2a3a1",
+    "group": "a3d2cf2a6f27a2b1",
+    "order": 1,
+    "width": 0,
+    "height": 0,
+    "name": "tele raw",
+    "label": "텔레메트리(raw)",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 390,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "a9a2b2c3d4e5f6a1",
+    "type": "debug",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "tele debug",
+    "active": true,
+    "tosidebar": true,
+    "console": false,
+    "tostatus": false,
+    "complete": "payload",
+    "targetType": "msg",
+    "x": 390,
+    "y": 300,
+    "wires": []
+  },
+  {
+    "id": "e1f0a9c8b7d6e5f4",
+    "type": "inject",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "Pi WiFi SSID 발행(시작+5분)",
+    "props": [
+      {
+        "p": "payload"
+      }
+    ],
+    "repeat": "300",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "5",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 140,
+    "y": 400,
+    "wires": [
+      [
+        "e2f0a9c8b7d6e5f4"
+      ]
+    ]
+  },
+  {
+    "id": "e2f0a9c8b7d6e5f4",
+    "type": "exec",
+    "z": "b1c5a1f1d7a2a3a1",
+    "command": "/usr/sbin/iwgetid -r 2>/dev/null || iwgetid -r",
+    "addpay": false,
+    "append": "",
+    "useSpawn": "false",
+    "timer": "",
+    "winHide": true,
+    "oldrc": false,
+    "name": "현재 SSID",
+    "x": 330,
+    "y": 400,
+    "wires": [
+      [
+        "e3f0a9c8b7d6e5f4"
+      ],
+      [],
+      []
+    ]
+  },
+  {
+    "id": "e3f0a9c8b7d6e5f4",
+    "type": "function",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "SSID trim",
+    "func": "msg.payload = (msg.payload || '').toString().trim();\nif (!msg.payload) return null;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 520,
+    "y": 400,
+    "wires": [
+      [
+        "e4f0a9c8b7d6e5f4"
+      ]
+    ]
+  },
+  {
+    "id": "e4f0a9c8b7d6e5f4",
+    "type": "mqtt out",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "pi wifi_ssid retain",
+    "topic": "cronusfarm/pi/wifi_ssid",
+    "qos": "1",
+    "retain": "true",
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "d6b7f6c1b2b3c4d5",
+    "x": 720,
+    "y": 400,
+    "wires": []
+  }
+]
+
