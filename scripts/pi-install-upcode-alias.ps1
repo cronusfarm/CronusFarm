@@ -30,4 +30,4 @@ if (-not (Test-Path $repair)) { throw "없음: $repair" }
 & scp @SshOpts $repair "${PiUser}@${PiHost}:CronusFarm/scripts/pi-repair-upcode.sh"
 & ssh @SshOpts "${PiUser}@${PiHost}" "chmod +x `$HOME/CronusFarm/scripts/pi-repair-upcode.sh && bash `$HOME/CronusFarm/scripts/pi-repair-upcode.sh"
 
-Write-Host "완료: $PiUser@${PiHost} — 새 셸에서 upcode 또는: bash ~/CronusFarm/scripts/upcode.sh" -ForegroundColor Green
+Write-Host "완료: $PiUser@${PiHost} — 새 셸에서 upcode / upcod 또는: bash ~/CronusFarm/scripts/upcode.sh" -ForegroundColor Green

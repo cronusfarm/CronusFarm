@@ -11,8 +11,8 @@
 1. **라즈베리파이**에 `arduino-cli`가 설치되어 있어야 합니다(보드는 Pi USB에 연결).
 2. **Windows**에서 SSH/SCP 가능(`ssh`/`scp` 명령). `deploy-cronusfarm-pi.ps1`·`upcode.ps1` 등은 **같은 LAN이면 `192.168.1.22`(ida) 우선**, 아니면 **`ida.mango-larch.ts.net`** 으로 접속합니다. 호스트를 고정하려면 `-PiHost` 로 지정하세요. 계정은 기본 `dooly` 또는 `-PiUser` 로 맞출 것.
 3. **커서/VS Code**에서 Task **`upcode (copy->compile->upload Pi)`** 실행 → 스케치 폴더 전체가 Pi로 복사된 뒤, Pi에서 `arduino-cli core`·`lib` 준비(이미 있으면 스킵) → **컴파일·업로드**까지 한 번에 수행됩니다.
-4. **수동 옵션(파워셸):** `.\scripts\upcode.ps1 -AutoPort` — `ttyACM` 포트 자동 선택. 시리얼 점유 시 `.\scripts\upcode.ps1 -StopNodeRedDuringUpload` (sudo 필요할 수 있음).
-5. **Pi에만 있을 때:** `chmod +x scripts/pi-arduino-build.sh` 후 `FQBN=arduino:renesas_uno:unor4wifi ./scripts/pi-arduino-build.sh /home/dooly/CronusFarm/arduino/CronusFarm` (자세한 내용은 `docs/raspi_setup.md`).
+4. **수동 옵션(파워셸):** `.\scripts\upcode.ps1 -AutoPort` — `ttyACM` 포트 자동 선택. 시리얼 점유 시 `.\scripts\upcode.ps1 -StopNodeRedDuringUpload` (sudo 필요할 수 있음). **Thalia의 `arduino/CronusFarm/` 전체(`.ino`·`secrets.h`)를 ida로 복사한 뒤 업로드**합니다. ida SSH에서만 `upcode` 하면 Thalia와 자동 동기화되지 않습니다.
+5. **Pi에만 있을 때:** `upcode` 또는 `upcod` 별칭(자세히는 `docs/raspi_setup.md` 3·4절). 수동 빌드: `chmod +x scripts/pi-arduino-build.sh` 후 `FQBN=arduino:renesas_uno:unor4wifi ./scripts/pi-arduino-build.sh /home/dooly/CronusFarm/arduino/CronusFarm`.
 
 #### 한 번에 배포(Arduino 업로드 + Node-RED 플로우)
 - **JSON만 Pi에 복사**(수동 Import 가능):  

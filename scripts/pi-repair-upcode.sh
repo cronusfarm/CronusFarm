@@ -81,8 +81,9 @@ BRC="${HOME}/.bashrc"
 touch "$BRC"
 cp -a "$BRC" "${BRC}.bak.repair.$(date +%s)"
 
-echo "=== 1) ~/.bashrc 에서 upcode 관련 줄 제거(잘린 경로 줄 포함) ==="
+echo "=== 1) ~/.bashrc 에서 upcode/upcod 관련 줄 제거(잘린 경로 줄 포함) ==="
 grep -v 'alias upcode' "$BRC" \
+  | grep -v 'alias upcod=' \
   | grep -v '# --- CronusFarm upcode' \
   | grep -v '# --- end CronusFarm upcode' \
   | grep -v 'CronusFarm/scripts/upcode.sh' \
@@ -91,6 +92,7 @@ grep -v 'alias upcode' "$BRC" \
   echo ""
   echo "# --- CronusFarm upcode (auto) ---"
   echo "alias upcode='bash ${HOME}/CronusFarm/scripts/upcode.sh'"
+  echo "alias upcod='bash ${HOME}/CronusFarm/scripts/upcode.sh'"
   echo "# --- end CronusFarm upcode ---"
 } >> /tmp/.bashrc.repair.$$
 
