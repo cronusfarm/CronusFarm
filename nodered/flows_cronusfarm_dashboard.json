@@ -1288,7 +1288,7 @@
     "type": "function",
     "z": "tab_cronus_dash",
     "name": "스위치: 수동고정+ON/OFF",
-    "func": "const devId = flow.get('deviceId') || 'cronusfarm-01';\nflow.set('deviceId', devId);\n\nconst k = (msg.topic||'').toString().trim();\nif(!k) return null;\nconst v = (msg.payload===1 || msg.payload===true || msg.payload==='1' || msg.payload==='on') ? 1 : 0;\n\n// 스위치 조작 시: 해당 채널을 수동(auto=0)으로 고정하고, 즉시 ON/OFF 값을 cmd로 발행\n// - 공백 토큰 대신, 아두이노가 확실히 처리하도록 2회 발행(auto -> state)\nconst t = `cronusfarm/${devId}/cmd`;\nconst m1 = {topic:t, payload:`auto_${k}=0`};\nconst m2 = {topic:t, payload:`${k}=${v}`};\nreturn [m1, m2];",
+    "func": "const devId = flow.get('deviceId') || 'cronusfarm-01';\nflow.set('deviceId', devId);\n\nconst k = (msg.topic||'').toString().trim();\nif(!k) return null;\nconst v = (msg.payload===1 || msg.payload===true || msg.payload==='1' || msg.payload==='on') ? 1 : 0;\n\n// 스위치 조작 시: 해당 채널을 수동(auto=0)으로 고정하고, 즉시 ON/OFF 값을 cmd로 발행\n// - 반드시 2회 발행(auto -> state). Function 노드 출력 1개에서 여러 메시지를 내보내려면\n//   [[msg1, msg2]] 형태(출력 포트별 메시지 배열)로 반환해야 합니다.\nconst t = `cronusfarm/${devId}/cmd`;\nconst m1 = {topic:t, payload:`auto_${k}=0`};\nconst m2 = {topic:t, payload:`${k}=${v}`};\nreturn [[m1, m2]];",
     "outputs": 1,
     "noerr": 0,
     "initialize": "",
