@@ -149,6 +149,8 @@ static void onReceiveHandler(int /*numBytes*/) {
 
 static int8_t gEncPrevAB = 0;
 static uint32_t gEncLastMs = 0;
+static int8_t gEncPrevA = -1;
+static int8_t gEncPrevB = -1;
 
 static void encoderPoll() {
   uint32_t now = millis();
@@ -170,6 +172,26 @@ static void encoderPoll() {
   int8_t idx = (int8_t)((gEncPrevAB << 2) | ab);
   int8_t d = delta[(uint8_t)idx];
   gEncPrevAB = ab;
+
+  // 일부 패널/케이블에서 EN1/EN2가 반대로 연결되거나 신호가 약하면 위 테이블이 0만 나오는 경우가 있어
+  // A/B 변화 자체를 기준으로 “보수적으로” 한 스텝을 만들어냅니다(방향은 최선 추정).
+  if (gEncPrevA < 0 || gEncPrevB < 0) {
+    gEncPrevA = (int8_t)a;
+    gEncPrevB = (int8_t)b;
+    return;
+  }
+
+  if (d == 0 && (a != gEncPrevA || b != gEncPrevB)) {
+    // 변화가 있었다면 방향을 추정: A가 바뀌었을 때의 B 상태로 결정(일반적인 2상 엔코더 규칙 기반)
+    if (a != gEncPrevA) {
+      d = (b == a) ? +1 : -1;
+    } else {
+      d = (a != b) ? +1 : -1;
+    }
+  }
+  gEncPrevA = (int8_t)a;
+  gEncPrevB = (int8_t)b;
+
   if (d > 0) {
     qPush(PANEL_EVT_ENC_CW, 0);
   } else if (d < 0) {

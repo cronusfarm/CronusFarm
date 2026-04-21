@@ -304,8 +304,8 @@ static void lcdWelcomeIfOk(uint32_t nowMs, bool wifiOk, bool mqttOk) {
   }
 
   panelClear();
-  panelPrintLine(0, "Welcome to CronusFarm");
-  panelPrintLine(1, "");
+  panelPrintLine(0, "Welcome to");
+  panelPrintLine(1, "CronusFarm");
   lcdRefreshRtcDateTime();
 
   gLcdWelcomed = true;
