@@ -1152,13 +1152,13 @@
     "x": 360,
     "y": 660,
     "wires": [
-      ["ui_tpl_state_led_a1"],
-      ["ui_tpl_state_led_a2"],
-      ["ui_tpl_state_pump_a1"],
-      ["ui_tpl_state_pump_a2"],
-      ["ui_tpl_state_led_b1"],
-      ["ui_tpl_state_pump_b1"],
-      ["ui_tpl_state_pump_b2"]
+      ["ui_tpl_state_led_a1","fd_toggle_led_a1"],
+      ["ui_tpl_state_led_a2","fd_toggle_led_a2"],
+      ["ui_tpl_state_pump_a1","fd_toggle_pump_a1"],
+      ["ui_tpl_state_pump_a2","fd_toggle_pump_a2"],
+      ["ui_tpl_state_led_b1","fd_toggle_led_b1"],
+      ["ui_tpl_state_pump_b1","fd_toggle_pump_b1"],
+      ["ui_tpl_state_pump_b2","fd_toggle_pump_b2"]
     ]
   },
   {
@@ -5865,6 +5865,287 @@
       [
         "mqtt_out_cmd",
         "ui_txt_cmd_preview"
+      ]
+    ]
+  },
+  {
+    "id": "tab_cronus_flexdash",
+    "type": "tab",
+    "label": "CronusFarm FlexDash",
+    "disabled": false,
+    "info": "FlexDash(드래그/반응형) 전용 UI\n- 접속: http://<pi>:1880/flexdash\n- 타일(toggle)로 채널 ON/OFF\n- tele(topic=led_*, pump_*)를 받아 타일 상태 동기화",
+    "env": []
+  },
+  {
+    "id": "fd_dashboard_main",
+    "type": "flexdash dashboard",
+    "port": "80",
+    "ioOpts": "{}",
+    "path": "/flexdash",
+    "redServer": true,
+    "saveConfig": true,
+    "allOrigins": true,
+    "devServer": false,
+    "devInstall": false,
+    "name": "FlexDash",
+    "fd_children": ",fd_tab_cronus"
+  },
+  {
+    "id": "fd_tab_cronus",
+    "type": "flexdash tab",
+    "name": "CronusFarm",
+    "icon": "mdi-sprout",
+    "fd": "fd_dashboard_main",
+    "fd_children": ",fd_grid_cronus"
+  },
+  {
+    "id": "fd_grid_cronus",
+    "type": "flexdash container",
+    "name": "CronusFarm grid",
+    "kind": "StdGrid",
+    "fd_children": ",fd_toggle_led_a1,fd_toggle_led_a2,fd_toggle_pump_a1,fd_toggle_pump_a2,fd_toggle_led_b1,fd_toggle_pump_b1,fd_toggle_pump_b2",
+    "title": "",
+    "tab": "fd_tab_cronus",
+    "min_cols": "1",
+    "max_cols": "6",
+    "parent": "",
+    "solid": false,
+    "cols": "2",
+    "rows": "4"
+  },
+  {
+    "id": "fn_fd_force_manual_and_set",
+    "type": "function",
+    "z": "tab_cronus_flexdash",
+    "name": "FlexDash: 수동고정+ON/OFF",
+    "func": "const devId = flow.get('deviceId') || 'cronusfarm-01';\nflow.set('deviceId', devId);\n\nconst k = (msg.topic||'').toString().trim();\nif(!k) return null;\n\n// FlexDash toggle payload는 기본 true/false 또는 1/0\nconst v = (msg.payload===1 || msg.payload===true || msg.payload==='1' || msg.payload==='on') ? 1 : 0;\n\nconst t = `cronusfarm/${devId}/cmd`;\nconst m1 = {topic:t, payload:`auto_${k}=0`};\nconst m2 = {topic:t, payload:`${k}=${v}`};\nreturn [[m1, m2]];",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 520,
+    "y": 180,
+    "wires": [
+      [
+        "mqtt_out_cmd"
+      ]
+    ]
+  },
+  {
+    "id": "fd_toggle_led_a1",
+    "type": "fd-toggle",
+    "z": "tab_cronus_flexdash",
+    "fd_container": "fd_grid_cronus",
+    "fd_cols": "1",
+    "fd_rows": 1,
+    "fd_array": false,
+    "fd_array_max": 10,
+    "fd_output_topic": "led_a1",
+    "fd_loopback": false,
+    "name": "LED A1",
+    "title": "LED A1",
+    "popup_info": "",
+    "value": "",
+    "enabled": true,
+    "color": "warning",
+    "on_value": 1,
+    "off_value": 0,
+    "show_value": false,
+    "show_reset": false,
+    "reset_value": "",
+    "show_popup": false,
+    "x": 220,
+    "y": 100,
+    "wires": [
+      [
+        "fn_fd_force_manual_and_set"
+      ]
+    ]
+  },
+  {
+    "id": "fd_toggle_led_a2",
+    "type": "fd-toggle",
+    "z": "tab_cronus_flexdash",
+    "fd_container": "fd_grid_cronus",
+    "fd_cols": "1",
+    "fd_rows": 1,
+    "fd_array": false,
+    "fd_array_max": 10,
+    "fd_output_topic": "led_a2",
+    "fd_loopback": false,
+    "name": "LED A2",
+    "title": "LED A2",
+    "popup_info": "",
+    "value": "",
+    "enabled": true,
+    "color": "warning",
+    "on_value": 1,
+    "off_value": 0,
+    "show_value": false,
+    "show_reset": false,
+    "reset_value": "",
+    "show_popup": false,
+    "x": 220,
+    "y": 140,
+    "wires": [
+      [
+        "fn_fd_force_manual_and_set"
+      ]
+    ]
+  },
+  {
+    "id": "fd_toggle_pump_a1",
+    "type": "fd-toggle",
+    "z": "tab_cronus_flexdash",
+    "fd_container": "fd_grid_cronus",
+    "fd_cols": "1",
+    "fd_rows": 1,
+    "fd_array": false,
+    "fd_array_max": 10,
+    "fd_output_topic": "pump_a1",
+    "fd_loopback": false,
+    "name": "PUMP A1",
+    "title": "PUMP A1",
+    "popup_info": "",
+    "value": "",
+    "enabled": true,
+    "color": "primary",
+    "on_value": 1,
+    "off_value": 0,
+    "show_value": false,
+    "show_reset": false,
+    "reset_value": "",
+    "show_popup": false,
+    "x": 220,
+    "y": 180,
+    "wires": [
+      [
+        "fn_fd_force_manual_and_set"
+      ]
+    ]
+  },
+  {
+    "id": "fd_toggle_pump_a2",
+    "type": "fd-toggle",
+    "z": "tab_cronus_flexdash",
+    "fd_container": "fd_grid_cronus",
+    "fd_cols": "1",
+    "fd_rows": 1,
+    "fd_array": false,
+    "fd_array_max": 10,
+    "fd_output_topic": "pump_a2",
+    "fd_loopback": false,
+    "name": "PUMP A2",
+    "title": "PUMP A2",
+    "popup_info": "",
+    "value": "",
+    "enabled": true,
+    "color": "primary",
+    "on_value": 1,
+    "off_value": 0,
+    "show_value": false,
+    "show_reset": false,
+    "reset_value": "",
+    "show_popup": false,
+    "x": 220,
+    "y": 220,
+    "wires": [
+      [
+        "fn_fd_force_manual_and_set"
+      ]
+    ]
+  },
+  {
+    "id": "fd_toggle_led_b1",
+    "type": "fd-toggle",
+    "z": "tab_cronus_flexdash",
+    "fd_container": "fd_grid_cronus",
+    "fd_cols": "1",
+    "fd_rows": 1,
+    "fd_array": false,
+    "fd_array_max": 10,
+    "fd_output_topic": "led_b1",
+    "fd_loopback": false,
+    "name": "LED B1",
+    "title": "LED B1",
+    "popup_info": "",
+    "value": "",
+    "enabled": true,
+    "color": "warning",
+    "on_value": 1,
+    "off_value": 0,
+    "show_value": false,
+    "show_reset": false,
+    "reset_value": "",
+    "show_popup": false,
+    "x": 220,
+    "y": 260,
+    "wires": [
+      [
+        "fn_fd_force_manual_and_set"
+      ]
+    ]
+  },
+  {
+    "id": "fd_toggle_pump_b1",
+    "type": "fd-toggle",
+    "z": "tab_cronus_flexdash",
+    "fd_container": "fd_grid_cronus",
+    "fd_cols": "1",
+    "fd_rows": 1,
+    "fd_array": false,
+    "fd_array_max": 10,
+    "fd_output_topic": "pump_b1",
+    "fd_loopback": false,
+    "name": "PUMP B1",
+    "title": "PUMP B1",
+    "popup_info": "",
+    "value": "",
+    "enabled": true,
+    "color": "primary",
+    "on_value": 1,
+    "off_value": 0,
+    "show_value": false,
+    "show_reset": false,
+    "reset_value": "",
+    "show_popup": false,
+    "x": 220,
+    "y": 300,
+    "wires": [
+      [
+        "fn_fd_force_manual_and_set"
+      ]
+    ]
+  },
+  {
+    "id": "fd_toggle_pump_b2",
+    "type": "fd-toggle",
+    "z": "tab_cronus_flexdash",
+    "fd_container": "fd_grid_cronus",
+    "fd_cols": "1",
+    "fd_rows": 1,
+    "fd_array": false,
+    "fd_array_max": 10,
+    "fd_output_topic": "pump_b2",
+    "fd_loopback": false,
+    "name": "PUMP B2",
+    "title": "PUMP B2",
+    "popup_info": "",
+    "value": "",
+    "enabled": true,
+    "color": "primary",
+    "on_value": 1,
+    "off_value": 0,
+    "show_value": false,
+    "show_reset": false,
+    "reset_value": "",
+    "show_popup": false,
+    "x": 220,
+    "y": 340,
+    "wires": [
+      [
+        "fn_fd_force_manual_and_set"
       ]
     ]
   },
