@@ -1,7 +1,7 @@
 ﻿# 레거시: .ino + secrets.h 만 동기화. 전체 스케치 폴더 + 의존성 준비는 upcode.ps1 권장.
 param(
   [string] $PiHost = "",
-  [string] $PiHostLan = "192.168.1.22",
+  [string] $PiHostLan = "",
   [string] $PiHostWan = "ida.mango-larch.ts.net",
   [string] $PiUser = "dooly",
   [string] $RemoteSketchDir = "/home/dooly/CronusFarm/arduino/CronusFarm",

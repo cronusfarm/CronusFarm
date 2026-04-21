@@ -1,7 +1,7 @@
 # Pi에 upcode.sh / pi-arduino-build.sh 복사, chmod, ~/.bashrc 에 upcode 별칭 추가
 param(
   [string] $PiHost = "",
-  [string] $PiHostLan = "192.168.1.22",
+  [string] $PiHostLan = "",
   [string] $PiHostWan = "ida.mango-larch.ts.net",
   [string] $PiUser = "dooly"
 )

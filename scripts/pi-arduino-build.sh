@@ -20,8 +20,20 @@ fi
 
 arduino-cli version
 arduino-cli core update-index
-arduino-cli core install arduino:renesas_uno
-arduino-cli lib install "ArduinoMqttClient"
+# FQBN 예: arduino:renesas_uno:unor4wifi | arduino:avr:uno → 앞 두 토큰으로 코어 패키지 설치
+CORE_REF="$(echo "$FQBN" | cut -d: -f1,2)"
+if [[ -z "$CORE_REF" || "$CORE_REF" == "$FQBN" || "$CORE_REF" != *:* ]]; then
+  echo "FQBN 형식 오류: $FQBN (예: arduino:avr:uno 또는 arduino:renesas_uno:unor4wifi)" >&2
+  exit 1
+fi
+arduino-cli core install "$CORE_REF"
+if [[ "$FQBN" == *"renesas"* ]]; then
+  arduino-cli lib install "ArduinoMqttClient"
+fi
+# UNO R3 패널(CronusFarmPanel) — SD 카드 라이브러리
+if [[ "$FQBN" == *"avr"* ]]; then
+  arduino-cli lib install "SD"
+fi
 
 if [[ -z "$PORT" ]]; then
   PORT="$(arduino-cli board list | awk '/ttyACM/{print $1; exit}' || true)"
@@ -32,5 +44,13 @@ fi
 echo "업로드 포트: $PORT"
 
 arduino-cli compile -j 4 --fqbn "$FQBN" "$SKETCH_DIR"
+
+# 업로드 직전: screen/minicom 등이 ttyACM 을 잡고 있으면 1200bps 터치 실패 → 점유 프로세스 종료
+if [[ -e "$PORT" ]] && command -v fuser >/dev/null 2>&1; then
+  echo "시리얼 점유 해제 시도: $PORT"
+  sudo -n fuser -k "$PORT" 2>/dev/null || fuser -k "$PORT" 2>/dev/null || true
+  sleep 1
+fi
+
 arduino-cli upload -p "$PORT" --fqbn "$FQBN" "$SKETCH_DIR"
 echo "완료: compile + upload"

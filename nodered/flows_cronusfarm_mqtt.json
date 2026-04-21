@@ -9,8 +9,8 @@
   {
     "id": "d6b7f6c1b2b3c4d5",
     "type": "mqtt-broker",
-    "name": "Mosquitto (Pi Tailscale)",
-    "broker": "ida.mango-larch.ts.net",
+    "name": "Mosquitto (Pi localhost)",
+    "broker": "127.0.0.1",
     "port": "1883",
     "clientid": "",
     "autoConnect": true,

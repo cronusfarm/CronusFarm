@@ -44,6 +44,18 @@ git config --global --add safe.directory "D:/WorkSpace/Study/MyCode/Cursor/Cronu
 4. `arduino/CronusFarm/secrets.h.example` 을 복사해 `secrets.h` 생성 후 로컬 값만 채운다.
 5. 작업 루틴: `git pull` → 수정 → `git commit` → `git push`.
 
+## GitHub에 올리기 전 “원격 백업” 태그 (선택)
+
+푸시 직전 **지금 GitHub에 올라가 있는 브랜치 커밋**을 날짜·시간 이름의 **태그**로 남긴 뒤 `push` 하려면, 저장소 루트에서:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\git-push-with-backup.ps1
+```
+
+- 원격에 해당 브랜치가 있으면 `backup/yyyy-MM-dd-HHmmss` 형태 태그가 **그 시점의 원격 HEAD**를 가리키도록 생성·푸시됩니다.
+- 이후 `git push`로 새 커밋이 올라갑니다. 예전 상태는 GitHub의 **Tags**에서 해당 `backup/...` 태그로 확인·체크아웃할 수 있습니다.
+- **로컬만** 백업 태그를 남기려면 스크립트 대신 `git tag backup/날짜 원격/main` 등을 수동으로 쓰면 됩니다.
+
 ## Cursor가 `AGENTS.md` / `.cursor/rules` / `docs` 를 읽는 방식
 
 - 이 파일들은 **원격이 아니라 “클론된 로컬 폴더”** 안에 있다. **Git으로 받아지므로**, 맥에서 `git pull` 하면 최신 내용이 폴더에 반영되고, Cursor는 **현재 연 워크스페이스 루트** 기준으로 규칙·문서를 참고한다.

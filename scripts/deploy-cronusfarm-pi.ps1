@@ -1,6 +1,6 @@
 ﻿param(
   [string] $PiHost = "",
-  [string] $PiHostLan = "192.168.1.22",
+  [string] $PiHostLan = "",
   [string] $PiHostWan = "ida.mango-larch.ts.net",
   [string] $PiUser = "dooly",
   [string] $RemoteCronusRoot = "/home/dooly/CronusFarm",

@@ -1,5 +1,6 @@
 /*
-  CronusFarm - UNO R4 WiFi (MQTT 제어용 기본 스케치)
+  CronusFarm - UNO R4 WiFi (메인 MQTT·릴레이·I2C 마스터)
+  패널(RepRap 2004A)은 UNO R3 `CronusFarmPanel` 스케치 — 별도 업로드
 
   목표
   - Node-RED(UI/자동화) ↔ Arduino 통신을 **MQTT(WiFi)** 로 전환
@@ -17,20 +18,16 @@
     2) key=value 토큰(공백 구분): "auto=1 b1=0 b2=1 led=1 on=30 off=90"
   - tele: "S:... | A:... | T:... | W:ssid=... ip=a.b.c.d" (채널 상태 + WiFi 정보)
 
-  핀(권장: 배선 단순/확장 용이)
-  - LED_A1 : D2
-  - LED_A2 : D3
-  - PUMP_A1: D4
-  - PUMP_A2: D5
-  - LED_B1 : D6
-  - PUMP_B1: D7
-  - PUMP_B2: D8
+  핀(UNO R4 WiFi 메인 — 패널은 별도 UNO R3 I2C 슬레이브)
+  - I2C 마스터: SDA A4, SCL A5 → R3 패널(슬레이브 0x38)
+  - A Bed: LED_A1 D2, LED_A2 D3, PUMP_A1 D4, PUMP_A2 D5
+  - B Bed: LED_B1 D6, PUMP_B1 D7, PUMP_B2 D8
+  - D9~D13: 예비 / SPI 확장 비움 권장
 
   내장 LED 매트릭스(12x8)
-  - WiFi만 연결: 상단 RSSI(안테나 막대 1~4단계)
-  - WiFi+MQTT 연결: 상단 체크(V, 정상 가동)
-  - WiFi 끊김: 상단 경고 패턴
-  - 하단: 펌프 B1 / B2 / LED 각각 2x2 점(켜질 때만)
+  - WiFi만 연결: 고정 비트맵(사용자 지정 W 형태)
+  - WiFi+MQTT 연결: 고정 비트맵(사용자 지정 WM 하단)
+  - WiFi 끊김: 경고 패턴만 (펌프/LED는 매트릭스에 표시하지 않음)
 */
 
 #include "RTC.h"
@@ -38,13 +35,19 @@
 #include <WiFiS3.h>
 #include <ArduinoMqttClient.h>
 #include <string.h>
+#include <stdio.h>
 #include "Arduino_LED_Matrix.h"
+#include <Wire.h>
 
+#include "panel_i2c_protocol.h"
 // `secrets.h.example`을 복사해서 `secrets.h`를 만든 뒤 값을 채우세요.
 #include "secrets.h"
 
 static const uint32_t BAUD = 115200;
 
+// ============================================================
+// 핀 정의 — UNO R4 WiFi 메인 (릴레이/트랜지스터 경유, GPIO 직결 금지)
+// RepRap 패널(2004A 등)은 UNO R3 슬레이브가 I2C로 담당
 static const int LED_A1 = 2;
 static const int LED_A2 = 3;
 static const int PUMP_A1 = 4;
@@ -52,6 +55,39 @@ static const int PUMP_A2 = 5;
 static const int LED_B1 = 6;
 static const int PUMP_B1 = 7;
 static const int PUMP_B2 = 8;
+
+// I2C 패널(R3) 표시 — Wire 실패 시 false, 로직·MQTT는 계속 동작
+static bool gPanelReady = false;
+static bool gLcdWelcomed = false;
+static uint32_t gLcdWelcomeAtMs = 0;
+static uint32_t gLcdNextRotateMs = 0;
+static uint8_t gLcdRotateIdx = 0;
+static uint32_t gLastLcdRtcMs = 0;
+
+static bool panelProbe();
+static void panelClear();
+static void panelPrintLine(uint8_t row, const char* text);
+static void panelBeepShort();
+static void panelBeepLong();
+static void panelPollEvents(uint32_t nowMs);
+static void lcdWelcomeIfOk(uint32_t nowMs, bool wifiOk, bool mqttOk);
+static void lcdRotateStatus(uint32_t nowMs);
+
+// ============================================================
+// LCD + 엔코더 UI는 채널 정의/배열 이후에 선언(선언 순서 의존성 방지)
+enum UiMode : uint8_t { UI_BROWSE = 0, UI_EDIT = 1 };
+static UiMode gUiMode = UI_BROWSE;
+static uint8_t gUiCh = 0;
+static bool gUiPickOn = false;
+
+static uint32_t gBtnLastMs = 0;
+
+static void beepShort();
+static void beepLong();
+static void uiApplySelection(uint8_t ch, bool on);
+static void lcdRenderUi(uint32_t nowMs, bool wifiOk, bool mqttOk);
+static void encoderDelta(int8_t d);
+static void panelHandleClick(uint32_t nowMs);
 
 // 채널 정의(표시/제어용)
 enum Channel : uint8_t {
@@ -82,6 +118,237 @@ static bool chAuto[CH_COUNT] = {
   false, false, true, true, false, true, true
 };
 
+static const char* chPinLabel(uint8_t ch) {
+  switch (ch) {
+    case CH_LED_A1: return "D2";
+    case CH_LED_A2: return "D3";
+    case CH_PUMP_A1: return "D4";
+    case CH_PUMP_A2: return "D5";
+    case CH_LED_B1: return "D6";
+    case CH_PUMP_B1: return "D7";
+    case CH_PUMP_B2: return "D8";
+    default: return "?";
+  }
+}
+
+// ---------- I2C 패널(R3) — 마스터 측 ----------
+static bool panelProbe() {
+  Wire.beginTransmission(PANEL_I2C_ADDR);
+  return Wire.endTransmission() == 0;
+}
+
+static void panelClear() {
+  if (!gPanelReady) {
+    return;
+  }
+  Wire.beginTransmission(PANEL_I2C_ADDR);
+  Wire.write(PANEL_CMD_CLEAR);
+  if (Wire.endTransmission() != 0) {
+    gPanelReady = false;
+  }
+}
+
+static void panelSetLine20(uint8_t row, const char line20[21]) {
+  if (!gPanelReady) {
+    return;
+  }
+  Wire.beginTransmission(PANEL_I2C_ADDR);
+  Wire.write(PANEL_CMD_SET_LINE);
+  Wire.write(row);
+  Wire.write((uint8_t)20);
+  for (uint8_t i = 0; i < 20; i++) {
+    Wire.write((uint8_t)line20[i]);
+  }
+  if (Wire.endTransmission() != 0) {
+    gPanelReady = false;
+  }
+}
+
+static void panelPrintLine(uint8_t row, const char* text) {
+  char buf[21];
+  for (uint8_t i = 0; i < 20; i++) {
+    buf[i] = ' ';
+  }
+  buf[20] = '\0';
+  if (text) {
+    size_t n = strlen(text);
+    if (n > 20) {
+      n = 20;
+    }
+    memcpy(buf, text, n);
+  }
+  panelSetLine20(row, buf);
+}
+
+static void panelBeepShort() {
+  if (!gPanelReady) {
+    return;
+  }
+  Wire.beginTransmission(PANEL_I2C_ADDR);
+  Wire.write(PANEL_CMD_BEEP);
+  Wire.write((uint8_t)0);
+  if (Wire.endTransmission() != 0) {
+    gPanelReady = false;
+  }
+}
+
+static void panelBeepLong() {
+  if (!gPanelReady) {
+    return;
+  }
+  Wire.beginTransmission(PANEL_I2C_ADDR);
+  Wire.write(PANEL_CMD_BEEP);
+  Wire.write((uint8_t)1);
+  if (Wire.endTransmission() != 0) {
+    gPanelReady = false;
+  }
+}
+
+static void allOff();
+static void publishTelemetry();
+
+static void panelPollEvents(uint32_t nowMs) {
+  if (!gPanelReady) {
+    return;
+  }
+  uint8_t n = Wire.requestFrom((int)PANEL_I2C_ADDR, (int)16);
+  if (n < 1) {
+    return;
+  }
+  uint8_t cnt = (uint8_t)Wire.read();
+  for (uint8_t i = 0; i < cnt; i++) {
+    if (Wire.available() < 2) {
+      break;
+    }
+    uint8_t t = (uint8_t)Wire.read();
+    uint8_t p = (uint8_t)Wire.read();
+    (void)p;
+    switch (t) {
+      case PANEL_EVT_ENC_CW:
+        encoderDelta(+1);
+        break;
+      case PANEL_EVT_ENC_CCW:
+        encoderDelta(-1);
+        break;
+      case PANEL_EVT_CLICK:
+        panelHandleClick(nowMs);
+        break;
+      case PANEL_EVT_KILL:
+        if (p) {
+          allOff();
+          publishTelemetry();
+        }
+        break;
+      case PANEL_EVT_SD:
+      default:
+        break;
+    }
+  }
+}
+
+static const char* dowShortEn(DayOfWeek d) {
+  switch (d) {
+    case DayOfWeek::SUNDAY: return "Sun";
+    case DayOfWeek::MONDAY: return "Mon";
+    case DayOfWeek::TUESDAY: return "Tue";
+    case DayOfWeek::WEDNESDAY: return "Wed";
+    case DayOfWeek::THURSDAY: return "Thu";
+    case DayOfWeek::FRIDAY: return "Fri";
+    case DayOfWeek::SATURDAY: return "Sat";
+    default: return "???";
+  }
+}
+
+static void lcdRefreshRtcDateTime() {
+  if (!gPanelReady) {
+    return;
+  }
+  RTCTime t;
+  if (!RTC.getTime(t)) {
+    return;
+  }
+  char lineDate[21];
+  char lineTime[21];
+  int y = t.getYear();
+  int mo = Month2int(t.getMonth());
+  int day = t.getDayOfMonth();
+  snprintf(lineDate, sizeof(lineDate), "%04d.%02d.%02d (%s)",
+           y, mo, day, dowShortEn(t.getDayOfWeek()));
+  int h24 = t.getHour();
+  int mi = t.getMinutes();
+  int s = t.getSeconds();
+  bool pm = (h24 >= 12);
+  int h12 = h24 % 12;
+  if (h12 == 0) {
+    h12 = 12;
+  }
+  snprintf(lineTime, sizeof(lineTime), "%02d:%02d:%02d %s",
+           h12, mi, s, pm ? "PM" : "AM");
+  panelPrintLine(2, lineDate);
+  panelPrintLine(3, lineTime);
+}
+
+static void lcdWelcomeIfOk(uint32_t nowMs, bool wifiOk, bool mqttOk) {
+  if (!gPanelReady) {
+    return;
+  }
+  if (gLcdWelcomed) {
+    return;
+  }
+  if (!wifiOk || !mqttOk) {
+    return;
+  }
+
+  panelClear();
+  panelPrintLine(0, "Welcome to CronusFarm");
+  panelPrintLine(1, "");
+  lcdRefreshRtcDateTime();
+
+  gLcdWelcomed = true;
+  gLcdWelcomeAtMs = nowMs;
+  gLcdNextRotateMs = nowMs + 10000;
+  gLcdRotateIdx = 0;
+  gLastLcdRtcMs = nowMs;
+}
+
+static void lcdRotateStatus(uint32_t nowMs) {
+  if (!gPanelReady) {
+    return;
+  }
+  if (!gLcdWelcomed) {
+    return;
+  }
+  if (nowMs < gLcdNextRotateMs) {
+    return;
+  }
+
+  const uint8_t ch = (uint8_t)(gLcdRotateIdx % CH_COUNT);
+  const int pin = CH_PIN[ch];
+  const bool on = (digitalRead(pin) == HIGH);
+  const bool isAuto = chAuto[ch];
+
+  char line0[21];
+  char line1[21];
+  char line2[21];
+  char line3[21];
+  snprintf(line0, sizeof(line0), "%s (%s)", CH_LABEL_KO[ch], chPinLabel(ch));
+  snprintf(line1, sizeof(line1), "MODE: %s", isAuto ? "AUTO" : "MAN ");
+  snprintf(line2, sizeof(line2), "STATE: %s", on ? "ON " : "OFF");
+  uint8_t next = (uint8_t)((ch + 1) % CH_COUNT);
+  snprintf(line3, sizeof(line3), "NEXT: %s", CH_LABEL_KO[next]);
+
+  panelClear();
+  panelPrintLine(0, line0);
+  panelPrintLine(1, line1);
+  panelPrintLine(2, line2);
+  panelPrintLine(3, line3);
+
+  gLcdRotateIdx++;
+  gLcdNextRotateMs = nowMs + 2000;
+}
+
+// (LCD + 엔코더 UI 구현은 chManual/chState 선언 이후로 이동)
+
 // 채널별 수동 상태(0/1)
 static bool chManual[CH_COUNT] = { false, false, false, false, false, false, false };
 
@@ -90,6 +357,85 @@ static uint32_t chOnMs[CH_COUNT]  = { 0, 0, 30000, 30000, 0, 30000, 30000 };
 static uint32_t chOffMs[CH_COUNT] = { 0, 0, 90000, 90000, 0, 90000, 90000 };
 static uint32_t chPrevMs[CH_COUNT] = { 0,0,0,0,0,0,0 };
 static bool chState[CH_COUNT] = { false, false, false, false, false, false, false };
+
+// ============================================================
+// 패널(R3) UI — 엔코더/클릭은 I2C 이벤트로 수신
+static void beepShort() {
+  panelBeepShort();
+}
+static void beepLong() {
+  panelBeepLong();
+}
+
+static void uiApplySelection(uint8_t ch, bool on) {
+  if (ch >= CH_COUNT) {
+    return;
+  }
+  chAuto[ch] = false;
+  chManual[ch] = on;
+  digitalWrite(CH_PIN[ch], on ? HIGH : LOW);
+  chState[ch] = on;
+}
+
+static void lcdRenderUi(uint32_t nowMs, bool wifiOk, bool mqttOk) {
+  (void)nowMs;
+  if (!gPanelReady) {
+    return;
+  }
+
+  char line0[21];
+  char line1[21];
+  char line2[21];
+  char line3[21];
+  snprintf(line0, sizeof(line0), "%s %s", CH_LABEL_KO[gUiCh], chPinLabel(gUiCh));
+  snprintf(line1, sizeof(line1), " %s %s %s", wifiOk ? "WiFi " : "WiFiX",
+           mqttOk ? "MQTT " : "MQTTX", gUiMode == UI_EDIT ? "EDIT" : "BROW");
+  snprintf(line2, sizeof(line2), " SEL:%s MODE:%s", gUiPickOn ? "ON " : "OFF",
+           chAuto[gUiCh] ? "A" : "M");
+  snprintf(line3, sizeof(line3), "%s", gUiMode == UI_EDIT ? "Click=Apply" : "Click=Select");
+
+  panelClear();
+  panelPrintLine(0, line0);
+  panelPrintLine(1, line1);
+  panelPrintLine(2, line2);
+  panelPrintLine(3, line3);
+}
+
+static void encoderDelta(int8_t d) {
+  if (d == 0) {
+    return;
+  }
+  if (gUiMode == UI_BROWSE) {
+    int16_t n = (int16_t)gUiCh + (d > 0 ? 1 : -1);
+    if (n < 0) {
+      n = (int16_t)CH_COUNT - 1;
+    }
+    if (n >= (int16_t)CH_COUNT) {
+      n = 0;
+    }
+    gUiCh = (uint8_t)n;
+    gUiPickOn = (digitalRead(CH_PIN[gUiCh]) == HIGH);
+  } else {
+    gUiPickOn = !gUiPickOn;
+  }
+}
+
+static void panelHandleClick(uint32_t nowMs) {
+  if (nowMs - gBtnLastMs < 220) {
+    return;
+  }
+  gBtnLastMs = nowMs;
+  if (gUiMode == UI_BROWSE) {
+    gUiMode = UI_EDIT;
+    gUiPickOn = (digitalRead(CH_PIN[gUiCh]) == HIGH);
+    beepShort();
+  } else {
+    uiApplySelection(gUiCh, gUiPickOn);
+    beepLong();
+    publishTelemetry();
+    gUiMode = UI_BROWSE;
+  }
+}
 
 static uint32_t lastTelemetryMs = 0;
 static const uint32_t TELEMETRY_INTERVAL_MS = 1000;
@@ -135,82 +481,48 @@ static void matPixel(int r, int c, uint8_t on) {
   gMatFrame[r][c] = on ? 1 : 0;
 }
 
-// RSSI(dBm) → 안테나 막대 단계(1~4). 비정상 값은 중간으로 표시.
-static int wifiRssiToBars(int rssi) {
-  if (rssi >= 0 || rssi < -100) return 2;
-  if (rssi >= -55) return 4;
-  if (rssi >= -65) return 3;
-  if (rssi >= -75) return 2;
-  return 1;
-}
-
-// WiFi 연결됨 — RSSI에 따라 세로 막대 개수·높이(1~4단계)
-static void matDrawWifiRssiBars(int bars) {
-  const int baseR = 5;
-  struct {
-    int c;
-    int h;
-  } col[] = { { 3, 2 }, { 5, 3 }, { 7, 4 }, { 9, 5 } };
-  if (bars < 1) bars = 1;
-  if (bars > 4) bars = 4;
-  for (int i = 0; i < bars; i++) {
-    for (int k = 0; k < col[i].h; k++) {
-      matPixel(baseR - k, col[i].c, 1);
+// 8×12 패턴: 'O'=켜짐, 그 외=끔 (열 0이 왼쪽)
+static void matBlitPattern8x12(const char pat[8][13]) {
+  for (int r = 0; r < 8; r++) {
+    for (int c = 0; c < 12; c++) {
+      char ch = pat[r][c];
+      gMatFrame[r][c] = (ch == 'O' || ch == 'o') ? 1u : 0u;
     }
   }
 }
 
-// 시스템 정상(WiFi+MQTT) — 체크 표시
-static void matDrawOkIcon() {
-  // 12열(0..11) 기준 좌우 반전(가로 미러링)
-  matPixel(1, 8, 1);
-  matPixel(2, 7, 1);
-  // 체크 오른쪽 사선(두 점) 복구
-  matPixel(3, 6, 1);
-  matPixel(4, 5, 1);
-  matPixel(4, 3, 1);
-  matPixel(5, 4, 1);
-  // 좌표 표기는 (행×열), 1부터 시작이라고 가정:
-  // 3×6 -> 4×3, 4×5 -> 5×4 를 0-based로 변환해 반영
-  // (2,5) -> (3,2), (3,4) -> (4,3)
-  matPixel(3, 2, 1);
-}
+// WiFi만 연결
+static const char MAT_WIFI_ONLY[8][13] = {
+  "XXXXXXXXXOOO",
+  "XXXXXXXXOOXX",
+  "XXOXXXXOOXXX",
+  "XXOXXXOOXXXX",
+  "XXXOXOOXXXXX",
+  "XXXXOXXXXXXX",
+  "XXXXXXXXXXXX",
+  "XXXXXXXXXXXX",
+};
 
-// 하단: B1(왼쪽), B2(가운데), LED(오른쪽) — 켜지면 2x2 블록
-static void matDrawIoRow(bool b1, bool b2, bool led) {
-  const int row0 = 6;
-  const int row1 = 7;
-  if (b1) {
-    matPixel(row0, 1, 1);
-    matPixel(row0, 2, 1);
-    matPixel(row1, 1, 1);
-    matPixel(row1, 2, 1);
-  }
-  if (b2) {
-    matPixel(row0, 5, 1);
-    matPixel(row0, 6, 1);
-    matPixel(row1, 5, 1);
-    matPixel(row1, 6, 1);
-  }
-  if (led) {
-    matPixel(row0, 9, 1);
-    matPixel(row0, 10, 1);
-    matPixel(row1, 9, 1);
-    matPixel(row1, 10, 1);
-  }
-}
+// WiFi + MQTT
+static const char MAT_WIFI_MQTT[8][13] = {
+  "XXXXXXXXXOOO",
+  "XXXXXXXXOOXX",
+  "XXOXXXXOOXXX",
+  "XXOXXXOOXXXX",
+  "XXXOXOOXXXXX",
+  "XXXXOXXXXXXX",
+  "OOOOOXOOOOOO",
+  "OXOOOOXOXXOX",
+};
 
-static void matRenderStatus(bool wifiOk, bool mqttOk, bool b1, bool b2, bool led, bool mqttWaitPulse) {
+static void matRenderStatus(bool wifiOk, bool mqttOk) {
   matClear();
-  if (mqttOk && wifiOk) {
-    matDrawOkIcon();
+  if (wifiOk && mqttOk) {
+    matBlitPattern8x12(MAT_WIFI_MQTT);
   } else if (wifiOk) {
-    int rssi = WiFi.RSSI();
-    matDrawWifiRssiBars(wifiRssiToBars(rssi));
-    if (mqttWaitPulse) {
-      matPixel(0, 0, 1);
-      matPixel(0, 11, 1);
-    }
+    matBlitPattern8x12(MAT_WIFI_ONLY);
+  } else if (mqttOk) {
+    matBlitPattern8x12(MAT_WIFI_ONLY);
   } else {
     matPixel(4, 3, 1);
     matPixel(4, 8, 1);
@@ -219,61 +531,31 @@ static void matRenderStatus(bool wifiOk, bool mqttOk, bool b1, bool b2, bool led
     matPixel(5, 6, 1);
     matPixel(5, 7, 1);
   }
-  matDrawIoRow(b1, b2, led);
   gMatrix.renderBitmap(gMatFrame, 8, 12);
 }
 
-static void matrixTick(uint32_t nowMs, bool wifiOk, bool mqttOk, bool b1, bool b2, bool led) {
+static void matrixTick(uint32_t nowMs, bool wifiOk, bool mqttOk) {
   static bool prevW = false;
   static bool prevM = false;
-  static bool prevB1 = false;
-  static bool prevB2 = false;
-  static bool prevL = false;
-  static int prevRssiBars = -1;
   static bool first = true;
-  static uint32_t prevSlice = 0xFFFFFFFFu;
 
-  const uint32_t slice = nowMs / 450u;
-  const bool mqttWait = wifiOk && !mqttOk;
-  const int curRssiBars = (wifiOk && !mqttOk) ? wifiRssiToBars(WiFi.RSSI()) : -1;
-  const bool rssiDiff = (curRssiBars >= 0) && (curRssiBars != prevRssiBars);
-  const bool logicDiff =
-    first || (wifiOk != prevW) || (mqttOk != prevM) || (b1 != prevB1) || (b2 != prevB2) || (led != prevL);
-  const bool animDiff = mqttWait && (slice != prevSlice);
+  (void)nowMs;
+  const bool logicDiff = first || (wifiOk != prevW) || (mqttOk != prevM);
 
-  if (!logicDiff && !animDiff && !rssiDiff) {
+  if (!logicDiff) {
     return;
   }
 
-  if (logicDiff) {
-    first = false;
-    prevW = wifiOk;
-    prevM = mqttOk;
-    prevB1 = b1;
-    prevB2 = b2;
-    prevL = led;
-  }
-  prevSlice = slice;
-  if (curRssiBars >= 0) {
-    prevRssiBars = curRssiBars;
-  } else {
-    prevRssiBars = -1;
-  }
+  first = false;
+  prevW = wifiOk;
+  prevM = mqttOk;
 
-  const bool pulse = mqttWait && ((slice & 1u) != 0);
-  matRenderStatus(wifiOk, mqttOk, b1, b2, led, pulse);
+  matRenderStatus(wifiOk, mqttOk);
 }
 
-// 핀/WiFi/MQTT 상태로 매트릭스 즉시 갱신(setup·WiFi 성공 직후 등, loop 전에도 호출 가능)
+// WiFi/MQTT 상태로 매트릭스 즉시 갱신(setup·연결 직후 등)
 static void matrixShowFromPins() {
-  matRenderStatus(
-    WiFi.status() == WL_CONNECTED,
-    mqtt.connected(),
-    digitalRead(PUMP_B1) == HIGH,
-    digitalRead(PUMP_B2) == HIGH,
-    digitalRead(LED_B1) == HIGH,
-    false
-  );
+  matRenderStatus(WiFi.status() == WL_CONNECTED, mqtt.connected());
 }
 
 static void allOff() {
@@ -712,13 +994,25 @@ void setup() {
   Serial.begin(BAUD);
   delay(200);
 
+  Wire.begin();
+  delay(2);
+  gPanelReady = panelProbe();
+  if (!gPanelReady) {
+    Serial.println(F("I2C 패널(R3) 응답 없음 — 릴레이만 동작"));
+  } else {
+    panelPrintLine(0, "CronusFarm");
+    panelPrintLine(1, "부팅중...");
+  }
+
   gMatrix.begin();
   // begin 직후 한 번 그리기(MQTT 대기로 setup이 안 끝나도 이후 WiFi 성공 시 다시 갱신)
-  matRenderStatus(false, false, false, false, false, false);
+  matRenderStatus(false, false);
+
+  gUiCh = 0;
+  gUiPickOn = false;
 
   RTC.begin();
-  RTCTime startTime(16, Month::APRIL, 2026, 17, 30, 0, DayOfWeek::THURSDAY, SaveLight::SAVING_TIME_INACTIVE);
-  RTC.setTime(startTime);
+  // RTC 시각은 코인셀/백업 또는 별도 설정으로 맞춰야 합니다(여기서 임의 setTime 하지 않음).
 
   buildTopics();
   connectWiFi();
@@ -737,6 +1031,9 @@ void loop() {
   }
 
   pollMqtt();
+
+  uint32_t now = millis();
+  panelPollEvents(now);
 
   // 채널별 AUTO/수동 처리
   // - AUTO=1: 해당 채널이 펌프류면 on/off 주기로 토글, LED류면 수동(기본 OFF) 유지
@@ -766,17 +1063,33 @@ void loop() {
     }
   }
 
-  uint32_t now = millis();
   if (now - lastTelemetryMs >= TELEMETRY_INTERVAL_MS) {
     lastTelemetryMs = now;
     publishTelemetry();
   }
 
-  bool outB1 = digitalRead(PUMP_B1) == HIGH;
-  bool outB2 = digitalRead(PUMP_B2) == HIGH;
-  bool outLed = digitalRead(LED_B1) == HIGH;
   bool wifiOk = (WiFi.status() == WL_CONNECTED);
   bool mqttOk = mqtt.connected();
-  matrixTick(now, wifiOk, mqttOk, outB1, outB2, outLed);
+  matrixTick(now, wifiOk, mqttOk);
+
+  // LCD: 시스템 정상(WiFi+MQTT) 시 환영문구 → 10초 후 채널 상태 순환 표시
+  lcdWelcomeIfOk(now, wifiOk, mqttOk);
+  if (gLcdWelcomed && gUiMode == UI_BROWSE && (now - gLcdWelcomeAtMs) < 10000) {
+    if (now - gLastLcdRtcMs >= 1000) {
+      gLastLcdRtcMs = now;
+      lcdRefreshRtcDateTime();
+    }
+  }
+  // UI가 EDIT 중이면 UI 화면 우선
+  if (gUiMode == UI_EDIT) {
+    lcdRenderUi(now, wifiOk, mqttOk);
+  } else {
+    if (gLcdWelcomed && (now - gLcdWelcomeAtMs) >= 10000) {
+      lcdRotateStatus(now);
+    } else if (!gLcdWelcomed) {
+      lcdRenderUi(now, wifiOk, mqttOk);
+    }
+    // gLcdWelcomed && 첫 10초: 환영+RTC 유지 / gLcdWelcomed && 10초 후: 순환만
+  }
 }
 

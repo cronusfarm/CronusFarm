@@ -67,6 +67,13 @@ fi
 echo "업로드 포트: $PORT"
 
 arduino-cli compile -j 4 --fqbn "$FQBN" "$SKETCH_DIR"
+
+if [[ -e "$PORT" ]] && command -v fuser >/dev/null 2>&1; then
+  echo "시리얼 점유 해제 시도: $PORT"
+  sudo -n fuser -k "$PORT" 2>/dev/null || fuser -k "$PORT" 2>/dev/null || true
+  sleep 1
+fi
+
 arduino-cli upload -p "$PORT" --fqbn "$FQBN" "$SKETCH_DIR"
 echo "완료: compile + upload"
 BUILD_CREATE

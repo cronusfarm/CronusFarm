@@ -40,6 +40,19 @@
         "-ApplyNodeRed"
       ],
       "problemMatcher": []
+    },
+    {
+      "label": "Git: push + 원격 백업 태그(git-push-with-backup)",
+      "type": "shell",
+      "command": "powershell",
+      "args": [
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "${workspaceFolder}\\\\scripts\\\\git-push-with-backup.ps1"
+      ],
+      "problemMatcher": []
     }
   ]
 }

@@ -22,7 +22,7 @@
   {
     "id": "ui_grp_manual",
     "type": "ui_group",
-    "name": "수동 제어",
+    "name": "시간 설정",
     "tab": "ui_tab_settings",
     "order": 3,
     "disp": true,
@@ -53,19 +53,54 @@
     "y": 80,
     "wires": [
       [
-        "exec_uptime"
-      ],
+        "exec_uptime",
+        "exec_ssid",
+        "exec_ip",
+        "exec_ts_ip",
+        "exec_srv_nodered",
+        "exec_srv_mosquitto",
+        "fn_pi_tick",
+        "fn_pi_host"
+      ]
+    ]
+  },
+  {
+    "id": "fn_pi_host",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "Pi 도메인",
+    "func": "msg.payload = 'ida.mango-larch.ts.net';\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 370,
+    "y": 280,
+    "wires": [
       [
-        "exec_ssid"
-      ],
+        "ui_txt_pi_host"
+      ]
+    ]
+  },
+  {
+    "id": "fn_pi_tick",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "Pi tick 시간",
+    "func": "const d = new Date();\nmsg.payload = d.toLocaleString('ko-KR', { hour12: false });\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 380,
+    "y": 240,
+    "wires": [
       [
-        "exec_ip"
-      ],
-      [
-        "exec_srv_nodered"
-      ],
-      [
-        "exec_srv_mosquitto"
+        "ui_txt_pi_tick"
       ]
     ]
   },
@@ -95,7 +130,7 @@
     "id": "exec_ssid",
     "type": "exec",
     "z": "tab_cronus_dash",
-    "command": "/usr/sbin/iwgetid -r",
+    "command": "/bin/sh -c '/sbin/iwgetid -r 2>/dev/null || /usr/sbin/iwgetid -r 2>/dev/null || /usr/bin/nmcli -t -f ACTIVE,SSID dev wifi 2>/dev/null | grep \"^yes:\" | head -1 | cut -d: -f2- || (for w in wlan0 wlan1 wlp2s0; do s=$(iwgetid -r -i \"$w\" 2>/dev/null); [ -n \"$s\" ] && echo \"$s\" && exit 0; done) || /usr/bin/nmcli -g GENERAL.CONNECTION dev show wlan0 2>/dev/null | head -1 || echo -'",
     "addpay": false,
     "append": "",
     "useSpawn": "false",
@@ -117,7 +152,7 @@
     "id": "exec_ip",
     "type": "exec",
     "z": "tab_cronus_dash",
-    "command": "/usr/bin/hostname -I",
+    "command": "/bin/sh -c 'for w in wlan0 wlan1 wlp2s0; do a=$(ip -4 -o addr show $w 2>/dev/null | awk \"{print \\$4}\" | cut -d/ -f1 | head -1); [ -n \"$a\" ] && echo \"$a\" && exit 0; done; /usr/bin/nmcli -g IP4.ADDRESS dev show wlan0 2>/dev/null | head -1 | cut -d/ -f1 | grep -E \"^[0-9]\" || /usr/bin/nmcli -g IP4.ADDRESS dev show wlan1 2>/dev/null | head -1 | cut -d/ -f1 | grep -E \"^[0-9]\" || hostname -I 2>/dev/null | awk \"{print \\$1}\" || echo -'",
     "addpay": false,
     "append": "",
     "useSpawn": "false",
@@ -136,10 +171,32 @@
     ]
   },
   {
+    "id": "exec_ts_ip",
+    "type": "exec",
+    "z": "tab_cronus_dash",
+    "command": "/bin/sh -c 'ip -4 -o addr show tailscale0 2>/dev/null | awk \"{print \\$4}\" | cut -d/ -f1 | head -1 || echo -'",
+    "addpay": false,
+    "append": "",
+    "useSpawn": "false",
+    "timer": "",
+    "winHide": true,
+    "oldrc": false,
+    "name": "Tailscale IP",
+    "x": 380,
+    "y": 140,
+    "wires": [
+      [
+        "fn_trim_ts_ip"
+      ],
+      [],
+      []
+    ]
+  },
+  {
     "id": "exec_srv_nodered",
     "type": "exec",
     "z": "tab_cronus_dash",
-    "command": "/bin/systemctl is-active nodered",
+    "command": "/bin/sh -c 'systemctl is-active nodered 2>/dev/null || systemctl is-active node-red 2>/dev/null || echo inactive'",
     "addpay": false,
     "append": "",
     "useSpawn": "false",
@@ -204,7 +261,7 @@
     "width": 0,
     "height": 0,
     "name": "SSID",
-    "label": "WiFi SSID",
+    "label": "Pi WiFi SSID",
     "format": "{{msg.payload}}",
     "layout": "row-spread",
     "x": 810,
@@ -220,7 +277,7 @@
     "width": 0,
     "height": 0,
     "name": "IP",
-    "label": "IP",
+    "label": "Pi IP",
     "format": "{{msg.payload}}",
     "layout": "row-spread",
     "x": 800,
@@ -228,35 +285,87 @@
     "wires": []
   },
   {
-    "id": "ui_txt_nodered",
+    "id": "ui_txt_ts_ip",
     "type": "ui_text",
     "z": "tab_cronus_dash",
     "group": "ui_grp_pi",
     "order": 4,
     "width": 0,
     "height": 0,
-    "name": "Node-RED",
-    "label": "Node-RED",
+    "name": "Tailscale IP",
+    "label": "Pi Tailscale IP",
     "format": "{{msg.payload}}",
     "layout": "row-spread",
     "x": 820,
-    "y": 160,
+    "y": 140,
     "wires": []
   },
   {
-    "id": "ui_txt_mosq",
+    "id": "ui_txt_pi_host",
     "type": "ui_text",
     "z": "tab_cronus_dash",
     "group": "ui_grp_pi",
     "order": 5,
     "width": 0,
     "height": 0,
-    "name": "Mosquitto",
-    "label": "Mosquitto",
+    "name": "Pi Host",
+    "label": "Pi 도메인",
     "format": "{{msg.payload}}",
     "layout": "row-spread",
     "x": 820,
     "y": 200,
+    "wires": []
+  },
+  {
+    "id": "ui_txt_pi_tick",
+    "type": "ui_text",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_pi",
+    "order": 7,
+    "width": 0,
+    "height": 0,
+    "name": "tick",
+    "label": "Pi tick",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 800,
+    "y": 240,
+    "wires": []
+  },
+  {
+    "id": "ui_tpl_pi_nodered",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_pi",
+    "name": "Pi Node-RED 상태",
+    "order": 4,
+    "width": "12",
+    "height": "1",
+    "format": "<div class=\"cf-row cf-row-pi-srv\"><div class=\"cf-label\">Node-RED</div><div style=\"display:flex;align-items:center;gap:10px;flex-shrink:0;\"><div class=\"cf-dot\" ng-class=\"msg._ok ? 'cf-dot-on' : 'cf-dot-off'\"></div><div style=\"font-size:12px;color:var(--cf-text);white-space:nowrap;\">{{msg._ok ? 'online' : 'offline'}}</div></div></div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "ui_tpl_pi_mosq",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_pi",
+    "name": "Pi Mosquitto 상태",
+    "order": 5,
+    "width": "12",
+    "height": "1",
+    "format": "<div class=\"cf-row cf-row-pi-srv\"><div class=\"cf-label\">Mosquitto</div><div style=\"display:flex;align-items:center;gap:10px;flex-shrink:0;\"><div class=\"cf-dot\" ng-class=\"msg._ok ? 'cf-dot-on' : 'cf-dot-off'\"></div><div style=\"font-size:12px;color:var(--cf-text);white-space:nowrap;\">{{msg._ok ? 'online' : 'offline'}}</div></div></div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
     "wires": []
   },
   {
@@ -301,16 +410,72 @@
       [
         "fn_seen_tele",
         "fn_parse_tele_v2",
-        "ui_txt_tele_raw"
+        "ui_txt_tele_raw",
+        "fn_cf_arduino_wifi_tele"
       ]
     ]
+  },
+  {
+    "id": "fn_cf_arduino_wifi_tele",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "tele→Arduino SSID/IP",
+    "func": "const s = (msg.payload || '').toString();\nconst parts = s.split('|').map(x => x.trim());\nconst w = parts.find(x => x.startsWith('W:'));\nlet ssid = '-';\nlet ip = '-';\nif (w) {\n  const rest = w.slice(2).trim();\n  const k = rest.lastIndexOf(' ip=');\n  if (k >= 0 && rest.startsWith('ssid=')) {\n    ssid = rest.slice(5, k).trim();\n    ip = rest.slice(k + 4).trim();\n    if (!ssid) ssid = '-';\n    if (!ip) ip = '-';\n    if (ip === '0.0.0.0') ip = '-';\n  }\n}\nreturn [[{ payload: ssid }], [{ payload: ip }]];",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 400,
+    "y": 480,
+    "wires": [
+      [
+        "ui_txt_arduino_wifi_ssid"
+      ],
+      [
+        "ui_txt_arduino_wifi_ip"
+      ]
+    ]
+  },
+  {
+    "id": "ui_txt_arduino_wifi_ssid",
+    "type": "ui_text",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_arduino",
+    "order": 2,
+    "width": 0,
+    "height": 0,
+    "name": "Arduino WiFi SSID",
+    "label": "Arduino WiFi SSID",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 920,
+    "y": 400,
+    "wires": []
+  },
+  {
+    "id": "ui_txt_arduino_wifi_ip",
+    "type": "ui_text",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_arduino",
+    "order": 3,
+    "width": 0,
+    "height": 0,
+    "name": "Arduino IP",
+    "label": "Arduino IP",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 920,
+    "y": 440,
+    "wires": []
   },
   {
     "id": "ui_txt_status_raw",
     "type": "ui_template",
     "z": "tab_cronus_dash",
     "group": "ui_grp_arduino",
-    "order": 1,
+    "order": 5,
     "width": 0,
     "height": 0,
     "name": "status raw",
@@ -329,7 +494,7 @@
     "type": "ui_template",
     "z": "tab_cronus_dash",
     "group": "ui_grp_arduino",
-    "order": 2,
+    "order": 6,
     "width": 0,
     "height": 0,
     "name": "tele raw",
@@ -367,22 +532,6 @@
     ]
   },
   {
-    "id": "ui_txt_arduino_state",
-    "type": "ui_text",
-    "z": "tab_cronus_dash",
-    "group": "ui_grp_arduino",
-    "order": 3,
-    "width": 0,
-    "height": 0,
-    "name": "arduino state",
-    "label": "Arduino 연결",
-    "format": "{{msg.payload}} (tele {{msg.teleAge}}s / status {{msg.statusAge}}s)",
-    "layout": "row-spread",
-    "x": 740,
-    "y": 520,
-    "wires": []
-  },
-  {
     "id": "mqtt_out_cmd",
     "type": "mqtt out",
     "z": "tab_cronus_dash",
@@ -405,7 +554,7 @@
     "type": "ui_template",
     "z": "tab_cronus_dash",
     "group": "ui_grp_arduino",
-    "order": 5,
+    "order": 7,
     "width": 0,
     "height": 0,
     "name": "cmd preview",
@@ -424,13 +573,13 @@
     "type": "tab",
     "label": "CronusFarm Dashboard v2",
     "disabled": false,
-    "info": "CronusFarm Dashboard (A/B Bed)\n\n- 모니터 탭: A/B Bed 출력 상태 표시 + 수동 제어\n- 설정 탭: 채널별 AUTO + 펌프별 ON/OFF(초) 설정\n\nMQTT\n- status: cronusfarm/<DEVICE_ID>/status\n- tele  : cronusfarm/<DEVICE_ID>/tele\n- cmd   : cronusfarm/<DEVICE_ID>/cmd\n\nDEVICE_ID 기본: cronusfarm-01\n브로커 기본: ida.mango-larch.ts.net:1883\n"
+    "info": "CronusFarm Dashboard (A/B Bed)\n\n- 모니터 탭: A/B Bed 상태\n- 설정 탭: 자동/수동(채널별) + 시간 설정(펌프 ON/OFF 분·초)\n\nMQTT\n- status: cronusfarm/<DEVICE_ID>/status\n- tele  : cronusfarm/<DEVICE_ID>/tele\n- cmd   : cronusfarm/<DEVICE_ID>/cmd\n\nDEVICE_ID 기본: cronusfarm-01\nNode-RED(피에서 실행) → 브로커: 127.0.0.1:1883 / 아두이노는 secrets.h 의 MQTT_HOST(예: ida… 또는 Pi LAN IP)\n"
   },
   {
     "id": "mqtt_broker_pi",
     "type": "mqtt-broker",
-    "name": "Mosquitto (Pi Tailscale)",
-    "broker": "ida.mango-larch.ts.net",
+    "name": "Mosquitto (Pi localhost)",
+    "broker": "127.0.0.1",
     "port": "1883",
     "clientid": "nodered-cronusfarm-v2",
     "autoConnect": true,
@@ -483,7 +632,7 @@
   {
     "id": "ui_grp_arduino",
     "type": "ui_group",
-    "name": "Arduino(MQTT)",
+    "name": "Arduino",
     "tab": "ui_tab_monitor",
     "order": 2,
     "disp": true,
@@ -493,7 +642,7 @@
   {
     "id": "ui_grp_cfg_auto",
     "type": "ui_group",
-    "name": "AUTO(채널별)",
+    "name": "자동 / 수동 제어 (채널별)",
     "tab": "ui_tab_settings",
     "order": 1,
     "disp": true,
@@ -501,14 +650,220 @@
     "collapse": false
   },
   {
-    "id": "ui_grp_cfg_timer",
-    "type": "ui_group",
-    "name": "펌프 주기(채널별)",
-    "tab": "ui_tab_settings",
-    "order": 2,
-    "disp": true,
+    "id": "cf_tpl_row_led_a1",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_cfg_auto",
+    "order": 1,
+    "width": "4",
+    "height": "1",
+    "name": "행표시 LED A1",
+    "format": "<div style=\"padding:10px 4px;font-size:13px;font-weight:600;color:var(--cf-text,#e6edf7);\">LED A1 (D2)</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "cf_tpl_row_led_a2",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_cfg_auto",
+    "order": 3,
+    "width": "4",
+    "height": "1",
+    "name": "행표시 LED A2",
+    "format": "<div style=\"padding:10px 4px;font-size:13px;font-weight:600;color:var(--cf-text,#e6edf7);\">LED A2 (D3)</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "cf_tpl_row_pa1",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_cfg_auto",
+    "order": 5,
+    "width": "4",
+    "height": "1",
+    "name": "행표시 PUMP A1",
+    "format": "<div style=\"padding:10px 4px;font-size:13px;font-weight:600;color:var(--cf-text,#e6edf7);\">PUMP A1 (D4)</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "cf_tpl_row_pa2",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_cfg_auto",
+    "order": 7,
+    "width": "4",
+    "height": "1",
+    "name": "행표시 PUMP A2",
+    "format": "<div style=\"padding:10px 4px;font-size:13px;font-weight:600;color:var(--cf-text,#e6edf7);\">PUMP A2 (D5)</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "cf_tpl_row_lb1",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_cfg_auto",
+    "order": 9,
+    "width": "4",
+    "height": "1",
+    "name": "행표시 LED B1",
+    "format": "<div style=\"padding:10px 4px;font-size:13px;font-weight:600;color:var(--cf-text,#e6edf7);\">LED B1 (D6)</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "cf_tpl_row_pb1",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_cfg_auto",
+    "order": 11,
+    "width": "4",
+    "height": "1",
+    "name": "행표시 PUMP B1",
+    "format": "<div style=\"padding:10px 4px;font-size:13px;font-weight:600;color:var(--cf-text,#e6edf7);\">PUMP B1 (D7)</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "cf_tpl_row_pb2",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_cfg_auto",
+    "order": 13,
+    "width": "4",
+    "height": "1",
+    "name": "행표시 PUMP B2",
+    "format": "<div style=\"padding:10px 4px;font-size:13px;font-weight:600;color:var(--cf-text,#e6edf7);\">PUMP B2 (D8)</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "cf_tpl_time_hdr",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_manual",
+    "order": 0,
     "width": "12",
-    "collapse": false
+    "height": "1",
+    "name": "시간 헤더",
+    "format": "<div style=\"padding:8px 4px 2px;\">\n  <div style=\"display:grid;grid-template-columns:4fr 4fr 4fr;gap:6px;align-items:end;\">\n    <div style=\"font-weight:800;color:var(--cf-text,#e6edf7);font-size:13px;\">펌프</div>\n    <div style=\"text-align:center;\">\n      <div style=\"font-weight:900;color:var(--cf-text,#e6edf7);font-size:13px;\">켜지는 시간</div>\n    </div>\n    <div style=\"text-align:center;\">\n      <div style=\"font-weight:900;color:var(--cf-text,#e6edf7);font-size:13px;\">꺼지는 시간</div>\n    </div>\n  </div>\n  <div style=\"display:grid;grid-template-columns:4fr 4fr 4fr;gap:6px;margin-top:4px;\">\n    <div style=\"font-weight:700;color:var(--cf-muted,#9db0cc);font-size:12px;\">ON/OFF 시간</div>\n    <div style=\"display:flex;justify-content:center;gap:18px;color:var(--cf-muted,#9db0cc);font-size:11px;\">\n      <span>분</span><span>초</span>\n    </div>\n    <div style=\"display:flex;justify-content:center;gap:18px;color:var(--cf-muted,#9db0cc);font-size:11px;\">\n      <span>분</span><span>초</span>\n    </div>\n  </div>\n</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "cf_tpl_time_pa1",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_manual",
+    "order": 1,
+    "width": "4",
+    "height": "1",
+    "name": "시간행 PUMP A1",
+    "format": "<div style=\"padding:10px 4px;font-size:13px;font-weight:600;color:var(--cf-text,#e6edf7);\">PUMP A1</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "cf_tpl_time_pa2",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_manual",
+    "order": 6,
+    "width": "4",
+    "height": "1",
+    "name": "시간행 PUMP A2",
+    "format": "<div style=\"padding:10px 4px;font-size:13px;font-weight:600;color:var(--cf-text,#e6edf7);\">PUMP A2</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "cf_tpl_time_pb1",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_manual",
+    "order": 11,
+    "width": "4",
+    "height": "1",
+    "name": "시간행 PUMP B1",
+    "format": "<div style=\"padding:10px 4px;font-size:13px;font-weight:600;color:var(--cf-text,#e6edf7);\">PUMP B1</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "cf_tpl_time_pb2",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_manual",
+    "order": 16,
+    "width": "4",
+    "height": "1",
+    "name": "시간행 PUMP B2",
+    "format": "<div style=\"padding:10px 4px;font-size:13px;font-weight:600;color:var(--cf-text,#e6edf7);\">PUMP B2</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
   },
   {
     "id": "fn_trim_uptime",
@@ -556,18 +911,32 @@
     ]
   },
   {
+    "id": "fn_trim_ts_ip",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "tailscale ip 정리",
+    "func": "msg.payload = (msg.payload||'').toString().trim() || '-';\nreturn msg;",
+    "outputs": 1,
+    "x": 610,
+    "y": 140,
+    "wires": [
+      [
+        "ui_txt_ts_ip"
+      ]
+    ]
+  },
+  {
     "id": "fn_trim_nodered",
     "type": "function",
     "z": "tab_cronus_dash",
     "name": "nodered 정리",
-    "func": "const s=(msg.payload||'').toString().trim();\nmsg.payload = (s==='active')?'정상':('비정상');\nmsg._ok = (s==='active');\nreturn msg;",
+    "func": "const s=(msg.payload||'').toString().trim();\nmsg._ok = (s==='active');\nmsg.payload = msg._ok ? 'online' : 'offline';\nreturn msg;",
     "outputs": 1,
     "x": 610,
     "y": 160,
     "wires": [
       [
-        "ui_txt_nodered",
-        "ui_led_nodered"
+        "ui_tpl_pi_nodered"
       ]
     ]
   },
@@ -576,52 +945,15 @@
     "type": "function",
     "z": "tab_cronus_dash",
     "name": "mosquitto 정리",
-    "func": "const s=(msg.payload||'').toString().trim();\nmsg.payload = (s==='active')?'정상':('비정상');\nmsg._ok = (s==='active');\nreturn msg;",
+    "func": "const s=(msg.payload||'').toString().trim();\nmsg._ok = (s==='active');\nmsg.payload = msg._ok ? 'online' : 'offline';\nreturn msg;",
     "outputs": 1,
     "x": 630,
     "y": 200,
     "wires": [
       [
-        "ui_txt_mosq",
-        "ui_led_mosq"
+        "ui_tpl_pi_mosq"
       ]
     ]
-  },
-  {
-    "id": "ui_led_nodered",
-    "type": "ui_template",
-    "z": "tab_cronus_dash",
-    "group": "ui_grp_pi",
-    "name": "Node-RED LED",
-    "order": 6,
-    "width": "3",
-    "height": "1",
-    "format": "<div style=\"display:flex;align-items:center;gap:8px;\">\n  <div style=\"width:12px;height:12px;border-radius:50%;background:{{msg._ok ? '#28a745' : '#dc3545'}};\"></div>\n  <div style=\"font-size:12px;\">{{msg._ok ? '정상' : '비정상'}}</div>\n</div>",
-    "storeOutMessages": false,
-    "fwdInMessages": false,
-    "resendOnRefresh": true,
-    "templateScope": "local",
-    "x": 820,
-    "y": 240,
-    "wires": []
-  },
-  {
-    "id": "ui_led_mosq",
-    "type": "ui_template",
-    "z": "tab_cronus_dash",
-    "group": "ui_grp_pi",
-    "name": "Mosquitto LED",
-    "order": 7,
-    "width": "3",
-    "height": "1",
-    "format": "<div style=\"display:flex;align-items:center;gap:8px;\">\n  <div style=\"width:12px;height:12px;border-radius:50%;background:{{msg._ok ? '#28a745' : '#dc3545'}};\"></div>\n  <div style=\"font-size:12px;\">{{msg._ok ? '정상' : '비정상'}}</div>\n</div>",
-    "storeOutMessages": false,
-    "fwdInMessages": false,
-    "resendOnRefresh": true,
-    "templateScope": "local",
-    "x": 820,
-    "y": 280,
-    "wires": []
   },
   {
     "id": "fn_seen_status",
@@ -639,7 +971,7 @@
     "type": "function",
     "z": "tab_cronus_dash",
     "name": "tele 수신시각",
-    "func": "flow.set('arduinoLastTeleMs', Date.now());\nreturn msg;",
+    "func": "flow.set('arduinoLastTeleMs', Date.now());\nflow.set('lastTeleStr', (msg.payload || '').toString());\nreturn msg;",
     "outputs": 1,
     "x": 410,
     "y": 420,
@@ -650,14 +982,12 @@
     "type": "function",
     "z": "tab_cronus_dash",
     "name": "online 계산",
-    "func": "const now=Date.now();\nconst ls=flow.get('arduinoLastStatusMs')||0;\nconst lt=flow.get('arduinoLastTeleMs')||0;\nconst ok=((now-ls)<30000)||((now-lt)<5000);\nmsg._ok=ok;\nmsg.payload=ok?'정상':'미수신';\nmsg.statusAge=ls?Math.floor((now-ls)/1000):null;\nmsg.teleAge=lt?Math.floor((now-lt)/1000):null;\nreturn msg;",
+    "func": "const now=Date.now();\nconst ls=flow.get('arduinoLastStatusMs')||0;\nconst lt=flow.get('arduinoLastTeleMs')||0;\nconst ok=((now-ls)<30000)||((now-lt)<5000);\nmsg._ok=ok;\nmsg.payload=ok?'정상':'미수신';\nmsg.statusAge=ls?Math.floor((now-ls)/1000):null;\nmsg.teleAge=lt?Math.floor((now-lt)/1000):null;\nconst raw=(flow.get('lastTeleStr')||'').toString();\nmsg.telePreview = raw.length>200 ? raw.slice(0,200)+'…' : raw;\nreturn msg;",
     "outputs": 1,
     "x": 420,
     "y": 520,
     "wires": [
       [
-        "ui_txt_arduino_state",
-        "ui_led_arduino",
         "ui_tpl_conn_line"
       ]
     ]
@@ -667,11 +997,11 @@
     "type": "ui_template",
     "z": "tab_cronus_dash",
     "group": "ui_grp_arduino",
-    "name": "status online 표시",
-    "order": 3,
+    "name": "Arduino MQTT 상태",
+    "order": 4,
     "width": "12",
     "height": "1",
-    "format": "<div class=\"cf-row\"><div class=\"cf-label\">status</div><div style=\"display:flex;align-items:center;gap:10px;\"><div class=\"cf-dot\" ng-class=\"(msg.payload||'').toString().trim()==='online' ? 'cf-dot-on' : 'cf-dot-off'\"></div><div style=\"font-size:12px;color:var(--cf-text);\">{{(msg.payload||'').toString().trim()}}</div></div></div>",
+    "format": "<div class=\"cf-row cf-row-pi-srv\"><div class=\"cf-label\">Arduino MQTT</div><div style=\"display:flex;align-items:center;gap:10px;flex-shrink:0;\"><div class=\"cf-dot\" ng-class=\"(msg.payload||'').toString().trim()==='online' ? 'cf-dot-on' : 'cf-dot-off'\"></div><div style=\"font-size:12px;color:var(--cf-text);white-space:nowrap;\">{{(msg.payload||'').toString().trim()==='online' ? 'online' : 'offline'}}</div></div></div>",
     "storeOutMessages": false,
     "fwdInMessages": true,
     "resendOnRefresh": true,
@@ -686,10 +1016,10 @@
     "z": "tab_cronus_dash",
     "group": "ui_grp_arduino",
     "name": "연결 상태 표시",
-    "order": 4,
+    "order": 1,
     "width": "12",
     "height": "1",
-    "format": "<div class=\"cf-row\"><div class=\"cf-label\">Arduino 연결</div><div style=\"display:flex;align-items:center;gap:10px;\"><div class=\"cf-dot\" ng-class=\"msg._ok ? 'cf-dot-on' : 'cf-dot-off'\"></div><div style=\"font-size:12px;color:var(--cf-text);\">{{msg._ok ? 'online' : 'offline'}} (tele {{msg.teleAge}}s / status {{msg.statusAge}}s)</div></div></div>",
+    "format": "<div class=\"cf-row cf-arduino-conn\"><div class=\"cf-label\">Arduino 연결</div><div style=\"display:flex;align-items:center;gap:10px;flex-shrink:0;\"><div class=\"cf-dot\" ng-class=\"msg._ok ? 'cf-dot-on' : 'cf-dot-off'\"></div><div style=\"font-size:12px;color:var(--cf-text);white-space:nowrap;\">{{msg._ok ? 'online' : 'offline'}} <span class=\"cf-muted\">(tele {{msg.teleAge}}s / status {{msg.statusAge}}s)</span></div></div></div><div class=\"cf-tele-preview\"><div class=\"cf-raw-title\">tele(요약)</div><pre>{{msg.telePreview}}</pre></div>",
     "storeOutMessages": false,
     "fwdInMessages": true,
     "resendOnRefresh": true,
@@ -699,29 +1029,11 @@
     "wires": []
   },
   {
-    "id": "ui_led_arduino",
-    "type": "ui_template",
-    "z": "tab_cronus_dash",
-    "group": "ui_grp_arduino",
-    "name": "Arduino LED",
-    "order": 4,
-    "width": "3",
-    "height": "1",
-    "format": "<div style=\"display:flex;align-items:center;gap:8px;\">\n  <div style=\"width:12px;height:12px;border-radius:50%;background:{{msg._ok ? '#28a745' : '#dc3545'}};\"></div>\n  <div style=\"font-size:12px;\">{{msg._ok ? 'online' : 'offline'}}</div>\n</div>",
-    "storeOutMessages": false,
-    "fwdInMessages": false,
-    "resendOnRefresh": true,
-    "templateScope": "local",
-    "x": 730,
-    "y": 560,
-    "wires": []
-  },
-  {
     "id": "fn_parse_tele_v2",
     "type": "function",
     "z": "tab_cronus_dash",
     "name": "tele 파싱(v2)",
-    "func": "// tele 예)\n// S:led_a1=0 ... pump_b2=1 | A:led_a1=0 ... | T:pump_a1=30/90 ...\n//\n// 중요: 수신 tele로 UI를 갱신할 때, ui_switch(passthru=true)이면 다시 cmd가 발행되어 되돌림 루프가 생길 수 있습니다.\n// 이 플로우는 passthru=false로 바꾸고, 여기서 flow context를 최신 상태로 유지합니다.\n\nconst s=(msg.payload||'').toString();\nfunction parseKV(part){\n  const out={};\n  (part||'').trim().split(/\\s+/).forEach(tok=>{\n    const m=tok.match(/^([^=]+)=(.+)$/);\n    if(!m) return;\n    out[m[1]] = m[2];\n  });\n  return out;\n}\n\nconst ps = s.split('|').map(x=>x.trim());\nconst pS = ps.find(x=>x.startsWith('S:'));\nconst pA = ps.find(x=>x.startsWith('A:'));\nconst pT = ps.find(x=>x.startsWith('T:'));\n\nconst kvS = parseKV(pS ? pS.slice(2) : '');\nconst kvA = parseKV(pA ? pA.slice(2) : '');\nconst kvT = parseKV(pT ? pT.slice(2) : '');\n\nconst chKeys = ['led_a1','led_a2','pump_a1','pump_a2','led_b1','pump_b1','pump_b2'];\n\nconst out=[];\nchKeys.forEach(k=>{\n  if(k in kvS) {\n    const v = (kvS[k]==='1')?1:0;\n    flow.set(k, v);\n    out.push({topic:k, payload: v});\n  }\n});\nchKeys.forEach(k=>{\n  const ak = 'auto_'+k;\n  if(k in kvA) {\n    const v = (kvA[k]==='1')?1:0;\n    flow.set(ak, v);\n    out.push({topic:ak, payload: v});\n  }\n});\n\nObject.keys(kvT).forEach(k=>{\n  // pump_x=30/90\n  const m = (kvT[k]||'').match(/^(\\d+)\\/(\\d+)$/);\n  if(!m) return;\n  const onV = parseInt(m[1],10);\n  const offV = parseInt(m[2],10);\n  const onK = 'on_'+k;\n  const offK = 'off_'+k;\n  flow.set(onK, onV);\n  flow.set(offK, offV);\n  out.push({topic:onK, payload: onV});\n  out.push({topic:offK, payload: offV});\n});\n\nreturn [out];",
+    "func": "// tele 예)\n// S:led_a1=0 ... pump_b2=1 | A:led_a1=0 ... | T:pump_a1=30/90 ...\n//\n// 중요: tele이 1초마다 오기 때문에, UI 드롭다운(dd_*)을 매번 덮어쓰면 \"시간이 계속 바뀌는\" 것처럼 보일 수 있습니다.\n// 여기서는 on_/off_ 초 값만 반영하고(dd_ 분/초 UI 갱신은 하지 않음), 드롭다운은 사용자가 바꾼 값이 유지되도록 합니다.\n\nconst s=(msg.payload||'').toString();\nfunction parseKV(part){\n  const out={};\n  (part||'').trim().split(/\\s+/).forEach(tok=>{\n    const m=tok.match(/^([^=]+)=(.+)$/);\n    if(!m) return;\n    out[m[1]] = m[2];\n  });\n  return out;\n}\n\nconst ps = s.split('|').map(x=>x.trim());\nconst pS = ps.find(x=>x.startsWith('S:'));\nconst pA = ps.find(x=>x.startsWith('A:'));\nconst pT = ps.find(x=>x.startsWith('T:'));\n\nconst kvS = parseKV(pS ? pS.slice(2) : '');\nconst kvA = parseKV(pA ? pA.slice(2) : '');\nconst kvT = parseKV(pT ? pT.slice(2) : '');\n\nconst chKeys = ['led_a1','led_a2','pump_a1','pump_a2','led_b1','pump_b1','pump_b2'];\n\nconst out=[];\nchKeys.forEach(k=>{\n  if(k in kvS) {\n    const v = (kvS[k]==='1')?1:0;\n    flow.set(k, v);\n    out.push({topic:k, payload: v});\n  }\n});\nchKeys.forEach(k=>{\n  const ak = 'auto_'+k;\n  if(k in kvA) {\n    const v = (kvA[k]==='1')?1:0;\n    flow.set(ak, v);\n    out.push({topic:ak, payload: v});\n  }\n});\n\nObject.keys(kvT).forEach(k=>{\n  // pump_x=30/90\n  const m = (kvT[k]||'').match(/^(\\d+)\\/(\\d+)$/);\n  if(!m) return;\n  const onV = parseInt(m[1],10);\n  const offV = parseInt(m[2],10);\n  const onK = 'on_'+k;\n  const offK = 'off_'+k;\n  flow.set(onK, onV);\n  flow.set(offK, offV);\n  out.push({topic:onK, payload: onV});\n  out.push({topic:offK, payload: offV});\n});\n\nreturn [out];",
     "outputs": 1,
     "x": 430,
     "y": 460,
@@ -761,13 +1073,6 @@
         "ui_tpl_state_led_b1",
         "ui_tpl_state_pump_b1",
         "ui_tpl_state_pump_b2",
-        "sw_led_a1",
-        "sw_led_a2",
-        "sw_pump_a1",
-        "sw_pump_a2",
-        "sw_led_b1",
-        "sw_pump_b1",
-        "sw_pump_b2",
         "sw_auto_led_a1",
         "sw_auto_led_a2",
         "sw_auto_pump_a1",
@@ -775,196 +1080,22 @@
         "sw_auto_led_b1",
         "sw_auto_pump_b1",
         "sw_auto_pump_b2",
-        "num_on_pump_a1",
-        "num_off_pump_a1",
-        "num_on_pump_a2",
-        "num_off_pump_a2",
-        "num_on_pump_b1",
-        "num_off_pump_b1",
-        "num_on_pump_b2",
-        "num_off_pump_b2"
-      ]
-    ]
-  },
-  {
-    "id": "sw_led_a1",
-    "type": "ui_switch",
-    "z": "tab_cronus_dash",
-    "name": "LED A1",
-    "label": "LED A1",
-    "group": "ui_grp_manual",
-    "order": 1,
-    "width": "6",
-    "height": 0,
-    "passthru": false,
-    "decouple": "false",
-    "topic": "led_a1",
-    "style": "",
-    "onvalue": "1",
-    "onvalueType": "num",
-    "offvalue": "0",
-    "offvalueType": "num",
-    "x": 220,
-    "y": 660,
-    "wires": [
-      [
-        "fn_cmd_merge_v2"
-      ]
-    ]
-  },
-  {
-    "id": "sw_led_a2",
-    "type": "ui_switch",
-    "z": "tab_cronus_dash",
-    "name": "LED A2",
-    "label": "LED A2",
-    "group": "ui_grp_manual",
-    "order": 2,
-    "width": "6",
-    "height": 0,
-    "passthru": false,
-    "decouple": "false",
-    "topic": "led_a2",
-    "style": "",
-    "onvalue": "1",
-    "onvalueType": "num",
-    "offvalue": "0",
-    "offvalueType": "num",
-    "x": 220,
-    "y": 700,
-    "wires": [
-      [
-        "fn_cmd_merge_v2"
-      ]
-    ]
-  },
-  {
-    "id": "sw_pump_a1",
-    "type": "ui_switch",
-    "z": "tab_cronus_dash",
-    "name": "PUMP A1",
-    "label": "PUMP A1",
-    "group": "ui_grp_manual",
-    "order": 3,
-    "width": "6",
-    "height": 0,
-    "passthru": false,
-    "decouple": "false",
-    "topic": "pump_a1",
-    "style": "",
-    "onvalue": "1",
-    "onvalueType": "num",
-    "offvalue": "0",
-    "offvalueType": "num",
-    "x": 230,
-    "y": 740,
-    "wires": [
-      [
-        "fn_cmd_merge_v2"
-      ]
-    ]
-  },
-  {
-    "id": "sw_pump_a2",
-    "type": "ui_switch",
-    "z": "tab_cronus_dash",
-    "name": "PUMP A2",
-    "label": "PUMP A2",
-    "group": "ui_grp_manual",
-    "order": 4,
-    "width": "6",
-    "height": 0,
-    "passthru": false,
-    "decouple": "false",
-    "topic": "pump_a2",
-    "style": "",
-    "onvalue": "1",
-    "onvalueType": "num",
-    "offvalue": "0",
-    "offvalueType": "num",
-    "x": 230,
-    "y": 780,
-    "wires": [
-      [
-        "fn_cmd_merge_v2"
-      ]
-    ]
-  },
-  {
-    "id": "sw_led_b1",
-    "type": "ui_switch",
-    "z": "tab_cronus_dash",
-    "name": "LED B1",
-    "label": "LED B1",
-    "group": "ui_grp_manual",
-    "order": 1,
-    "width": "6",
-    "height": 0,
-    "passthru": false,
-    "decouple": "false",
-    "topic": "led_b1",
-    "style": "",
-    "onvalue": "1",
-    "onvalueType": "num",
-    "offvalue": "0",
-    "offvalueType": "num",
-    "x": 220,
-    "y": 820,
-    "wires": [
-      [
-        "fn_cmd_merge_v2"
-      ]
-    ]
-  },
-  {
-    "id": "sw_pump_b1",
-    "type": "ui_switch",
-    "z": "tab_cronus_dash",
-    "name": "PUMP B1",
-    "label": "PUMP B1",
-    "group": "ui_grp_manual",
-    "order": 2,
-    "width": "6",
-    "height": 0,
-    "passthru": false,
-    "decouple": "false",
-    "topic": "pump_b1",
-    "style": "",
-    "onvalue": "1",
-    "onvalueType": "num",
-    "offvalue": "0",
-    "offvalueType": "num",
-    "x": 230,
-    "y": 860,
-    "wires": [
-      [
-        "fn_cmd_merge_v2"
-      ]
-    ]
-  },
-  {
-    "id": "sw_pump_b2",
-    "type": "ui_switch",
-    "z": "tab_cronus_dash",
-    "name": "PUMP B2",
-    "label": "PUMP B2",
-    "group": "ui_grp_manual",
-    "order": 3,
-    "width": "6",
-    "height": 0,
-    "passthru": false,
-    "decouple": "false",
-    "topic": "pump_b2",
-    "style": "",
-    "onvalue": "1",
-    "onvalueType": "num",
-    "offvalue": "0",
-    "offvalueType": "num",
-    "x": 230,
-    "y": 900,
-    "wires": [
-      [
-        "fn_cmd_merge_v2"
+        "dd_on_pump_a1_m",
+        "dd_on_pump_a1_s",
+        "dd_off_pump_a1_m",
+        "dd_off_pump_a1_s",
+        "dd_on_pump_a2_m",
+        "dd_on_pump_a2_s",
+        "dd_off_pump_a2_m",
+        "dd_off_pump_a2_s",
+        "dd_on_pump_b1_m",
+        "dd_on_pump_b1_s",
+        "dd_off_pump_b1_m",
+        "dd_off_pump_b1_s",
+        "dd_on_pump_b2_m",
+        "dd_on_pump_b2_s",
+        "dd_off_pump_b2_m",
+        "dd_off_pump_b2_s"
       ]
     ]
   },
@@ -977,7 +1108,7 @@
     "order": 1,
     "width": "6",
     "height": "1",
-    "format": "<div class=\"cf-row\"><div class=\"cf-label\">LED A1</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
+    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">LED A1 (D2)</div><div class=\"cf-dot\" ng-class=\"msg.payload==1 ? 'cf-dot-on' : 'cf-dot-off'\"></div></div>",
     "storeOutMessages": false,
     "fwdInMessages": true,
     "resendOnRefresh": true,
@@ -995,7 +1126,7 @@
     "order": 2,
     "width": "6",
     "height": "1",
-    "format": "<div class=\"cf-row\"><div class=\"cf-label\">LED A2</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
+    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">LED A2 (D3)</div><div class=\"cf-dot\" ng-class=\"msg.payload==1 ? 'cf-dot-on' : 'cf-dot-off'\"></div></div>",
     "storeOutMessages": false,
     "fwdInMessages": true,
     "resendOnRefresh": true,
@@ -1013,7 +1144,7 @@
     "order": 3,
     "width": "6",
     "height": "1",
-    "format": "<div class=\"cf-row\"><div class=\"cf-label\">PUMP A1</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
+    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">PUMP A1 (D4)</div><div class=\"cf-dot\" ng-class=\"msg.payload==1 ? 'cf-dot-on' : 'cf-dot-off'\"></div></div>",
     "storeOutMessages": false,
     "fwdInMessages": true,
     "resendOnRefresh": true,
@@ -1031,7 +1162,7 @@
     "order": 4,
     "width": "6",
     "height": "1",
-    "format": "<div class=\"cf-row\"><div class=\"cf-label\">PUMP A2</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
+    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">PUMP A2 (D5)</div><div class=\"cf-dot\" ng-class=\"msg.payload==1 ? 'cf-dot-on' : 'cf-dot-off'\"></div></div>",
     "storeOutMessages": false,
     "fwdInMessages": true,
     "resendOnRefresh": true,
@@ -1049,7 +1180,7 @@
     "order": 1,
     "width": "6",
     "height": "1",
-    "format": "<div class=\"cf-row\"><div class=\"cf-label\">LED B1</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
+    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">LED B1 (D6)</div><div class=\"cf-dot\" ng-class=\"msg.payload==1 ? 'cf-dot-on' : 'cf-dot-off'\"></div></div>",
     "storeOutMessages": false,
     "fwdInMessages": true,
     "resendOnRefresh": true,
@@ -1067,7 +1198,7 @@
     "order": 2,
     "width": "6",
     "height": "1",
-    "format": "<div class=\"cf-row\"><div class=\"cf-label\">PUMP B1</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
+    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">PUMP B1 (D7)</div><div class=\"cf-dot\" ng-class=\"msg.payload==1 ? 'cf-dot-on' : 'cf-dot-off'\"></div></div>",
     "storeOutMessages": false,
     "fwdInMessages": true,
     "resendOnRefresh": true,
@@ -1085,7 +1216,7 @@
     "order": 3,
     "width": "6",
     "height": "1",
-    "format": "<div class=\"cf-row\"><div class=\"cf-label\">PUMP B2</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
+    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">PUMP B2 (D8)</div><div class=\"cf-dot\" ng-class=\"msg.payload==1 ? 'cf-dot-on' : 'cf-dot-off'\"></div></div>",
     "storeOutMessages": false,
     "fwdInMessages": true,
     "resendOnRefresh": true,
@@ -1095,19 +1226,40 @@
     "wires": []
   },
   {
+    "id": "fn_force_manual_and_set",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "스위치: 수동고정+ON/OFF",
+    "func": "const devId = flow.get('deviceId') || 'cronusfarm-01';\nflow.set('deviceId', devId);\n\nconst k = (msg.topic||'').toString().trim();\nif(!k) return null;\nconst v = (msg.payload===1 || msg.payload===true || msg.payload==='1' || msg.payload==='on') ? 1 : 0;\n\n// 스위치 조작 시: 해당 채널을 수동(auto=0)으로 고정하고, 즉시 ON/OFF 값을 cmd로 발행\n// - 공백 토큰 대신, 아두이노가 확실히 처리하도록 2회 발행(auto -> state)\nconst t = `cronusfarm/${devId}/cmd`;\nconst m1 = {topic:t, payload:`auto_${k}=0`};\nconst m2 = {topic:t, payload:`${k}=${v}`};\nreturn [m1, m2];",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 520,
+    "y": 930,
+    "wires": [
+      [
+        "mqtt_out_cmd",
+        "ui_txt_cmd_preview"
+      ]
+    ]
+  },
+  {
     "id": "sw_auto_led_a1",
     "type": "ui_switch",
     "z": "tab_cronus_dash",
-    "name": "AUTO LED A1",
-    "label": "AUTO LED A1",
+    "name": "LED A1 ON/OFF",
+    "label": "OFF / ON",
     "group": "ui_grp_cfg_auto",
-    "order": 1,
-    "width": "6",
+    "order": 2,
+    "width": "8",
     "height": 0,
     "passthru": false,
     "decouple": "false",
-    "topic": "auto_led_a1",
+    "topic": "led_a1",
     "style": "",
+    "className": "cf-mode",
     "onvalue": "1",
     "onvalueType": "num",
     "offvalue": "0",
@@ -1116,7 +1268,7 @@
     "y": 980,
     "wires": [
       [
-        "fn_cmd_merge_v2"
+        "fn_force_manual_and_set"
       ]
     ]
   },
@@ -1124,16 +1276,17 @@
     "id": "sw_auto_led_a2",
     "type": "ui_switch",
     "z": "tab_cronus_dash",
-    "name": "AUTO LED A2",
-    "label": "AUTO LED A2",
+    "name": "LED A2 ON/OFF",
+    "label": "OFF / ON",
     "group": "ui_grp_cfg_auto",
-    "order": 2,
-    "width": "6",
+    "order": 4,
+    "width": "8",
     "height": 0,
     "passthru": false,
     "decouple": "false",
-    "topic": "auto_led_a2",
+    "topic": "led_a2",
     "style": "",
+    "className": "cf-mode",
     "onvalue": "1",
     "onvalueType": "num",
     "offvalue": "0",
@@ -1142,7 +1295,7 @@
     "y": 1020,
     "wires": [
       [
-        "fn_cmd_merge_v2"
+        "fn_force_manual_and_set"
       ]
     ]
   },
@@ -1150,16 +1303,17 @@
     "id": "sw_auto_pump_a1",
     "type": "ui_switch",
     "z": "tab_cronus_dash",
-    "name": "AUTO PUMP A1",
-    "label": "AUTO PUMP A1",
+    "name": "PUMP A1 ON/OFF",
+    "label": "OFF / ON",
     "group": "ui_grp_cfg_auto",
-    "order": 3,
-    "width": "6",
+    "order": 6,
+    "width": "8",
     "height": 0,
     "passthru": false,
     "decouple": "false",
-    "topic": "auto_pump_a1",
+    "topic": "pump_a1",
     "style": "",
+    "className": "cf-mode",
     "onvalue": "1",
     "onvalueType": "num",
     "offvalue": "0",
@@ -1168,7 +1322,7 @@
     "y": 1060,
     "wires": [
       [
-        "fn_cmd_merge_v2"
+        "fn_force_manual_and_set"
       ]
     ]
   },
@@ -1176,16 +1330,17 @@
     "id": "sw_auto_pump_a2",
     "type": "ui_switch",
     "z": "tab_cronus_dash",
-    "name": "AUTO PUMP A2",
-    "label": "AUTO PUMP A2",
+    "name": "PUMP A2 ON/OFF",
+    "label": "OFF / ON",
     "group": "ui_grp_cfg_auto",
-    "order": 4,
-    "width": "6",
+    "order": 8,
+    "width": "8",
     "height": 0,
     "passthru": false,
     "decouple": "false",
-    "topic": "auto_pump_a2",
+    "topic": "pump_a2",
     "style": "",
+    "className": "cf-mode",
     "onvalue": "1",
     "onvalueType": "num",
     "offvalue": "0",
@@ -1194,7 +1349,7 @@
     "y": 1100,
     "wires": [
       [
-        "fn_cmd_merge_v2"
+        "fn_force_manual_and_set"
       ]
     ]
   },
@@ -1202,16 +1357,17 @@
     "id": "sw_auto_led_b1",
     "type": "ui_switch",
     "z": "tab_cronus_dash",
-    "name": "AUTO LED B1",
-    "label": "AUTO LED B1",
+    "name": "LED B1 ON/OFF",
+    "label": "OFF / ON",
     "group": "ui_grp_cfg_auto",
-    "order": 5,
-    "width": "6",
+    "order": 10,
+    "width": "8",
     "height": 0,
     "passthru": false,
     "decouple": "false",
-    "topic": "auto_led_b1",
+    "topic": "led_b1",
     "style": "",
+    "className": "cf-mode",
     "onvalue": "1",
     "onvalueType": "num",
     "offvalue": "0",
@@ -1220,7 +1376,7 @@
     "y": 1140,
     "wires": [
       [
-        "fn_cmd_merge_v2"
+        "fn_force_manual_and_set"
       ]
     ]
   },
@@ -1228,16 +1384,17 @@
     "id": "sw_auto_pump_b1",
     "type": "ui_switch",
     "z": "tab_cronus_dash",
-    "name": "AUTO PUMP B1",
-    "label": "AUTO PUMP B1",
+    "name": "PUMP B1 ON/OFF",
+    "label": "OFF / ON",
     "group": "ui_grp_cfg_auto",
-    "order": 6,
-    "width": "6",
+    "order": 12,
+    "width": "8",
     "height": 0,
     "passthru": false,
     "decouple": "false",
-    "topic": "auto_pump_b1",
+    "topic": "pump_b1",
     "style": "",
+    "className": "cf-mode",
     "onvalue": "1",
     "onvalueType": "num",
     "offvalue": "0",
@@ -1246,7 +1403,7 @@
     "y": 1180,
     "wires": [
       [
-        "fn_cmd_merge_v2"
+        "fn_force_manual_and_set"
       ]
     ]
   },
@@ -1254,16 +1411,17 @@
     "id": "sw_auto_pump_b2",
     "type": "ui_switch",
     "z": "tab_cronus_dash",
-    "name": "AUTO PUMP B2",
-    "label": "AUTO PUMP B2",
+    "name": "PUMP B2 ON/OFF",
+    "label": "OFF / ON",
     "group": "ui_grp_cfg_auto",
-    "order": 7,
-    "width": "6",
+    "order": 14,
+    "width": "8",
     "height": 0,
     "passthru": false,
     "decouple": "false",
-    "topic": "auto_pump_b2",
+    "topic": "pump_b2",
     "style": "",
+    "className": "cf-mode",
     "onvalue": "1",
     "onvalueType": "num",
     "offvalue": "0",
@@ -1272,212 +1430,4296 @@
     "y": 1220,
     "wires": [
       [
-        "fn_cmd_merge_v2"
+        "fn_force_manual_and_set"
       ]
     ]
   },
   {
-    "id": "num_on_pump_a1",
-    "type": "ui_numeric",
+    "id": "dd_on_pump_a1_m",
+    "type": "ui_dropdown",
     "z": "tab_cronus_dash",
-    "name": "ON pump_a1",
-    "label": "PUMP A1 ON(초)",
+    "name": "ON분 A1",
+    "label": "",
     "tooltip": "",
-    "group": "ui_grp_cfg_timer",
-    "order": 1,
-    "width": "3",
+    "group": "ui_grp_manual",
+    "order": 2,
+    "width": "2",
     "height": 0,
-    "wrap": false,
     "passthru": false,
-    "topic": "on_pump_a1",
-    "format": "{{value}}",
-    "min": 1,
-    "max": 3600,
-    "step": 1,
+    "multiple": false,
+    "options": [
+      {
+        "label": "0분",
+        "value": 0
+      },
+      {
+        "label": "1분",
+        "value": 1
+      },
+      {
+        "label": "2분",
+        "value": 2
+      },
+      {
+        "label": "3분",
+        "value": 3
+      },
+      {
+        "label": "4분",
+        "value": 4
+      },
+      {
+        "label": "5분",
+        "value": 5
+      },
+      {
+        "label": "6분",
+        "value": 6
+      },
+      {
+        "label": "7분",
+        "value": 7
+      },
+      {
+        "label": "8분",
+        "value": 8
+      },
+      {
+        "label": "9분",
+        "value": 9
+      },
+      {
+        "label": "10분",
+        "value": 10
+      },
+      {
+        "label": "11분",
+        "value": 11
+      },
+      {
+        "label": "12분",
+        "value": 12
+      },
+      {
+        "label": "13분",
+        "value": 13
+      },
+      {
+        "label": "14분",
+        "value": 14
+      },
+      {
+        "label": "15분",
+        "value": 15
+      },
+      {
+        "label": "16분",
+        "value": 16
+      },
+      {
+        "label": "17분",
+        "value": 17
+      },
+      {
+        "label": "18분",
+        "value": 18
+      },
+      {
+        "label": "19분",
+        "value": 19
+      },
+      {
+        "label": "20분",
+        "value": 20
+      },
+      {
+        "label": "21분",
+        "value": 21
+      },
+      {
+        "label": "22분",
+        "value": 22
+      },
+      {
+        "label": "23분",
+        "value": 23
+      },
+      {
+        "label": "24분",
+        "value": 24
+      },
+      {
+        "label": "25분",
+        "value": 25
+      },
+      {
+        "label": "26분",
+        "value": 26
+      },
+      {
+        "label": "27분",
+        "value": 27
+      },
+      {
+        "label": "28분",
+        "value": 28
+      },
+      {
+        "label": "29분",
+        "value": 29
+      },
+      {
+        "label": "30분",
+        "value": 30
+      },
+      {
+        "label": "31분",
+        "value": 31
+      },
+      {
+        "label": "32분",
+        "value": 32
+      },
+      {
+        "label": "33분",
+        "value": 33
+      },
+      {
+        "label": "34분",
+        "value": 34
+      },
+      {
+        "label": "35분",
+        "value": 35
+      },
+      {
+        "label": "36분",
+        "value": 36
+      },
+      {
+        "label": "37분",
+        "value": 37
+      },
+      {
+        "label": "38분",
+        "value": 38
+      },
+      {
+        "label": "39분",
+        "value": 39
+      },
+      {
+        "label": "40분",
+        "value": 40
+      },
+      {
+        "label": "41분",
+        "value": 41
+      },
+      {
+        "label": "42분",
+        "value": 42
+      },
+      {
+        "label": "43분",
+        "value": 43
+      },
+      {
+        "label": "44분",
+        "value": 44
+      },
+      {
+        "label": "45분",
+        "value": 45
+      },
+      {
+        "label": "46분",
+        "value": 46
+      },
+      {
+        "label": "47분",
+        "value": 47
+      },
+      {
+        "label": "48분",
+        "value": 48
+      },
+      {
+        "label": "49분",
+        "value": 49
+      },
+      {
+        "label": "50분",
+        "value": 50
+      },
+      {
+        "label": "51분",
+        "value": 51
+      },
+      {
+        "label": "52분",
+        "value": 52
+      },
+      {
+        "label": "53분",
+        "value": 53
+      },
+      {
+        "label": "54분",
+        "value": 54
+      },
+      {
+        "label": "55분",
+        "value": 55
+      },
+      {
+        "label": "56분",
+        "value": 56
+      },
+      {
+        "label": "57분",
+        "value": 57
+      },
+      {
+        "label": "58분",
+        "value": 58
+      },
+      {
+        "label": "59분",
+        "value": 59
+      }
+    ],
+    "payload": 0,
+    "topic": "dd_on_pump_a1_m",
+    "topicType": "str",
+    "className": "",
     "x": 300,
     "y": 1300,
     "wires": [
       [
-        "fn_cmd_merge_v2"
+        "fn_dd_pump_duration"
       ]
     ]
   },
   {
-    "id": "num_off_pump_a1",
-    "type": "ui_numeric",
+    "id": "dd_on_pump_a1_s",
+    "type": "ui_dropdown",
     "z": "tab_cronus_dash",
-    "name": "OFF pump_a1",
-    "label": "PUMP A1 OFF(초)",
+    "name": "ON초 A1",
+    "label": "",
     "tooltip": "",
-    "group": "ui_grp_cfg_timer",
-    "order": 2,
-    "width": "3",
+    "group": "ui_grp_manual",
+    "order": 3,
+    "width": "2",
     "height": 0,
-    "wrap": false,
     "passthru": false,
-    "topic": "off_pump_a1",
-    "format": "{{value}}",
-    "min": 1,
-    "max": 3600,
-    "step": 1,
+    "multiple": false,
+    "options": [
+      {
+        "label": "0초",
+        "value": 0
+      },
+      {
+        "label": "1초",
+        "value": 1
+      },
+      {
+        "label": "2초",
+        "value": 2
+      },
+      {
+        "label": "3초",
+        "value": 3
+      },
+      {
+        "label": "4초",
+        "value": 4
+      },
+      {
+        "label": "5초",
+        "value": 5
+      },
+      {
+        "label": "6초",
+        "value": 6
+      },
+      {
+        "label": "7초",
+        "value": 7
+      },
+      {
+        "label": "8초",
+        "value": 8
+      },
+      {
+        "label": "9초",
+        "value": 9
+      },
+      {
+        "label": "10초",
+        "value": 10
+      },
+      {
+        "label": "11초",
+        "value": 11
+      },
+      {
+        "label": "12초",
+        "value": 12
+      },
+      {
+        "label": "13초",
+        "value": 13
+      },
+      {
+        "label": "14초",
+        "value": 14
+      },
+      {
+        "label": "15초",
+        "value": 15
+      },
+      {
+        "label": "16초",
+        "value": 16
+      },
+      {
+        "label": "17초",
+        "value": 17
+      },
+      {
+        "label": "18초",
+        "value": 18
+      },
+      {
+        "label": "19초",
+        "value": 19
+      },
+      {
+        "label": "20초",
+        "value": 20
+      },
+      {
+        "label": "21초",
+        "value": 21
+      },
+      {
+        "label": "22초",
+        "value": 22
+      },
+      {
+        "label": "23초",
+        "value": 23
+      },
+      {
+        "label": "24초",
+        "value": 24
+      },
+      {
+        "label": "25초",
+        "value": 25
+      },
+      {
+        "label": "26초",
+        "value": 26
+      },
+      {
+        "label": "27초",
+        "value": 27
+      },
+      {
+        "label": "28초",
+        "value": 28
+      },
+      {
+        "label": "29초",
+        "value": 29
+      },
+      {
+        "label": "30초",
+        "value": 30
+      },
+      {
+        "label": "31초",
+        "value": 31
+      },
+      {
+        "label": "32초",
+        "value": 32
+      },
+      {
+        "label": "33초",
+        "value": 33
+      },
+      {
+        "label": "34초",
+        "value": 34
+      },
+      {
+        "label": "35초",
+        "value": 35
+      },
+      {
+        "label": "36초",
+        "value": 36
+      },
+      {
+        "label": "37초",
+        "value": 37
+      },
+      {
+        "label": "38초",
+        "value": 38
+      },
+      {
+        "label": "39초",
+        "value": 39
+      },
+      {
+        "label": "40초",
+        "value": 40
+      },
+      {
+        "label": "41초",
+        "value": 41
+      },
+      {
+        "label": "42초",
+        "value": 42
+      },
+      {
+        "label": "43초",
+        "value": 43
+      },
+      {
+        "label": "44초",
+        "value": 44
+      },
+      {
+        "label": "45초",
+        "value": 45
+      },
+      {
+        "label": "46초",
+        "value": 46
+      },
+      {
+        "label": "47초",
+        "value": 47
+      },
+      {
+        "label": "48초",
+        "value": 48
+      },
+      {
+        "label": "49초",
+        "value": 49
+      },
+      {
+        "label": "50초",
+        "value": 50
+      },
+      {
+        "label": "51초",
+        "value": 51
+      },
+      {
+        "label": "52초",
+        "value": 52
+      },
+      {
+        "label": "53초",
+        "value": 53
+      },
+      {
+        "label": "54초",
+        "value": 54
+      },
+      {
+        "label": "55초",
+        "value": 55
+      },
+      {
+        "label": "56초",
+        "value": 56
+      },
+      {
+        "label": "57초",
+        "value": 57
+      },
+      {
+        "label": "58초",
+        "value": 58
+      },
+      {
+        "label": "59초",
+        "value": 59
+      }
+    ],
+    "payload": 30,
+    "topic": "dd_on_pump_a1_s",
+    "topicType": "str",
+    "className": "",
     "x": 310,
+    "y": 1320,
+    "wires": [
+      [
+        "fn_dd_pump_duration"
+      ]
+    ]
+  },
+  {
+    "id": "dd_off_pump_a1_m",
+    "type": "ui_dropdown",
+    "z": "tab_cronus_dash",
+    "name": "OFF분 A1",
+    "label": "",
+    "tooltip": "",
+    "group": "ui_grp_manual",
+    "order": 4,
+    "width": "2",
+    "height": 0,
+    "passthru": false,
+    "multiple": false,
+    "options": [
+      {
+        "label": "0분",
+        "value": 0
+      },
+      {
+        "label": "1분",
+        "value": 1
+      },
+      {
+        "label": "2분",
+        "value": 2
+      },
+      {
+        "label": "3분",
+        "value": 3
+      },
+      {
+        "label": "4분",
+        "value": 4
+      },
+      {
+        "label": "5분",
+        "value": 5
+      },
+      {
+        "label": "6분",
+        "value": 6
+      },
+      {
+        "label": "7분",
+        "value": 7
+      },
+      {
+        "label": "8분",
+        "value": 8
+      },
+      {
+        "label": "9분",
+        "value": 9
+      },
+      {
+        "label": "10분",
+        "value": 10
+      },
+      {
+        "label": "11분",
+        "value": 11
+      },
+      {
+        "label": "12분",
+        "value": 12
+      },
+      {
+        "label": "13분",
+        "value": 13
+      },
+      {
+        "label": "14분",
+        "value": 14
+      },
+      {
+        "label": "15분",
+        "value": 15
+      },
+      {
+        "label": "16분",
+        "value": 16
+      },
+      {
+        "label": "17분",
+        "value": 17
+      },
+      {
+        "label": "18분",
+        "value": 18
+      },
+      {
+        "label": "19분",
+        "value": 19
+      },
+      {
+        "label": "20분",
+        "value": 20
+      },
+      {
+        "label": "21분",
+        "value": 21
+      },
+      {
+        "label": "22분",
+        "value": 22
+      },
+      {
+        "label": "23분",
+        "value": 23
+      },
+      {
+        "label": "24분",
+        "value": 24
+      },
+      {
+        "label": "25분",
+        "value": 25
+      },
+      {
+        "label": "26분",
+        "value": 26
+      },
+      {
+        "label": "27분",
+        "value": 27
+      },
+      {
+        "label": "28분",
+        "value": 28
+      },
+      {
+        "label": "29분",
+        "value": 29
+      },
+      {
+        "label": "30분",
+        "value": 30
+      },
+      {
+        "label": "31분",
+        "value": 31
+      },
+      {
+        "label": "32분",
+        "value": 32
+      },
+      {
+        "label": "33분",
+        "value": 33
+      },
+      {
+        "label": "34분",
+        "value": 34
+      },
+      {
+        "label": "35분",
+        "value": 35
+      },
+      {
+        "label": "36분",
+        "value": 36
+      },
+      {
+        "label": "37분",
+        "value": 37
+      },
+      {
+        "label": "38분",
+        "value": 38
+      },
+      {
+        "label": "39분",
+        "value": 39
+      },
+      {
+        "label": "40분",
+        "value": 40
+      },
+      {
+        "label": "41분",
+        "value": 41
+      },
+      {
+        "label": "42분",
+        "value": 42
+      },
+      {
+        "label": "43분",
+        "value": 43
+      },
+      {
+        "label": "44분",
+        "value": 44
+      },
+      {
+        "label": "45분",
+        "value": 45
+      },
+      {
+        "label": "46분",
+        "value": 46
+      },
+      {
+        "label": "47분",
+        "value": 47
+      },
+      {
+        "label": "48분",
+        "value": 48
+      },
+      {
+        "label": "49분",
+        "value": 49
+      },
+      {
+        "label": "50분",
+        "value": 50
+      },
+      {
+        "label": "51분",
+        "value": 51
+      },
+      {
+        "label": "52분",
+        "value": 52
+      },
+      {
+        "label": "53분",
+        "value": 53
+      },
+      {
+        "label": "54분",
+        "value": 54
+      },
+      {
+        "label": "55분",
+        "value": 55
+      },
+      {
+        "label": "56분",
+        "value": 56
+      },
+      {
+        "label": "57분",
+        "value": 57
+      },
+      {
+        "label": "58분",
+        "value": 58
+      },
+      {
+        "label": "59분",
+        "value": 59
+      }
+    ],
+    "payload": 1,
+    "topic": "dd_off_pump_a1_m",
+    "topicType": "str",
+    "className": "",
+    "x": 320,
     "y": 1340,
     "wires": [
       [
-        "fn_cmd_merge_v2"
+        "fn_dd_pump_duration"
       ]
     ]
   },
   {
-    "id": "num_on_pump_a2",
-    "type": "ui_numeric",
+    "id": "dd_off_pump_a1_s",
+    "type": "ui_dropdown",
     "z": "tab_cronus_dash",
-    "name": "ON pump_a2",
-    "label": "PUMP A2 ON(초)",
+    "name": "OFF초 A1",
+    "label": "",
     "tooltip": "",
-    "group": "ui_grp_cfg_timer",
-    "order": 3,
-    "width": "3",
+    "group": "ui_grp_manual",
+    "order": 5,
+    "width": "2",
     "height": 0,
-    "wrap": false,
     "passthru": false,
-    "topic": "on_pump_a2",
-    "format": "{{value}}",
-    "min": 1,
-    "max": 3600,
-    "step": 1,
+    "multiple": false,
+    "options": [
+      {
+        "label": "0초",
+        "value": 0
+      },
+      {
+        "label": "1초",
+        "value": 1
+      },
+      {
+        "label": "2초",
+        "value": 2
+      },
+      {
+        "label": "3초",
+        "value": 3
+      },
+      {
+        "label": "4초",
+        "value": 4
+      },
+      {
+        "label": "5초",
+        "value": 5
+      },
+      {
+        "label": "6초",
+        "value": 6
+      },
+      {
+        "label": "7초",
+        "value": 7
+      },
+      {
+        "label": "8초",
+        "value": 8
+      },
+      {
+        "label": "9초",
+        "value": 9
+      },
+      {
+        "label": "10초",
+        "value": 10
+      },
+      {
+        "label": "11초",
+        "value": 11
+      },
+      {
+        "label": "12초",
+        "value": 12
+      },
+      {
+        "label": "13초",
+        "value": 13
+      },
+      {
+        "label": "14초",
+        "value": 14
+      },
+      {
+        "label": "15초",
+        "value": 15
+      },
+      {
+        "label": "16초",
+        "value": 16
+      },
+      {
+        "label": "17초",
+        "value": 17
+      },
+      {
+        "label": "18초",
+        "value": 18
+      },
+      {
+        "label": "19초",
+        "value": 19
+      },
+      {
+        "label": "20초",
+        "value": 20
+      },
+      {
+        "label": "21초",
+        "value": 21
+      },
+      {
+        "label": "22초",
+        "value": 22
+      },
+      {
+        "label": "23초",
+        "value": 23
+      },
+      {
+        "label": "24초",
+        "value": 24
+      },
+      {
+        "label": "25초",
+        "value": 25
+      },
+      {
+        "label": "26초",
+        "value": 26
+      },
+      {
+        "label": "27초",
+        "value": 27
+      },
+      {
+        "label": "28초",
+        "value": 28
+      },
+      {
+        "label": "29초",
+        "value": 29
+      },
+      {
+        "label": "30초",
+        "value": 30
+      },
+      {
+        "label": "31초",
+        "value": 31
+      },
+      {
+        "label": "32초",
+        "value": 32
+      },
+      {
+        "label": "33초",
+        "value": 33
+      },
+      {
+        "label": "34초",
+        "value": 34
+      },
+      {
+        "label": "35초",
+        "value": 35
+      },
+      {
+        "label": "36초",
+        "value": 36
+      },
+      {
+        "label": "37초",
+        "value": 37
+      },
+      {
+        "label": "38초",
+        "value": 38
+      },
+      {
+        "label": "39초",
+        "value": 39
+      },
+      {
+        "label": "40초",
+        "value": 40
+      },
+      {
+        "label": "41초",
+        "value": 41
+      },
+      {
+        "label": "42초",
+        "value": 42
+      },
+      {
+        "label": "43초",
+        "value": 43
+      },
+      {
+        "label": "44초",
+        "value": 44
+      },
+      {
+        "label": "45초",
+        "value": 45
+      },
+      {
+        "label": "46초",
+        "value": 46
+      },
+      {
+        "label": "47초",
+        "value": 47
+      },
+      {
+        "label": "48초",
+        "value": 48
+      },
+      {
+        "label": "49초",
+        "value": 49
+      },
+      {
+        "label": "50초",
+        "value": 50
+      },
+      {
+        "label": "51초",
+        "value": 51
+      },
+      {
+        "label": "52초",
+        "value": 52
+      },
+      {
+        "label": "53초",
+        "value": 53
+      },
+      {
+        "label": "54초",
+        "value": 54
+      },
+      {
+        "label": "55초",
+        "value": 55
+      },
+      {
+        "label": "56초",
+        "value": 56
+      },
+      {
+        "label": "57초",
+        "value": 57
+      },
+      {
+        "label": "58초",
+        "value": 58
+      },
+      {
+        "label": "59초",
+        "value": 59
+      }
+    ],
+    "payload": 30,
+    "topic": "dd_off_pump_a1_s",
+    "topicType": "str",
+    "className": "",
+    "x": 330,
+    "y": 1360,
+    "wires": [
+      [
+        "fn_dd_pump_duration"
+      ]
+    ]
+  },
+  {
+    "id": "dd_on_pump_a2_m",
+    "type": "ui_dropdown",
+    "z": "tab_cronus_dash",
+    "name": "ON분 A2",
+    "label": "",
+    "tooltip": "",
+    "group": "ui_grp_manual",
+    "order": 7,
+    "width": "2",
+    "height": 0,
+    "passthru": false,
+    "multiple": false,
+    "options": [
+      {
+        "label": "0분",
+        "value": 0
+      },
+      {
+        "label": "1분",
+        "value": 1
+      },
+      {
+        "label": "2분",
+        "value": 2
+      },
+      {
+        "label": "3분",
+        "value": 3
+      },
+      {
+        "label": "4분",
+        "value": 4
+      },
+      {
+        "label": "5분",
+        "value": 5
+      },
+      {
+        "label": "6분",
+        "value": 6
+      },
+      {
+        "label": "7분",
+        "value": 7
+      },
+      {
+        "label": "8분",
+        "value": 8
+      },
+      {
+        "label": "9분",
+        "value": 9
+      },
+      {
+        "label": "10분",
+        "value": 10
+      },
+      {
+        "label": "11분",
+        "value": 11
+      },
+      {
+        "label": "12분",
+        "value": 12
+      },
+      {
+        "label": "13분",
+        "value": 13
+      },
+      {
+        "label": "14분",
+        "value": 14
+      },
+      {
+        "label": "15분",
+        "value": 15
+      },
+      {
+        "label": "16분",
+        "value": 16
+      },
+      {
+        "label": "17분",
+        "value": 17
+      },
+      {
+        "label": "18분",
+        "value": 18
+      },
+      {
+        "label": "19분",
+        "value": 19
+      },
+      {
+        "label": "20분",
+        "value": 20
+      },
+      {
+        "label": "21분",
+        "value": 21
+      },
+      {
+        "label": "22분",
+        "value": 22
+      },
+      {
+        "label": "23분",
+        "value": 23
+      },
+      {
+        "label": "24분",
+        "value": 24
+      },
+      {
+        "label": "25분",
+        "value": 25
+      },
+      {
+        "label": "26분",
+        "value": 26
+      },
+      {
+        "label": "27분",
+        "value": 27
+      },
+      {
+        "label": "28분",
+        "value": 28
+      },
+      {
+        "label": "29분",
+        "value": 29
+      },
+      {
+        "label": "30분",
+        "value": 30
+      },
+      {
+        "label": "31분",
+        "value": 31
+      },
+      {
+        "label": "32분",
+        "value": 32
+      },
+      {
+        "label": "33분",
+        "value": 33
+      },
+      {
+        "label": "34분",
+        "value": 34
+      },
+      {
+        "label": "35분",
+        "value": 35
+      },
+      {
+        "label": "36분",
+        "value": 36
+      },
+      {
+        "label": "37분",
+        "value": 37
+      },
+      {
+        "label": "38분",
+        "value": 38
+      },
+      {
+        "label": "39분",
+        "value": 39
+      },
+      {
+        "label": "40분",
+        "value": 40
+      },
+      {
+        "label": "41분",
+        "value": 41
+      },
+      {
+        "label": "42분",
+        "value": 42
+      },
+      {
+        "label": "43분",
+        "value": 43
+      },
+      {
+        "label": "44분",
+        "value": 44
+      },
+      {
+        "label": "45분",
+        "value": 45
+      },
+      {
+        "label": "46분",
+        "value": 46
+      },
+      {
+        "label": "47분",
+        "value": 47
+      },
+      {
+        "label": "48분",
+        "value": 48
+      },
+      {
+        "label": "49분",
+        "value": 49
+      },
+      {
+        "label": "50분",
+        "value": 50
+      },
+      {
+        "label": "51분",
+        "value": 51
+      },
+      {
+        "label": "52분",
+        "value": 52
+      },
+      {
+        "label": "53분",
+        "value": 53
+      },
+      {
+        "label": "54분",
+        "value": 54
+      },
+      {
+        "label": "55분",
+        "value": 55
+      },
+      {
+        "label": "56분",
+        "value": 56
+      },
+      {
+        "label": "57분",
+        "value": 57
+      },
+      {
+        "label": "58분",
+        "value": 58
+      },
+      {
+        "label": "59분",
+        "value": 59
+      }
+    ],
+    "payload": 0,
+    "topic": "dd_on_pump_a2_m",
+    "topicType": "str",
+    "className": "",
     "x": 300,
     "y": 1380,
     "wires": [
       [
-        "fn_cmd_merge_v2"
+        "fn_dd_pump_duration"
       ]
     ]
   },
   {
-    "id": "num_off_pump_a2",
-    "type": "ui_numeric",
+    "id": "dd_on_pump_a2_s",
+    "type": "ui_dropdown",
     "z": "tab_cronus_dash",
-    "name": "OFF pump_a2",
-    "label": "PUMP A2 OFF(초)",
+    "name": "ON초 A2",
+    "label": "",
     "tooltip": "",
-    "group": "ui_grp_cfg_timer",
-    "order": 4,
-    "width": "3",
+    "group": "ui_grp_manual",
+    "order": 8,
+    "width": "2",
     "height": 0,
-    "wrap": false,
     "passthru": false,
-    "topic": "off_pump_a2",
-    "format": "{{value}}",
-    "min": 1,
-    "max": 3600,
-    "step": 1,
+    "multiple": false,
+    "options": [
+      {
+        "label": "0초",
+        "value": 0
+      },
+      {
+        "label": "1초",
+        "value": 1
+      },
+      {
+        "label": "2초",
+        "value": 2
+      },
+      {
+        "label": "3초",
+        "value": 3
+      },
+      {
+        "label": "4초",
+        "value": 4
+      },
+      {
+        "label": "5초",
+        "value": 5
+      },
+      {
+        "label": "6초",
+        "value": 6
+      },
+      {
+        "label": "7초",
+        "value": 7
+      },
+      {
+        "label": "8초",
+        "value": 8
+      },
+      {
+        "label": "9초",
+        "value": 9
+      },
+      {
+        "label": "10초",
+        "value": 10
+      },
+      {
+        "label": "11초",
+        "value": 11
+      },
+      {
+        "label": "12초",
+        "value": 12
+      },
+      {
+        "label": "13초",
+        "value": 13
+      },
+      {
+        "label": "14초",
+        "value": 14
+      },
+      {
+        "label": "15초",
+        "value": 15
+      },
+      {
+        "label": "16초",
+        "value": 16
+      },
+      {
+        "label": "17초",
+        "value": 17
+      },
+      {
+        "label": "18초",
+        "value": 18
+      },
+      {
+        "label": "19초",
+        "value": 19
+      },
+      {
+        "label": "20초",
+        "value": 20
+      },
+      {
+        "label": "21초",
+        "value": 21
+      },
+      {
+        "label": "22초",
+        "value": 22
+      },
+      {
+        "label": "23초",
+        "value": 23
+      },
+      {
+        "label": "24초",
+        "value": 24
+      },
+      {
+        "label": "25초",
+        "value": 25
+      },
+      {
+        "label": "26초",
+        "value": 26
+      },
+      {
+        "label": "27초",
+        "value": 27
+      },
+      {
+        "label": "28초",
+        "value": 28
+      },
+      {
+        "label": "29초",
+        "value": 29
+      },
+      {
+        "label": "30초",
+        "value": 30
+      },
+      {
+        "label": "31초",
+        "value": 31
+      },
+      {
+        "label": "32초",
+        "value": 32
+      },
+      {
+        "label": "33초",
+        "value": 33
+      },
+      {
+        "label": "34초",
+        "value": 34
+      },
+      {
+        "label": "35초",
+        "value": 35
+      },
+      {
+        "label": "36초",
+        "value": 36
+      },
+      {
+        "label": "37초",
+        "value": 37
+      },
+      {
+        "label": "38초",
+        "value": 38
+      },
+      {
+        "label": "39초",
+        "value": 39
+      },
+      {
+        "label": "40초",
+        "value": 40
+      },
+      {
+        "label": "41초",
+        "value": 41
+      },
+      {
+        "label": "42초",
+        "value": 42
+      },
+      {
+        "label": "43초",
+        "value": 43
+      },
+      {
+        "label": "44초",
+        "value": 44
+      },
+      {
+        "label": "45초",
+        "value": 45
+      },
+      {
+        "label": "46초",
+        "value": 46
+      },
+      {
+        "label": "47초",
+        "value": 47
+      },
+      {
+        "label": "48초",
+        "value": 48
+      },
+      {
+        "label": "49초",
+        "value": 49
+      },
+      {
+        "label": "50초",
+        "value": 50
+      },
+      {
+        "label": "51초",
+        "value": 51
+      },
+      {
+        "label": "52초",
+        "value": 52
+      },
+      {
+        "label": "53초",
+        "value": 53
+      },
+      {
+        "label": "54초",
+        "value": 54
+      },
+      {
+        "label": "55초",
+        "value": 55
+      },
+      {
+        "label": "56초",
+        "value": 56
+      },
+      {
+        "label": "57초",
+        "value": 57
+      },
+      {
+        "label": "58초",
+        "value": 58
+      },
+      {
+        "label": "59초",
+        "value": 59
+      }
+    ],
+    "payload": 30,
+    "topic": "dd_on_pump_a2_s",
+    "topicType": "str",
+    "className": "",
     "x": 310,
+    "y": 1400,
+    "wires": [
+      [
+        "fn_dd_pump_duration"
+      ]
+    ]
+  },
+  {
+    "id": "dd_off_pump_a2_m",
+    "type": "ui_dropdown",
+    "z": "tab_cronus_dash",
+    "name": "OFF분 A2",
+    "label": "",
+    "tooltip": "",
+    "group": "ui_grp_manual",
+    "order": 9,
+    "width": "2",
+    "height": 0,
+    "passthru": false,
+    "multiple": false,
+    "options": [
+      {
+        "label": "0분",
+        "value": 0
+      },
+      {
+        "label": "1분",
+        "value": 1
+      },
+      {
+        "label": "2분",
+        "value": 2
+      },
+      {
+        "label": "3분",
+        "value": 3
+      },
+      {
+        "label": "4분",
+        "value": 4
+      },
+      {
+        "label": "5분",
+        "value": 5
+      },
+      {
+        "label": "6분",
+        "value": 6
+      },
+      {
+        "label": "7분",
+        "value": 7
+      },
+      {
+        "label": "8분",
+        "value": 8
+      },
+      {
+        "label": "9분",
+        "value": 9
+      },
+      {
+        "label": "10분",
+        "value": 10
+      },
+      {
+        "label": "11분",
+        "value": 11
+      },
+      {
+        "label": "12분",
+        "value": 12
+      },
+      {
+        "label": "13분",
+        "value": 13
+      },
+      {
+        "label": "14분",
+        "value": 14
+      },
+      {
+        "label": "15분",
+        "value": 15
+      },
+      {
+        "label": "16분",
+        "value": 16
+      },
+      {
+        "label": "17분",
+        "value": 17
+      },
+      {
+        "label": "18분",
+        "value": 18
+      },
+      {
+        "label": "19분",
+        "value": 19
+      },
+      {
+        "label": "20분",
+        "value": 20
+      },
+      {
+        "label": "21분",
+        "value": 21
+      },
+      {
+        "label": "22분",
+        "value": 22
+      },
+      {
+        "label": "23분",
+        "value": 23
+      },
+      {
+        "label": "24분",
+        "value": 24
+      },
+      {
+        "label": "25분",
+        "value": 25
+      },
+      {
+        "label": "26분",
+        "value": 26
+      },
+      {
+        "label": "27분",
+        "value": 27
+      },
+      {
+        "label": "28분",
+        "value": 28
+      },
+      {
+        "label": "29분",
+        "value": 29
+      },
+      {
+        "label": "30분",
+        "value": 30
+      },
+      {
+        "label": "31분",
+        "value": 31
+      },
+      {
+        "label": "32분",
+        "value": 32
+      },
+      {
+        "label": "33분",
+        "value": 33
+      },
+      {
+        "label": "34분",
+        "value": 34
+      },
+      {
+        "label": "35분",
+        "value": 35
+      },
+      {
+        "label": "36분",
+        "value": 36
+      },
+      {
+        "label": "37분",
+        "value": 37
+      },
+      {
+        "label": "38분",
+        "value": 38
+      },
+      {
+        "label": "39분",
+        "value": 39
+      },
+      {
+        "label": "40분",
+        "value": 40
+      },
+      {
+        "label": "41분",
+        "value": 41
+      },
+      {
+        "label": "42분",
+        "value": 42
+      },
+      {
+        "label": "43분",
+        "value": 43
+      },
+      {
+        "label": "44분",
+        "value": 44
+      },
+      {
+        "label": "45분",
+        "value": 45
+      },
+      {
+        "label": "46분",
+        "value": 46
+      },
+      {
+        "label": "47분",
+        "value": 47
+      },
+      {
+        "label": "48분",
+        "value": 48
+      },
+      {
+        "label": "49분",
+        "value": 49
+      },
+      {
+        "label": "50분",
+        "value": 50
+      },
+      {
+        "label": "51분",
+        "value": 51
+      },
+      {
+        "label": "52분",
+        "value": 52
+      },
+      {
+        "label": "53분",
+        "value": 53
+      },
+      {
+        "label": "54분",
+        "value": 54
+      },
+      {
+        "label": "55분",
+        "value": 55
+      },
+      {
+        "label": "56분",
+        "value": 56
+      },
+      {
+        "label": "57분",
+        "value": 57
+      },
+      {
+        "label": "58분",
+        "value": 58
+      },
+      {
+        "label": "59분",
+        "value": 59
+      }
+    ],
+    "payload": 1,
+    "topic": "dd_off_pump_a2_m",
+    "topicType": "str",
+    "className": "",
+    "x": 320,
     "y": 1420,
     "wires": [
       [
-        "fn_cmd_merge_v2"
+        "fn_dd_pump_duration"
       ]
     ]
   },
   {
-    "id": "num_on_pump_b1",
-    "type": "ui_numeric",
+    "id": "dd_off_pump_a2_s",
+    "type": "ui_dropdown",
     "z": "tab_cronus_dash",
-    "name": "ON pump_b1",
-    "label": "PUMP B1 ON(초)",
+    "name": "OFF초 A2",
+    "label": "",
     "tooltip": "",
-    "group": "ui_grp_cfg_timer",
-    "order": 5,
-    "width": "3",
+    "group": "ui_grp_manual",
+    "order": 10,
+    "width": "2",
     "height": 0,
-    "wrap": false,
     "passthru": false,
-    "topic": "on_pump_b1",
-    "format": "{{value}}",
-    "min": 1,
-    "max": 3600,
-    "step": 1,
+    "multiple": false,
+    "options": [
+      {
+        "label": "0초",
+        "value": 0
+      },
+      {
+        "label": "1초",
+        "value": 1
+      },
+      {
+        "label": "2초",
+        "value": 2
+      },
+      {
+        "label": "3초",
+        "value": 3
+      },
+      {
+        "label": "4초",
+        "value": 4
+      },
+      {
+        "label": "5초",
+        "value": 5
+      },
+      {
+        "label": "6초",
+        "value": 6
+      },
+      {
+        "label": "7초",
+        "value": 7
+      },
+      {
+        "label": "8초",
+        "value": 8
+      },
+      {
+        "label": "9초",
+        "value": 9
+      },
+      {
+        "label": "10초",
+        "value": 10
+      },
+      {
+        "label": "11초",
+        "value": 11
+      },
+      {
+        "label": "12초",
+        "value": 12
+      },
+      {
+        "label": "13초",
+        "value": 13
+      },
+      {
+        "label": "14초",
+        "value": 14
+      },
+      {
+        "label": "15초",
+        "value": 15
+      },
+      {
+        "label": "16초",
+        "value": 16
+      },
+      {
+        "label": "17초",
+        "value": 17
+      },
+      {
+        "label": "18초",
+        "value": 18
+      },
+      {
+        "label": "19초",
+        "value": 19
+      },
+      {
+        "label": "20초",
+        "value": 20
+      },
+      {
+        "label": "21초",
+        "value": 21
+      },
+      {
+        "label": "22초",
+        "value": 22
+      },
+      {
+        "label": "23초",
+        "value": 23
+      },
+      {
+        "label": "24초",
+        "value": 24
+      },
+      {
+        "label": "25초",
+        "value": 25
+      },
+      {
+        "label": "26초",
+        "value": 26
+      },
+      {
+        "label": "27초",
+        "value": 27
+      },
+      {
+        "label": "28초",
+        "value": 28
+      },
+      {
+        "label": "29초",
+        "value": 29
+      },
+      {
+        "label": "30초",
+        "value": 30
+      },
+      {
+        "label": "31초",
+        "value": 31
+      },
+      {
+        "label": "32초",
+        "value": 32
+      },
+      {
+        "label": "33초",
+        "value": 33
+      },
+      {
+        "label": "34초",
+        "value": 34
+      },
+      {
+        "label": "35초",
+        "value": 35
+      },
+      {
+        "label": "36초",
+        "value": 36
+      },
+      {
+        "label": "37초",
+        "value": 37
+      },
+      {
+        "label": "38초",
+        "value": 38
+      },
+      {
+        "label": "39초",
+        "value": 39
+      },
+      {
+        "label": "40초",
+        "value": 40
+      },
+      {
+        "label": "41초",
+        "value": 41
+      },
+      {
+        "label": "42초",
+        "value": 42
+      },
+      {
+        "label": "43초",
+        "value": 43
+      },
+      {
+        "label": "44초",
+        "value": 44
+      },
+      {
+        "label": "45초",
+        "value": 45
+      },
+      {
+        "label": "46초",
+        "value": 46
+      },
+      {
+        "label": "47초",
+        "value": 47
+      },
+      {
+        "label": "48초",
+        "value": 48
+      },
+      {
+        "label": "49초",
+        "value": 49
+      },
+      {
+        "label": "50초",
+        "value": 50
+      },
+      {
+        "label": "51초",
+        "value": 51
+      },
+      {
+        "label": "52초",
+        "value": 52
+      },
+      {
+        "label": "53초",
+        "value": 53
+      },
+      {
+        "label": "54초",
+        "value": 54
+      },
+      {
+        "label": "55초",
+        "value": 55
+      },
+      {
+        "label": "56초",
+        "value": 56
+      },
+      {
+        "label": "57초",
+        "value": 57
+      },
+      {
+        "label": "58초",
+        "value": 58
+      },
+      {
+        "label": "59초",
+        "value": 59
+      }
+    ],
+    "payload": 30,
+    "topic": "dd_off_pump_a2_s",
+    "topicType": "str",
+    "className": "",
+    "x": 330,
+    "y": 1440,
+    "wires": [
+      [
+        "fn_dd_pump_duration"
+      ]
+    ]
+  },
+  {
+    "id": "dd_on_pump_b1_m",
+    "type": "ui_dropdown",
+    "z": "tab_cronus_dash",
+    "name": "ON분 B1",
+    "label": "",
+    "tooltip": "",
+    "group": "ui_grp_manual",
+    "order": 12,
+    "width": "2",
+    "height": 0,
+    "passthru": false,
+    "multiple": false,
+    "options": [
+      {
+        "label": "0분",
+        "value": 0
+      },
+      {
+        "label": "1분",
+        "value": 1
+      },
+      {
+        "label": "2분",
+        "value": 2
+      },
+      {
+        "label": "3분",
+        "value": 3
+      },
+      {
+        "label": "4분",
+        "value": 4
+      },
+      {
+        "label": "5분",
+        "value": 5
+      },
+      {
+        "label": "6분",
+        "value": 6
+      },
+      {
+        "label": "7분",
+        "value": 7
+      },
+      {
+        "label": "8분",
+        "value": 8
+      },
+      {
+        "label": "9분",
+        "value": 9
+      },
+      {
+        "label": "10분",
+        "value": 10
+      },
+      {
+        "label": "11분",
+        "value": 11
+      },
+      {
+        "label": "12분",
+        "value": 12
+      },
+      {
+        "label": "13분",
+        "value": 13
+      },
+      {
+        "label": "14분",
+        "value": 14
+      },
+      {
+        "label": "15분",
+        "value": 15
+      },
+      {
+        "label": "16분",
+        "value": 16
+      },
+      {
+        "label": "17분",
+        "value": 17
+      },
+      {
+        "label": "18분",
+        "value": 18
+      },
+      {
+        "label": "19분",
+        "value": 19
+      },
+      {
+        "label": "20분",
+        "value": 20
+      },
+      {
+        "label": "21분",
+        "value": 21
+      },
+      {
+        "label": "22분",
+        "value": 22
+      },
+      {
+        "label": "23분",
+        "value": 23
+      },
+      {
+        "label": "24분",
+        "value": 24
+      },
+      {
+        "label": "25분",
+        "value": 25
+      },
+      {
+        "label": "26분",
+        "value": 26
+      },
+      {
+        "label": "27분",
+        "value": 27
+      },
+      {
+        "label": "28분",
+        "value": 28
+      },
+      {
+        "label": "29분",
+        "value": 29
+      },
+      {
+        "label": "30분",
+        "value": 30
+      },
+      {
+        "label": "31분",
+        "value": 31
+      },
+      {
+        "label": "32분",
+        "value": 32
+      },
+      {
+        "label": "33분",
+        "value": 33
+      },
+      {
+        "label": "34분",
+        "value": 34
+      },
+      {
+        "label": "35분",
+        "value": 35
+      },
+      {
+        "label": "36분",
+        "value": 36
+      },
+      {
+        "label": "37분",
+        "value": 37
+      },
+      {
+        "label": "38분",
+        "value": 38
+      },
+      {
+        "label": "39분",
+        "value": 39
+      },
+      {
+        "label": "40분",
+        "value": 40
+      },
+      {
+        "label": "41분",
+        "value": 41
+      },
+      {
+        "label": "42분",
+        "value": 42
+      },
+      {
+        "label": "43분",
+        "value": 43
+      },
+      {
+        "label": "44분",
+        "value": 44
+      },
+      {
+        "label": "45분",
+        "value": 45
+      },
+      {
+        "label": "46분",
+        "value": 46
+      },
+      {
+        "label": "47분",
+        "value": 47
+      },
+      {
+        "label": "48분",
+        "value": 48
+      },
+      {
+        "label": "49분",
+        "value": 49
+      },
+      {
+        "label": "50분",
+        "value": 50
+      },
+      {
+        "label": "51분",
+        "value": 51
+      },
+      {
+        "label": "52분",
+        "value": 52
+      },
+      {
+        "label": "53분",
+        "value": 53
+      },
+      {
+        "label": "54분",
+        "value": 54
+      },
+      {
+        "label": "55분",
+        "value": 55
+      },
+      {
+        "label": "56분",
+        "value": 56
+      },
+      {
+        "label": "57분",
+        "value": 57
+      },
+      {
+        "label": "58분",
+        "value": 58
+      },
+      {
+        "label": "59분",
+        "value": 59
+      }
+    ],
+    "payload": 0,
+    "topic": "dd_on_pump_b1_m",
+    "topicType": "str",
+    "className": "",
     "x": 300,
     "y": 1460,
     "wires": [
       [
-        "fn_cmd_merge_v2"
+        "fn_dd_pump_duration"
       ]
     ]
   },
   {
-    "id": "num_off_pump_b1",
-    "type": "ui_numeric",
+    "id": "dd_on_pump_b1_s",
+    "type": "ui_dropdown",
     "z": "tab_cronus_dash",
-    "name": "OFF pump_b1",
-    "label": "PUMP B1 OFF(초)",
+    "name": "ON초 B1",
+    "label": "",
     "tooltip": "",
-    "group": "ui_grp_cfg_timer",
-    "order": 6,
-    "width": "3",
+    "group": "ui_grp_manual",
+    "order": 13,
+    "width": "2",
     "height": 0,
-    "wrap": false,
     "passthru": false,
-    "topic": "off_pump_b1",
-    "format": "{{value}}",
-    "min": 1,
-    "max": 3600,
-    "step": 1,
+    "multiple": false,
+    "options": [
+      {
+        "label": "0초",
+        "value": 0
+      },
+      {
+        "label": "1초",
+        "value": 1
+      },
+      {
+        "label": "2초",
+        "value": 2
+      },
+      {
+        "label": "3초",
+        "value": 3
+      },
+      {
+        "label": "4초",
+        "value": 4
+      },
+      {
+        "label": "5초",
+        "value": 5
+      },
+      {
+        "label": "6초",
+        "value": 6
+      },
+      {
+        "label": "7초",
+        "value": 7
+      },
+      {
+        "label": "8초",
+        "value": 8
+      },
+      {
+        "label": "9초",
+        "value": 9
+      },
+      {
+        "label": "10초",
+        "value": 10
+      },
+      {
+        "label": "11초",
+        "value": 11
+      },
+      {
+        "label": "12초",
+        "value": 12
+      },
+      {
+        "label": "13초",
+        "value": 13
+      },
+      {
+        "label": "14초",
+        "value": 14
+      },
+      {
+        "label": "15초",
+        "value": 15
+      },
+      {
+        "label": "16초",
+        "value": 16
+      },
+      {
+        "label": "17초",
+        "value": 17
+      },
+      {
+        "label": "18초",
+        "value": 18
+      },
+      {
+        "label": "19초",
+        "value": 19
+      },
+      {
+        "label": "20초",
+        "value": 20
+      },
+      {
+        "label": "21초",
+        "value": 21
+      },
+      {
+        "label": "22초",
+        "value": 22
+      },
+      {
+        "label": "23초",
+        "value": 23
+      },
+      {
+        "label": "24초",
+        "value": 24
+      },
+      {
+        "label": "25초",
+        "value": 25
+      },
+      {
+        "label": "26초",
+        "value": 26
+      },
+      {
+        "label": "27초",
+        "value": 27
+      },
+      {
+        "label": "28초",
+        "value": 28
+      },
+      {
+        "label": "29초",
+        "value": 29
+      },
+      {
+        "label": "30초",
+        "value": 30
+      },
+      {
+        "label": "31초",
+        "value": 31
+      },
+      {
+        "label": "32초",
+        "value": 32
+      },
+      {
+        "label": "33초",
+        "value": 33
+      },
+      {
+        "label": "34초",
+        "value": 34
+      },
+      {
+        "label": "35초",
+        "value": 35
+      },
+      {
+        "label": "36초",
+        "value": 36
+      },
+      {
+        "label": "37초",
+        "value": 37
+      },
+      {
+        "label": "38초",
+        "value": 38
+      },
+      {
+        "label": "39초",
+        "value": 39
+      },
+      {
+        "label": "40초",
+        "value": 40
+      },
+      {
+        "label": "41초",
+        "value": 41
+      },
+      {
+        "label": "42초",
+        "value": 42
+      },
+      {
+        "label": "43초",
+        "value": 43
+      },
+      {
+        "label": "44초",
+        "value": 44
+      },
+      {
+        "label": "45초",
+        "value": 45
+      },
+      {
+        "label": "46초",
+        "value": 46
+      },
+      {
+        "label": "47초",
+        "value": 47
+      },
+      {
+        "label": "48초",
+        "value": 48
+      },
+      {
+        "label": "49초",
+        "value": 49
+      },
+      {
+        "label": "50초",
+        "value": 50
+      },
+      {
+        "label": "51초",
+        "value": 51
+      },
+      {
+        "label": "52초",
+        "value": 52
+      },
+      {
+        "label": "53초",
+        "value": 53
+      },
+      {
+        "label": "54초",
+        "value": 54
+      },
+      {
+        "label": "55초",
+        "value": 55
+      },
+      {
+        "label": "56초",
+        "value": 56
+      },
+      {
+        "label": "57초",
+        "value": 57
+      },
+      {
+        "label": "58초",
+        "value": 58
+      },
+      {
+        "label": "59초",
+        "value": 59
+      }
+    ],
+    "payload": 30,
+    "topic": "dd_on_pump_b1_s",
+    "topicType": "str",
+    "className": "",
     "x": 310,
+    "y": 1480,
+    "wires": [
+      [
+        "fn_dd_pump_duration"
+      ]
+    ]
+  },
+  {
+    "id": "dd_off_pump_b1_m",
+    "type": "ui_dropdown",
+    "z": "tab_cronus_dash",
+    "name": "OFF분 B1",
+    "label": "",
+    "tooltip": "",
+    "group": "ui_grp_manual",
+    "order": 14,
+    "width": "2",
+    "height": 0,
+    "passthru": false,
+    "multiple": false,
+    "options": [
+      {
+        "label": "0분",
+        "value": 0
+      },
+      {
+        "label": "1분",
+        "value": 1
+      },
+      {
+        "label": "2분",
+        "value": 2
+      },
+      {
+        "label": "3분",
+        "value": 3
+      },
+      {
+        "label": "4분",
+        "value": 4
+      },
+      {
+        "label": "5분",
+        "value": 5
+      },
+      {
+        "label": "6분",
+        "value": 6
+      },
+      {
+        "label": "7분",
+        "value": 7
+      },
+      {
+        "label": "8분",
+        "value": 8
+      },
+      {
+        "label": "9분",
+        "value": 9
+      },
+      {
+        "label": "10분",
+        "value": 10
+      },
+      {
+        "label": "11분",
+        "value": 11
+      },
+      {
+        "label": "12분",
+        "value": 12
+      },
+      {
+        "label": "13분",
+        "value": 13
+      },
+      {
+        "label": "14분",
+        "value": 14
+      },
+      {
+        "label": "15분",
+        "value": 15
+      },
+      {
+        "label": "16분",
+        "value": 16
+      },
+      {
+        "label": "17분",
+        "value": 17
+      },
+      {
+        "label": "18분",
+        "value": 18
+      },
+      {
+        "label": "19분",
+        "value": 19
+      },
+      {
+        "label": "20분",
+        "value": 20
+      },
+      {
+        "label": "21분",
+        "value": 21
+      },
+      {
+        "label": "22분",
+        "value": 22
+      },
+      {
+        "label": "23분",
+        "value": 23
+      },
+      {
+        "label": "24분",
+        "value": 24
+      },
+      {
+        "label": "25분",
+        "value": 25
+      },
+      {
+        "label": "26분",
+        "value": 26
+      },
+      {
+        "label": "27분",
+        "value": 27
+      },
+      {
+        "label": "28분",
+        "value": 28
+      },
+      {
+        "label": "29분",
+        "value": 29
+      },
+      {
+        "label": "30분",
+        "value": 30
+      },
+      {
+        "label": "31분",
+        "value": 31
+      },
+      {
+        "label": "32분",
+        "value": 32
+      },
+      {
+        "label": "33분",
+        "value": 33
+      },
+      {
+        "label": "34분",
+        "value": 34
+      },
+      {
+        "label": "35분",
+        "value": 35
+      },
+      {
+        "label": "36분",
+        "value": 36
+      },
+      {
+        "label": "37분",
+        "value": 37
+      },
+      {
+        "label": "38분",
+        "value": 38
+      },
+      {
+        "label": "39분",
+        "value": 39
+      },
+      {
+        "label": "40분",
+        "value": 40
+      },
+      {
+        "label": "41분",
+        "value": 41
+      },
+      {
+        "label": "42분",
+        "value": 42
+      },
+      {
+        "label": "43분",
+        "value": 43
+      },
+      {
+        "label": "44분",
+        "value": 44
+      },
+      {
+        "label": "45분",
+        "value": 45
+      },
+      {
+        "label": "46분",
+        "value": 46
+      },
+      {
+        "label": "47분",
+        "value": 47
+      },
+      {
+        "label": "48분",
+        "value": 48
+      },
+      {
+        "label": "49분",
+        "value": 49
+      },
+      {
+        "label": "50분",
+        "value": 50
+      },
+      {
+        "label": "51분",
+        "value": 51
+      },
+      {
+        "label": "52분",
+        "value": 52
+      },
+      {
+        "label": "53분",
+        "value": 53
+      },
+      {
+        "label": "54분",
+        "value": 54
+      },
+      {
+        "label": "55분",
+        "value": 55
+      },
+      {
+        "label": "56분",
+        "value": 56
+      },
+      {
+        "label": "57분",
+        "value": 57
+      },
+      {
+        "label": "58분",
+        "value": 58
+      },
+      {
+        "label": "59분",
+        "value": 59
+      }
+    ],
+    "payload": 1,
+    "topic": "dd_off_pump_b1_m",
+    "topicType": "str",
+    "className": "",
+    "x": 320,
     "y": 1500,
     "wires": [
       [
-        "fn_cmd_merge_v2"
+        "fn_dd_pump_duration"
       ]
     ]
   },
   {
-    "id": "num_on_pump_b2",
-    "type": "ui_numeric",
+    "id": "dd_off_pump_b1_s",
+    "type": "ui_dropdown",
     "z": "tab_cronus_dash",
-    "name": "ON pump_b2",
-    "label": "PUMP B2 ON(초)",
+    "name": "OFF초 B1",
+    "label": "",
     "tooltip": "",
-    "group": "ui_grp_cfg_timer",
-    "order": 7,
-    "width": "3",
+    "group": "ui_grp_manual",
+    "order": 15,
+    "width": "2",
     "height": 0,
-    "wrap": false,
     "passthru": false,
-    "topic": "on_pump_b2",
-    "format": "{{value}}",
-    "min": 1,
-    "max": 3600,
-    "step": 1,
+    "multiple": false,
+    "options": [
+      {
+        "label": "0초",
+        "value": 0
+      },
+      {
+        "label": "1초",
+        "value": 1
+      },
+      {
+        "label": "2초",
+        "value": 2
+      },
+      {
+        "label": "3초",
+        "value": 3
+      },
+      {
+        "label": "4초",
+        "value": 4
+      },
+      {
+        "label": "5초",
+        "value": 5
+      },
+      {
+        "label": "6초",
+        "value": 6
+      },
+      {
+        "label": "7초",
+        "value": 7
+      },
+      {
+        "label": "8초",
+        "value": 8
+      },
+      {
+        "label": "9초",
+        "value": 9
+      },
+      {
+        "label": "10초",
+        "value": 10
+      },
+      {
+        "label": "11초",
+        "value": 11
+      },
+      {
+        "label": "12초",
+        "value": 12
+      },
+      {
+        "label": "13초",
+        "value": 13
+      },
+      {
+        "label": "14초",
+        "value": 14
+      },
+      {
+        "label": "15초",
+        "value": 15
+      },
+      {
+        "label": "16초",
+        "value": 16
+      },
+      {
+        "label": "17초",
+        "value": 17
+      },
+      {
+        "label": "18초",
+        "value": 18
+      },
+      {
+        "label": "19초",
+        "value": 19
+      },
+      {
+        "label": "20초",
+        "value": 20
+      },
+      {
+        "label": "21초",
+        "value": 21
+      },
+      {
+        "label": "22초",
+        "value": 22
+      },
+      {
+        "label": "23초",
+        "value": 23
+      },
+      {
+        "label": "24초",
+        "value": 24
+      },
+      {
+        "label": "25초",
+        "value": 25
+      },
+      {
+        "label": "26초",
+        "value": 26
+      },
+      {
+        "label": "27초",
+        "value": 27
+      },
+      {
+        "label": "28초",
+        "value": 28
+      },
+      {
+        "label": "29초",
+        "value": 29
+      },
+      {
+        "label": "30초",
+        "value": 30
+      },
+      {
+        "label": "31초",
+        "value": 31
+      },
+      {
+        "label": "32초",
+        "value": 32
+      },
+      {
+        "label": "33초",
+        "value": 33
+      },
+      {
+        "label": "34초",
+        "value": 34
+      },
+      {
+        "label": "35초",
+        "value": 35
+      },
+      {
+        "label": "36초",
+        "value": 36
+      },
+      {
+        "label": "37초",
+        "value": 37
+      },
+      {
+        "label": "38초",
+        "value": 38
+      },
+      {
+        "label": "39초",
+        "value": 39
+      },
+      {
+        "label": "40초",
+        "value": 40
+      },
+      {
+        "label": "41초",
+        "value": 41
+      },
+      {
+        "label": "42초",
+        "value": 42
+      },
+      {
+        "label": "43초",
+        "value": 43
+      },
+      {
+        "label": "44초",
+        "value": 44
+      },
+      {
+        "label": "45초",
+        "value": 45
+      },
+      {
+        "label": "46초",
+        "value": 46
+      },
+      {
+        "label": "47초",
+        "value": 47
+      },
+      {
+        "label": "48초",
+        "value": 48
+      },
+      {
+        "label": "49초",
+        "value": 49
+      },
+      {
+        "label": "50초",
+        "value": 50
+      },
+      {
+        "label": "51초",
+        "value": 51
+      },
+      {
+        "label": "52초",
+        "value": 52
+      },
+      {
+        "label": "53초",
+        "value": 53
+      },
+      {
+        "label": "54초",
+        "value": 54
+      },
+      {
+        "label": "55초",
+        "value": 55
+      },
+      {
+        "label": "56초",
+        "value": 56
+      },
+      {
+        "label": "57초",
+        "value": 57
+      },
+      {
+        "label": "58초",
+        "value": 58
+      },
+      {
+        "label": "59초",
+        "value": 59
+      }
+    ],
+    "payload": 30,
+    "topic": "dd_off_pump_b1_s",
+    "topicType": "str",
+    "className": "",
+    "x": 330,
+    "y": 1520,
+    "wires": [
+      [
+        "fn_dd_pump_duration"
+      ]
+    ]
+  },
+  {
+    "id": "dd_on_pump_b2_m",
+    "type": "ui_dropdown",
+    "z": "tab_cronus_dash",
+    "name": "ON분 B2",
+    "label": "",
+    "tooltip": "",
+    "group": "ui_grp_manual",
+    "order": 17,
+    "width": "2",
+    "height": 0,
+    "passthru": false,
+    "multiple": false,
+    "options": [
+      {
+        "label": "0분",
+        "value": 0
+      },
+      {
+        "label": "1분",
+        "value": 1
+      },
+      {
+        "label": "2분",
+        "value": 2
+      },
+      {
+        "label": "3분",
+        "value": 3
+      },
+      {
+        "label": "4분",
+        "value": 4
+      },
+      {
+        "label": "5분",
+        "value": 5
+      },
+      {
+        "label": "6분",
+        "value": 6
+      },
+      {
+        "label": "7분",
+        "value": 7
+      },
+      {
+        "label": "8분",
+        "value": 8
+      },
+      {
+        "label": "9분",
+        "value": 9
+      },
+      {
+        "label": "10분",
+        "value": 10
+      },
+      {
+        "label": "11분",
+        "value": 11
+      },
+      {
+        "label": "12분",
+        "value": 12
+      },
+      {
+        "label": "13분",
+        "value": 13
+      },
+      {
+        "label": "14분",
+        "value": 14
+      },
+      {
+        "label": "15분",
+        "value": 15
+      },
+      {
+        "label": "16분",
+        "value": 16
+      },
+      {
+        "label": "17분",
+        "value": 17
+      },
+      {
+        "label": "18분",
+        "value": 18
+      },
+      {
+        "label": "19분",
+        "value": 19
+      },
+      {
+        "label": "20분",
+        "value": 20
+      },
+      {
+        "label": "21분",
+        "value": 21
+      },
+      {
+        "label": "22분",
+        "value": 22
+      },
+      {
+        "label": "23분",
+        "value": 23
+      },
+      {
+        "label": "24분",
+        "value": 24
+      },
+      {
+        "label": "25분",
+        "value": 25
+      },
+      {
+        "label": "26분",
+        "value": 26
+      },
+      {
+        "label": "27분",
+        "value": 27
+      },
+      {
+        "label": "28분",
+        "value": 28
+      },
+      {
+        "label": "29분",
+        "value": 29
+      },
+      {
+        "label": "30분",
+        "value": 30
+      },
+      {
+        "label": "31분",
+        "value": 31
+      },
+      {
+        "label": "32분",
+        "value": 32
+      },
+      {
+        "label": "33분",
+        "value": 33
+      },
+      {
+        "label": "34분",
+        "value": 34
+      },
+      {
+        "label": "35분",
+        "value": 35
+      },
+      {
+        "label": "36분",
+        "value": 36
+      },
+      {
+        "label": "37분",
+        "value": 37
+      },
+      {
+        "label": "38분",
+        "value": 38
+      },
+      {
+        "label": "39분",
+        "value": 39
+      },
+      {
+        "label": "40분",
+        "value": 40
+      },
+      {
+        "label": "41분",
+        "value": 41
+      },
+      {
+        "label": "42분",
+        "value": 42
+      },
+      {
+        "label": "43분",
+        "value": 43
+      },
+      {
+        "label": "44분",
+        "value": 44
+      },
+      {
+        "label": "45분",
+        "value": 45
+      },
+      {
+        "label": "46분",
+        "value": 46
+      },
+      {
+        "label": "47분",
+        "value": 47
+      },
+      {
+        "label": "48분",
+        "value": 48
+      },
+      {
+        "label": "49분",
+        "value": 49
+      },
+      {
+        "label": "50분",
+        "value": 50
+      },
+      {
+        "label": "51분",
+        "value": 51
+      },
+      {
+        "label": "52분",
+        "value": 52
+      },
+      {
+        "label": "53분",
+        "value": 53
+      },
+      {
+        "label": "54분",
+        "value": 54
+      },
+      {
+        "label": "55분",
+        "value": 55
+      },
+      {
+        "label": "56분",
+        "value": 56
+      },
+      {
+        "label": "57분",
+        "value": 57
+      },
+      {
+        "label": "58분",
+        "value": 58
+      },
+      {
+        "label": "59분",
+        "value": 59
+      }
+    ],
+    "payload": 0,
+    "topic": "dd_on_pump_b2_m",
+    "topicType": "str",
+    "className": "",
     "x": 300,
     "y": 1540,
     "wires": [
       [
-        "fn_cmd_merge_v2"
+        "fn_dd_pump_duration"
       ]
     ]
   },
   {
-    "id": "num_off_pump_b2",
-    "type": "ui_numeric",
+    "id": "dd_on_pump_b2_s",
+    "type": "ui_dropdown",
     "z": "tab_cronus_dash",
-    "name": "OFF pump_b2",
-    "label": "PUMP B2 OFF(초)",
+    "name": "ON초 B2",
+    "label": "",
     "tooltip": "",
-    "group": "ui_grp_cfg_timer",
-    "order": 8,
-    "width": "3",
+    "group": "ui_grp_manual",
+    "order": 18,
+    "width": "2",
     "height": 0,
-    "wrap": false,
     "passthru": false,
-    "topic": "off_pump_b2",
-    "format": "{{value}}",
-    "min": 1,
-    "max": 3600,
-    "step": 1,
+    "multiple": false,
+    "options": [
+      {
+        "label": "0초",
+        "value": 0
+      },
+      {
+        "label": "1초",
+        "value": 1
+      },
+      {
+        "label": "2초",
+        "value": 2
+      },
+      {
+        "label": "3초",
+        "value": 3
+      },
+      {
+        "label": "4초",
+        "value": 4
+      },
+      {
+        "label": "5초",
+        "value": 5
+      },
+      {
+        "label": "6초",
+        "value": 6
+      },
+      {
+        "label": "7초",
+        "value": 7
+      },
+      {
+        "label": "8초",
+        "value": 8
+      },
+      {
+        "label": "9초",
+        "value": 9
+      },
+      {
+        "label": "10초",
+        "value": 10
+      },
+      {
+        "label": "11초",
+        "value": 11
+      },
+      {
+        "label": "12초",
+        "value": 12
+      },
+      {
+        "label": "13초",
+        "value": 13
+      },
+      {
+        "label": "14초",
+        "value": 14
+      },
+      {
+        "label": "15초",
+        "value": 15
+      },
+      {
+        "label": "16초",
+        "value": 16
+      },
+      {
+        "label": "17초",
+        "value": 17
+      },
+      {
+        "label": "18초",
+        "value": 18
+      },
+      {
+        "label": "19초",
+        "value": 19
+      },
+      {
+        "label": "20초",
+        "value": 20
+      },
+      {
+        "label": "21초",
+        "value": 21
+      },
+      {
+        "label": "22초",
+        "value": 22
+      },
+      {
+        "label": "23초",
+        "value": 23
+      },
+      {
+        "label": "24초",
+        "value": 24
+      },
+      {
+        "label": "25초",
+        "value": 25
+      },
+      {
+        "label": "26초",
+        "value": 26
+      },
+      {
+        "label": "27초",
+        "value": 27
+      },
+      {
+        "label": "28초",
+        "value": 28
+      },
+      {
+        "label": "29초",
+        "value": 29
+      },
+      {
+        "label": "30초",
+        "value": 30
+      },
+      {
+        "label": "31초",
+        "value": 31
+      },
+      {
+        "label": "32초",
+        "value": 32
+      },
+      {
+        "label": "33초",
+        "value": 33
+      },
+      {
+        "label": "34초",
+        "value": 34
+      },
+      {
+        "label": "35초",
+        "value": 35
+      },
+      {
+        "label": "36초",
+        "value": 36
+      },
+      {
+        "label": "37초",
+        "value": 37
+      },
+      {
+        "label": "38초",
+        "value": 38
+      },
+      {
+        "label": "39초",
+        "value": 39
+      },
+      {
+        "label": "40초",
+        "value": 40
+      },
+      {
+        "label": "41초",
+        "value": 41
+      },
+      {
+        "label": "42초",
+        "value": 42
+      },
+      {
+        "label": "43초",
+        "value": 43
+      },
+      {
+        "label": "44초",
+        "value": 44
+      },
+      {
+        "label": "45초",
+        "value": 45
+      },
+      {
+        "label": "46초",
+        "value": 46
+      },
+      {
+        "label": "47초",
+        "value": 47
+      },
+      {
+        "label": "48초",
+        "value": 48
+      },
+      {
+        "label": "49초",
+        "value": 49
+      },
+      {
+        "label": "50초",
+        "value": 50
+      },
+      {
+        "label": "51초",
+        "value": 51
+      },
+      {
+        "label": "52초",
+        "value": 52
+      },
+      {
+        "label": "53초",
+        "value": 53
+      },
+      {
+        "label": "54초",
+        "value": 54
+      },
+      {
+        "label": "55초",
+        "value": 55
+      },
+      {
+        "label": "56초",
+        "value": 56
+      },
+      {
+        "label": "57초",
+        "value": 57
+      },
+      {
+        "label": "58초",
+        "value": 58
+      },
+      {
+        "label": "59초",
+        "value": 59
+      }
+    ],
+    "payload": 30,
+    "topic": "dd_on_pump_b2_s",
+    "topicType": "str",
+    "className": "",
     "x": 310,
+    "y": 1560,
+    "wires": [
+      [
+        "fn_dd_pump_duration"
+      ]
+    ]
+  },
+  {
+    "id": "dd_off_pump_b2_m",
+    "type": "ui_dropdown",
+    "z": "tab_cronus_dash",
+    "name": "OFF분 B2",
+    "label": "",
+    "tooltip": "",
+    "group": "ui_grp_manual",
+    "order": 19,
+    "width": "2",
+    "height": 0,
+    "passthru": false,
+    "multiple": false,
+    "options": [
+      {
+        "label": "0분",
+        "value": 0
+      },
+      {
+        "label": "1분",
+        "value": 1
+      },
+      {
+        "label": "2분",
+        "value": 2
+      },
+      {
+        "label": "3분",
+        "value": 3
+      },
+      {
+        "label": "4분",
+        "value": 4
+      },
+      {
+        "label": "5분",
+        "value": 5
+      },
+      {
+        "label": "6분",
+        "value": 6
+      },
+      {
+        "label": "7분",
+        "value": 7
+      },
+      {
+        "label": "8분",
+        "value": 8
+      },
+      {
+        "label": "9분",
+        "value": 9
+      },
+      {
+        "label": "10분",
+        "value": 10
+      },
+      {
+        "label": "11분",
+        "value": 11
+      },
+      {
+        "label": "12분",
+        "value": 12
+      },
+      {
+        "label": "13분",
+        "value": 13
+      },
+      {
+        "label": "14분",
+        "value": 14
+      },
+      {
+        "label": "15분",
+        "value": 15
+      },
+      {
+        "label": "16분",
+        "value": 16
+      },
+      {
+        "label": "17분",
+        "value": 17
+      },
+      {
+        "label": "18분",
+        "value": 18
+      },
+      {
+        "label": "19분",
+        "value": 19
+      },
+      {
+        "label": "20분",
+        "value": 20
+      },
+      {
+        "label": "21분",
+        "value": 21
+      },
+      {
+        "label": "22분",
+        "value": 22
+      },
+      {
+        "label": "23분",
+        "value": 23
+      },
+      {
+        "label": "24분",
+        "value": 24
+      },
+      {
+        "label": "25분",
+        "value": 25
+      },
+      {
+        "label": "26분",
+        "value": 26
+      },
+      {
+        "label": "27분",
+        "value": 27
+      },
+      {
+        "label": "28분",
+        "value": 28
+      },
+      {
+        "label": "29분",
+        "value": 29
+      },
+      {
+        "label": "30분",
+        "value": 30
+      },
+      {
+        "label": "31분",
+        "value": 31
+      },
+      {
+        "label": "32분",
+        "value": 32
+      },
+      {
+        "label": "33분",
+        "value": 33
+      },
+      {
+        "label": "34분",
+        "value": 34
+      },
+      {
+        "label": "35분",
+        "value": 35
+      },
+      {
+        "label": "36분",
+        "value": 36
+      },
+      {
+        "label": "37분",
+        "value": 37
+      },
+      {
+        "label": "38분",
+        "value": 38
+      },
+      {
+        "label": "39분",
+        "value": 39
+      },
+      {
+        "label": "40분",
+        "value": 40
+      },
+      {
+        "label": "41분",
+        "value": 41
+      },
+      {
+        "label": "42분",
+        "value": 42
+      },
+      {
+        "label": "43분",
+        "value": 43
+      },
+      {
+        "label": "44분",
+        "value": 44
+      },
+      {
+        "label": "45분",
+        "value": 45
+      },
+      {
+        "label": "46분",
+        "value": 46
+      },
+      {
+        "label": "47분",
+        "value": 47
+      },
+      {
+        "label": "48분",
+        "value": 48
+      },
+      {
+        "label": "49분",
+        "value": 49
+      },
+      {
+        "label": "50분",
+        "value": 50
+      },
+      {
+        "label": "51분",
+        "value": 51
+      },
+      {
+        "label": "52분",
+        "value": 52
+      },
+      {
+        "label": "53분",
+        "value": 53
+      },
+      {
+        "label": "54분",
+        "value": 54
+      },
+      {
+        "label": "55분",
+        "value": 55
+      },
+      {
+        "label": "56분",
+        "value": 56
+      },
+      {
+        "label": "57분",
+        "value": 57
+      },
+      {
+        "label": "58분",
+        "value": 58
+      },
+      {
+        "label": "59분",
+        "value": 59
+      }
+    ],
+    "payload": 1,
+    "topic": "dd_off_pump_b2_m",
+    "topicType": "str",
+    "className": "",
+    "x": 320,
     "y": 1580,
+    "wires": [
+      [
+        "fn_dd_pump_duration"
+      ]
+    ]
+  },
+  {
+    "id": "dd_off_pump_b2_s",
+    "type": "ui_dropdown",
+    "z": "tab_cronus_dash",
+    "name": "OFF초 B2",
+    "label": "",
+    "tooltip": "",
+    "group": "ui_grp_manual",
+    "order": 20,
+    "width": "2",
+    "height": 0,
+    "passthru": false,
+    "multiple": false,
+    "options": [
+      {
+        "label": "0초",
+        "value": 0
+      },
+      {
+        "label": "1초",
+        "value": 1
+      },
+      {
+        "label": "2초",
+        "value": 2
+      },
+      {
+        "label": "3초",
+        "value": 3
+      },
+      {
+        "label": "4초",
+        "value": 4
+      },
+      {
+        "label": "5초",
+        "value": 5
+      },
+      {
+        "label": "6초",
+        "value": 6
+      },
+      {
+        "label": "7초",
+        "value": 7
+      },
+      {
+        "label": "8초",
+        "value": 8
+      },
+      {
+        "label": "9초",
+        "value": 9
+      },
+      {
+        "label": "10초",
+        "value": 10
+      },
+      {
+        "label": "11초",
+        "value": 11
+      },
+      {
+        "label": "12초",
+        "value": 12
+      },
+      {
+        "label": "13초",
+        "value": 13
+      },
+      {
+        "label": "14초",
+        "value": 14
+      },
+      {
+        "label": "15초",
+        "value": 15
+      },
+      {
+        "label": "16초",
+        "value": 16
+      },
+      {
+        "label": "17초",
+        "value": 17
+      },
+      {
+        "label": "18초",
+        "value": 18
+      },
+      {
+        "label": "19초",
+        "value": 19
+      },
+      {
+        "label": "20초",
+        "value": 20
+      },
+      {
+        "label": "21초",
+        "value": 21
+      },
+      {
+        "label": "22초",
+        "value": 22
+      },
+      {
+        "label": "23초",
+        "value": 23
+      },
+      {
+        "label": "24초",
+        "value": 24
+      },
+      {
+        "label": "25초",
+        "value": 25
+      },
+      {
+        "label": "26초",
+        "value": 26
+      },
+      {
+        "label": "27초",
+        "value": 27
+      },
+      {
+        "label": "28초",
+        "value": 28
+      },
+      {
+        "label": "29초",
+        "value": 29
+      },
+      {
+        "label": "30초",
+        "value": 30
+      },
+      {
+        "label": "31초",
+        "value": 31
+      },
+      {
+        "label": "32초",
+        "value": 32
+      },
+      {
+        "label": "33초",
+        "value": 33
+      },
+      {
+        "label": "34초",
+        "value": 34
+      },
+      {
+        "label": "35초",
+        "value": 35
+      },
+      {
+        "label": "36초",
+        "value": 36
+      },
+      {
+        "label": "37초",
+        "value": 37
+      },
+      {
+        "label": "38초",
+        "value": 38
+      },
+      {
+        "label": "39초",
+        "value": 39
+      },
+      {
+        "label": "40초",
+        "value": 40
+      },
+      {
+        "label": "41초",
+        "value": 41
+      },
+      {
+        "label": "42초",
+        "value": 42
+      },
+      {
+        "label": "43초",
+        "value": 43
+      },
+      {
+        "label": "44초",
+        "value": 44
+      },
+      {
+        "label": "45초",
+        "value": 45
+      },
+      {
+        "label": "46초",
+        "value": 46
+      },
+      {
+        "label": "47초",
+        "value": 47
+      },
+      {
+        "label": "48초",
+        "value": 48
+      },
+      {
+        "label": "49초",
+        "value": 49
+      },
+      {
+        "label": "50초",
+        "value": 50
+      },
+      {
+        "label": "51초",
+        "value": 51
+      },
+      {
+        "label": "52초",
+        "value": 52
+      },
+      {
+        "label": "53초",
+        "value": 53
+      },
+      {
+        "label": "54초",
+        "value": 54
+      },
+      {
+        "label": "55초",
+        "value": 55
+      },
+      {
+        "label": "56초",
+        "value": 56
+      },
+      {
+        "label": "57초",
+        "value": 57
+      },
+      {
+        "label": "58초",
+        "value": 58
+      },
+      {
+        "label": "59초",
+        "value": 59
+      }
+    ],
+    "payload": 30,
+    "topic": "dd_off_pump_b2_s",
+    "topicType": "str",
+    "className": "",
+    "x": 330,
+    "y": 1600,
+    "wires": [
+      [
+        "fn_dd_pump_duration"
+      ]
+    ]
+  },
+  {
+    "id": "fn_dd_pump_duration",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "펌프 분·초→초 합산",
+    "func": "const key = (msg.topic || '').toString();\nconst v = Number(msg.payload);\nif (!key) return null;\nflow.set(key, isNaN(v) ? 0 : v);\nconst mm = key.match(/^dd_(on|off)_(pump_[a-z0-9]+)_(m|s)$/);\nif (!mm) return null;\nconst kind = mm[1];\nconst pk = mm[2];\nconst minutes = Number(flow.get('dd_' + kind + '_' + pk + '_m')) || 0;\nconst seconds = Number(flow.get('dd_' + kind + '_' + pk + '_s')) || 0;\nlet t = minutes * 60 + seconds;\nif (t < 1) t = 1;\nif (t > 3600) t = 3600;\nconst outTopic = kind + '_' + pk;\nflow.set(outTopic, t);\nmsg.topic = outTopic;\nmsg.payload = t;\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 520,
+    "y": 1300,
     "wires": [
       [
         "fn_cmd_merge_v2"
@@ -1509,7 +5751,7 @@
     "order": 0,
     "width": "12",
     "height": "1",
-    "format": "<style>\n:root{\n  --cf-bg:#0b1220;\n  --cf-card:#0f1b31;\n  --cf-text:#e6edf7;\n  --cf-muted:#9db0cc;\n  --cf-accent:#4f8cff;\n}\nbody.nr-dashboard-theme md-content{\n  background: linear-gradient(180deg, #070c15 0%, var(--cf-bg) 60%, #070c15 100%) !important;\n  color: var(--cf-text) !important;\n}\n.nr-dashboard-theme .nr-dashboard-cardpanel,\n.nr-dashboard-theme .nr-dashboard-template{\n  background: var(--cf-card) !important;\n  border-radius: 14px !important;\n  box-shadow: 0 10px 30px rgba(0,0,0,.35) !important;\n  border: 1px solid rgba(255,255,255,.06) !important;\n}\n.nr-dashboard-theme .nr-dashboard-cardpanel .md-title{ color: var(--cf-text) !important; font-weight: 700 !important; }\n.nr-dashboard-theme .nr-dashboard-cardpanel .md-subhead{ color: var(--cf-muted) !important; }\n.nr-dashboard-theme md-switch .md-bar{ opacity:.75; }\n.nr-dashboard-theme md-switch.md-checked .md-bar{ background: rgba(79,140,255,.55) !important; }\n.nr-dashboard-theme md-switch.md-checked .md-thumb{ background: var(--cf-accent) !important; }\n\n/* raw text blocks (status/tele/cmd): wrap + thin font + scroll */\n.cf-raw{ width:100%; }\n.cf-raw-title{ color: var(--cf-muted); font-size: 12px; margin-bottom: 6px; }\n.cf-raw pre{\n  margin:0;\n  padding:10px 12px;\n  background: rgba(255,255,255,.04);\n  border: 1px solid rgba(255,255,255,.06);\n  border-radius: 12px;\n  color: var(--cf-text);\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace;\n  font-size: 12px;\n  font-weight: 400;\n  line-height: 1.35;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  max-height: 140px;\n  overflow: auto;\n}\n</style>",
+    "format": "<style>\n:root{\n  --cf-bg:#0b1220;\n  --cf-card:#0f1b31;\n  --cf-text:#e6edf7;\n  --cf-muted:#9db0cc;\n  --cf-accent:#4f8cff;\n}\nbody.nr-dashboard-theme md-content{\n  background: linear-gradient(180deg, #070c15 0%, var(--cf-bg) 60%, #070c15 100%) !important;\n  color: var(--cf-text) !important;\n}\n.nr-dashboard-theme .nr-dashboard-cardpanel,\n.nr-dashboard-theme .nr-dashboard-template{\n  background: var(--cf-card) !important;\n  border-radius: 14px !important;\n  box-shadow: 0 10px 30px rgba(0,0,0,.35) !important;\n  border: 1px solid rgba(255,255,255,.06) !important;\n}\n.nr-dashboard-theme .nr-dashboard-cardpanel .md-title{ color: var(--cf-text) !important; font-weight: 700 !important; }\n.nr-dashboard-theme .nr-dashboard-cardpanel .md-subhead{ color: var(--cf-muted) !important; }\n.nr-dashboard-theme md-switch .md-bar{ opacity:.75; }\n.nr-dashboard-theme md-switch.md-checked .md-bar{ background: rgba(79,140,255,.55) !important; }\n.nr-dashboard-theme md-switch.md-checked .md-thumb{ background: var(--cf-accent) !important; }\n\n/* 자동/수동 모드 스위치: ON=자동(녹색), OFF=수동(빨강) */\n.nr-dashboard-theme md-switch.cf-mode .md-bar{ background: rgba(220,53,69,.45) !important; }\n.nr-dashboard-theme md-switch.cf-mode .md-thumb{ background: rgba(220,53,69,1) !important; }\n.nr-dashboard-theme md-switch.cf-mode.md-checked .md-bar{ background: rgba(40,167,69,.55) !important; }\n.nr-dashboard-theme md-switch.cf-mode.md-checked .md-thumb{ background: rgba(40,167,69,1) !important; }\n\n/* raw text blocks (status/tele/cmd): wrap + thin font + scroll */\n.cf-raw{ width:100%; }\n.cf-raw-title{ color: var(--cf-muted); font-size: 12px; margin-bottom: 6px; }\n.cf-raw pre{\n  margin:0;\n  padding:10px 12px;\n  background: rgba(255,255,255,.04);\n  border: 1px solid rgba(255,255,255,.06);\n  border-radius: 12px;\n  color: var(--cf-text);\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace;\n  font-size: 12px;\n  font-weight: 400;\n  line-height: 1.35;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  max-height: 140px;\n  overflow: auto;\n}\n\n/* tele 요약 + 보조 텍스트 */\n.cf-muted{ color: var(--cf-muted); font-size: 11px; }\n.cf-tele-preview{ width:100%; margin-top: 6px; }\n.cf-tele-preview pre{\n  margin:0;\n  padding:8px 10px;\n  background: rgba(255,255,255,.03);\n  border: 1px solid rgba(255,255,255,.06);\n  border-radius: 10px;\n  color: var(--cf-text);\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace;\n  font-size: 11px;\n  line-height: 1.35;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  max-height: 88px;\n  overflow-y: auto;\n  overflow-x: hidden;\n}\n\n/* 숫자 입력 스핀 숨김(남아 있는 ui_numeric 등) */\n.nr-dashboard-theme input[type=number]::-webkit-outer-spin-button,\n.nr-dashboard-theme input[type=number]::-webkit-inner-spin-button{\n  -webkit-appearance: none;\n  margin: 0;\n}\n.nr-dashboard-theme input[type=number]{ -moz-appearance: textfield; }\n\n/* 드롭다운: tele 갱신 시 트랜지션으로 보이는 깜빡임 완화 */\n.nr-dashboard-theme md-select .md-select-value{ transition:none !important; }\n</style>",
     "storeOutMessages": false,
     "fwdInMessages": false,
     "resendOnRefresh": true,
@@ -1527,7 +5769,7 @@
     "order": 0,
     "width": "12",
     "height": "1",
-    "format": "<style>\n/* common row */\n.cf-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 0; }\n.cf-label{ color: var(--cf-text); font-size: 13px; font-weight: 500; }\n\n/* ON/OFF status pills */\n.cf-pill{ min-width:54px; text-align:center; padding:6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing:.2px; }\n.cf-on{ background: rgba(40,167,69,.18); border:1px solid rgba(40,167,69,.45); color:#7CFF9C; }\n.cf-off{ background: rgba(220,53,69,.14); border:1px solid rgba(220,53,69,.45); color:#FF7C88; }\n\n/* dot lamps */\n.cf-dot{ width:12px; height:12px; border-radius:50%; box-shadow: 0 0 0 1px rgba(255,255,255,.12) inset; }\n.cf-dot-on{ background: rgba(40,167,69,1); box-shadow: 0 0 14px rgba(40,167,69,.55); }\n.cf-dot-off{ background: rgba(220,53,69,1); box-shadow: 0 0 14px rgba(220,53,69,.35); }\n</style>",
+    "format": "<style>\n/* common row */\n.cf-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 0; min-width:0; }\n.cf-label{ color: var(--cf-text); font-size: 13px; font-weight: 500; min-width:0; }\n\n/* A/B Bed 상태 줄: 가로 스크롤바 방지 */\n.cf-row-bed{ overflow-x: hidden; width:100%; }\n.cf-row-bed .cf-pill{ flex-shrink:0; }\n\n/* Pi 서비스 줄 */\n.cf-row-pi-srv{ overflow-x: hidden; }\n\n/* ON/OFF status pills */\n.cf-pill{ min-width:54px; text-align:center; padding:6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing:.2px; }\n.cf-on{ background: rgba(40,167,69,.18); border:1px solid rgba(40,167,69,.45); color:#7CFF9C; }\n.cf-off{ background: rgba(220,53,69,.14); border:1px solid rgba(220,53,69,.45); color:#FF7C88; }\n\n/* dot lamps */\n.cf-dot{ width:12px; height:12px; border-radius:50%; box-shadow: 0 0 0 1px rgba(255,255,255,.12) inset; }\n.cf-dot-on{ background: rgba(40,167,69,1); box-shadow: 0 0 14px rgba(40,167,69,.55); }\n.cf-dot-off{ background: rgba(220,53,69,1); box-shadow: 0 0 14px rgba(220,53,69,.35); }\n</style>",
     "storeOutMessages": false,
     "fwdInMessages": false,
     "resendOnRefresh": true,

@@ -1,7 +1,7 @@
 ﻿# Thalia 등 개발 PC에서 실행: ida 의 Samba [MyCode] path 를 CronusFarm 으로 맞춤(pi 스크립트 업로드 후 sudo 실행)
 param(
   [string] $PiHost = "",
-  [string] $PiHostLan = "192.168.1.22",
+  [string] $PiHostLan = "",
   [string] $PiHostWan = "ida.mango-larch.ts.net",
   [string] $PiUser = "dooly"
 )
