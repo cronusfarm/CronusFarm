@@ -84,44 +84,66 @@ static void beepLongLocal() {
   }
 }
 
+static void lcdWriteLine20(uint8_t row, const char line20[20]) {
+  lcd.setCursor(0, row);
+  for (uint8_t i = 0; i < 20; i++) {
+    lcd.write((uint8_t)line20[i]);
+  }
+}
+
 static void onReceiveHandler(int /*numBytes*/) {
-  while (Wire.available() >= 1) {
-    uint8_t op = Wire.read();
+  // Wire 버퍼가 중간에 끊기면 다음 바이트가 op로 오해되어 화면이 깨질 수 있어
+  // 수신 내용을 한 번에 버퍼링한 뒤 안전하게 파싱합니다.
+  uint8_t rx[32];
+  uint8_t rlen = 0;
+  while (Wire.available() && rlen < (uint8_t)sizeof(rx)) {
+    rx[rlen++] = (uint8_t)Wire.read();
+  }
+
+  uint8_t i = 0;
+  while (i < rlen) {
+    uint8_t op = rx[i++];
     if (op == PANEL_CMD_CLEAR) {
       lcd.clear();
-    } else if (op == PANEL_CMD_SET_LINE) {
-      if (Wire.available() < 2) {
-        return;
-      }
-      uint8_t row = Wire.read();
-      uint8_t len = Wire.read();
-      if (row > 3) {
-        row = 3;
-      }
-      if (len > 20) {
-        len = 20;
-      }
-      char buf[21];
-      for (uint8_t i = 0; i < len; i++) {
-        if (!Wire.available()) {
-          break;
-        }
-        buf[i] = (char)Wire.read();
-      }
-      buf[len] = '\0';
-      lcd.setCursor(0, row);
-      lcd.print(buf);
-    } else if (op == PANEL_CMD_BEEP) {
-      if (!Wire.available()) {
-        return;
-      }
-      uint8_t m = Wire.read();
-      if (m == 0) {
-        beepShortLocal();
-      } else {
-        beepLongLocal();
-      }
+      continue;
     }
+
+    if (op == PANEL_CMD_SET_LINE) {
+      if ((uint8_t)(rlen - i) < 2) {
+        break;
+      }
+      uint8_t row = rx[i++];
+      uint8_t len = rx[i++];
+      if (row > 3) row = 3;
+      if (len > 20) len = 20;
+      if ((uint8_t)(rlen - i) < len) {
+        break;
+      }
+
+      char line20[20];
+      for (uint8_t k = 0; k < 20; k++) {
+        line20[k] = ' ';
+      }
+      for (uint8_t k = 0; k < len; k++) {
+        line20[k] = (char)rx[i + k];
+      }
+      i = (uint8_t)(i + len);
+      lcdWriteLine20(row, line20);
+      continue;
+    }
+
+    if (op == PANEL_CMD_BEEP) {
+      if ((uint8_t)(rlen - i) < 1) {
+        break;
+      }
+      uint8_t m = rx[i++];
+      if (m == 0) beepShortLocal();
+      else beepLongLocal();
+      continue;
+    }
+
+    // 알 수 없는 op: 남은 바이트는 폐기(동기화 목적)
+    break;
   }
 }
 
