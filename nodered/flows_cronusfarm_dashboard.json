@@ -5903,5 +5903,23 @@
     "x": 0,
     "y": 0,
     "wires": []
+  },
+  {
+    "id": "ui_tpl_css_homekit_v2",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_pi",
+    "name": "HomeKit CSS (Dashboard2)",
+    "order": 0,
+    "width": "12",
+    "height": "1",
+    "format": "<style>\n/* HomeKit 스타일(Glassmorphism) — Dashboard 2(@flowfuse, Vuetify) + Dashboard 1 fallback */\n:root{\n  --hk-bg:#F2F2F7;\n  --hk-card: rgba(255, 255, 255, 0.78);\n  --hk-radius: 20px;\n  --hk-shadow: 0 4px 20px rgba(0,0,0,0.05);\n  --hk-text:#111;\n  --hk-muted:#6b7280;\n  --hk-accent:#007AFF;\n}\n\n/* 전체 배경 */\nhtml, body{ background: var(--hk-bg) !important; }\n\n/* -------------------- Dashboard 2 (Vuetify) -------------------- */\n/* Vuetify 앱 루트 */\n.v-application{ background: var(--hk-bg) !important; color: var(--hk-text) !important; }\n\n/* 카드(그룹/위젯) — Vuetify card/sheet 기반 */\n.v-card, .v-sheet{\n  background: var(--hk-card) !important;\n  backdrop-filter: blur(12px);\n  -webkit-backdrop-filter: blur(12px);\n  border-radius: var(--hk-radius) !important;\n  box-shadow: var(--hk-shadow) !important;\n  border: 1px solid rgba(255,255,255,0.35) !important;\n}\n\n/* 그룹(섹션) 타이틀: 환경마다 다를 수 있어 보수적으로 적용 */\n.nrdb-ui-group-title, .nrdb-ui-group__title, .v-card-title, .v-toolbar-title{\n  font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif !important;\n  font-weight: 800 !important;\n  color: var(--hk-text) !important;\n}\n\n/* 버튼 */\n.v-btn{\n  border-radius: 15px !important;\n  background: rgba(255,255,255,0.92) !important;\n  color: #333 !important;\n  box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;\n  transition: transform 0.12s ease, background-color 0.2s ease;\n}\n.v-btn:active{ transform: scale(0.98); background: rgba(229,229,234,0.95) !important; }\n\n/* 스위치(토글) — 과한 오버라이드는 피하고, 크기/여백만 정리 */\n.v-switch{ margin-top: 0 !important; margin-bottom: 0 !important; }\n\n/* -------------------- Dashboard 1 fallback (Angular) -------------------- */\nbody{ background-color: var(--hk-bg) !important; }\n.nr-dashboard-group{\n  background: var(--hk-card) !important;\n  backdrop-filter: blur(10px);\n  border-radius: var(--hk-radius) !important;\n  box-shadow: var(--hk-shadow) !important;\n  border: 1px solid rgba(255,255,255,0.3) !important;\n  margin: 12px !important;\n  padding: 10px !important;\n}\n.nr-dashboard-group-title{\n  font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif !important;\n  font-weight: 700 !important;\n  color: #000 !important;\n  font-size: 1.2rem !important;\n  padding-bottom: 8px !important;\n}\n.nr-dashboard-ui_button{ border-radius: 15px !important; }\n\n/* -------------------- 반응형 타일(템플릿용) -------------------- */\n.hk-container{\n  display: grid;\n  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));\n  gap: 14px;\n  padding: 8px;\n  font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif;\n}\n.hk-card{\n  background: rgba(255, 255, 255, 0.7);\n  backdrop-filter: blur(14px);\n  -webkit-backdrop-filter: blur(14px);\n  border-radius: 22px;\n  padding: 16px;\n  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);\n  border: 1px solid rgba(255, 255, 255, 0.35);\n  display:flex;\n  flex-direction: column;\n  justify-content: space-between;\n  aspect-ratio: 1 / 1;\n}\n.hk-card:active{ transform: scale(0.98); background: rgba(255,255,255,0.92); }\n.hk-icon{ font-size: 22px; margin-bottom: 10px; color: #8E8E93; }\n.hk-value{ font-size: 1.7rem; font-weight: 700; color: #000; margin: 4px 0; }\n.hk-label{ font-size: 0.9rem; font-weight: 600; color: #8E8E93; }\n\n/* 작은 화면에서는 카드 간격 축소 */\n@media (max-width: 420px){\n  .hk-container{ gap: 10px; padding: 6px; }\n  .hk-card{ padding: 14px; border-radius: 18px; }\n}\n</style>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "global",
+    "x": 0,
+    "y": 0,
+    "wires": []
   }
 ]
