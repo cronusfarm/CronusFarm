@@ -60,9 +60,13 @@ static const int PUMP_B2 = 8;
 static bool gPanelReady = false;
 static bool gLcdWelcomed = false;
 static uint32_t gLcdWelcomeAtMs = 0;
-static uint32_t gLcdNextRotateMs = 0;
-static uint8_t gLcdRotateIdx = 0;
 static uint32_t gLastLcdRtcMs = 0;
+// 패널 브라우즈 화면 갱신(엔코더·적용 직후 + 주기적 STATE 반영)
+static bool gPanelBrowseDirty = true;
+static uint32_t gLastBrowseDrawMs = 0;
+static const uint32_t PANEL_WELCOME_MS = 5000;
+static const uint32_t PANEL_BROWSE_REFRESH_MS = 400;
+static uint32_t gNextPanelProbeMs = 0;
 
 static bool panelProbe();
 static void panelClear();
@@ -71,7 +75,7 @@ static void panelBeepShort();
 static void panelBeepLong();
 static void panelPollEvents(uint32_t nowMs);
 static void lcdWelcomeIfOk(uint32_t nowMs, bool wifiOk, bool mqttOk);
-static void lcdRotateStatus(uint32_t nowMs);
+static void lcdBrowseDraw(uint32_t nowMs);
 
 // ============================================================
 // LCD + 엔코더 UI는 채널 정의/배열 이후에 선언(선언 순서 의존성 방지)
@@ -306,23 +310,28 @@ static void lcdWelcomeIfOk(uint32_t nowMs, bool wifiOk, bool mqttOk) {
 
   gLcdWelcomed = true;
   gLcdWelcomeAtMs = nowMs;
-  gLcdNextRotateMs = nowMs + 10000;
-  gLcdRotateIdx = 0;
   gLastLcdRtcMs = nowMs;
+  gPanelBrowseDirty = true;
 }
 
-static void lcdRotateStatus(uint32_t nowMs) {
-  if (!gPanelReady) {
+// 환영(5초) 이후: 채널 순서 LED A1→…→Pump B2, 엔코더로만 이동
+static void lcdBrowseDraw(uint32_t nowMs) {
+  if (!gPanelReady || !gLcdWelcomed) {
     return;
   }
-  if (!gLcdWelcomed) {
+  if (gUiMode != UI_BROWSE) {
     return;
   }
-  if (nowMs < gLcdNextRotateMs) {
+  if ((nowMs - gLcdWelcomeAtMs) < PANEL_WELCOME_MS) {
     return;
   }
+  if (!gPanelBrowseDirty && (nowMs - gLastBrowseDrawMs) < PANEL_BROWSE_REFRESH_MS) {
+    return;
+  }
+  gPanelBrowseDirty = false;
+  gLastBrowseDrawMs = nowMs;
 
-  const uint8_t ch = (uint8_t)(gLcdRotateIdx % CH_COUNT);
+  const uint8_t ch = gUiCh;
   const int pin = CH_PIN[ch];
   const bool on = (digitalRead(pin) == HIGH);
   const bool isAuto = chAuto[ch];
@@ -332,19 +341,16 @@ static void lcdRotateStatus(uint32_t nowMs) {
   char line2[21];
   char line3[21];
   snprintf(line0, sizeof(line0), "%s (%s)", CH_LABEL_KO[ch], chPinLabel(ch));
-  snprintf(line1, sizeof(line1), "MODE: %s", isAuto ? "AUTO" : "MAN ");
-  snprintf(line2, sizeof(line2), "STATE: %s", on ? "ON " : "OFF");
-  uint8_t next = (uint8_t)((ch + 1) % CH_COUNT);
-  snprintf(line3, sizeof(line3), "NEXT: %s", CH_LABEL_KO[next]);
+  snprintf(line1, sizeof(line1), "MODE:%s", isAuto ? "AUTO" : "MAN ");
+  snprintf(line2, sizeof(line2), "STATE:%s", on ? "ON " : "OFF");
+  snprintf(line3, sizeof(line3), "CH%u/%u Dial Nxt Push",
+           (unsigned)(ch + 1), (unsigned)CH_COUNT);
 
   panelClear();
   panelPrintLine(0, line0);
   panelPrintLine(1, line1);
   panelPrintLine(2, line2);
   panelPrintLine(3, line3);
-
-  gLcdRotateIdx++;
-  gLcdNextRotateMs = nowMs + 2000;
 }
 
 // (LCD + 엔코더 UI 구현은 chManual/chState 선언 이후로 이동)
@@ -387,13 +393,27 @@ static void lcdRenderUi(uint32_t nowMs, bool wifiOk, bool mqttOk) {
   char line1[21];
   char line2[21];
   char line3[21];
-  snprintf(line0, sizeof(line0), "%s %s", CH_LABEL_KO[gUiCh], chPinLabel(gUiCh));
-  snprintf(line1, sizeof(line1), " %s %s %s", wifiOk ? "WiFi " : "WiFiX",
-           mqttOk ? "MQTT " : "MQTTX", gUiMode == UI_EDIT ? "EDIT" : "BROW");
-  snprintf(line2, sizeof(line2), " SEL:%s MODE:%s", gUiPickOn ? "ON " : "OFF",
-           chAuto[gUiCh] ? "A" : "M");
-  snprintf(line3, sizeof(line3), "%s", gUiMode == UI_EDIT ? "Click=Apply" : "Click=Select");
 
+  // WiFi+MQTT 연결 전 대기 화면
+  if (!gLcdWelcomed) {
+    snprintf(line0, sizeof(line0), "%s %s", CH_LABEL_KO[gUiCh], chPinLabel(gUiCh));
+    snprintf(line1, sizeof(line1), "%s %s", wifiOk ? "WiFi OK" : "WiFi --",
+             mqttOk ? " MQTT OK" : " MQTT --");
+    snprintf(line2, sizeof(line2), "Waiting link...");
+    snprintf(line3, sizeof(line3), "");
+    panelClear();
+    panelPrintLine(0, line0);
+    panelPrintLine(1, line1);
+    panelPrintLine(2, line2);
+    panelPrintLine(3, line3);
+    return;
+  }
+
+  // 설정 변경 모드(EDIT)
+  snprintf(line0, sizeof(line0), "%s (%s)", CH_LABEL_KO[gUiCh], chPinLabel(gUiCh));
+  snprintf(line1, sizeof(line1), "MODE: SET (EDIT)");
+  snprintf(line2, sizeof(line2), "OUT:%s", gUiPickOn ? "ON " : "OFF");
+  snprintf(line3, sizeof(line3), "Dial:On/Off Push:OK");
   panelClear();
   panelPrintLine(0, line0);
   panelPrintLine(1, line1);
@@ -406,6 +426,7 @@ static void encoderDelta(int8_t d) {
     return;
   }
   if (gUiMode == UI_BROWSE) {
+    uint8_t prevCh = gUiCh;
     int16_t n = (int16_t)gUiCh + (d > 0 ? 1 : -1);
     if (n < 0) {
       n = (int16_t)CH_COUNT - 1;
@@ -415,8 +436,17 @@ static void encoderDelta(int8_t d) {
     }
     gUiCh = (uint8_t)n;
     gUiPickOn = (digitalRead(CH_PIN[gUiCh]) == HIGH);
+    if (prevCh != gUiCh && gLcdWelcomed &&
+        (int32_t)(millis() - gLcdWelcomeAtMs) >= (int32_t)PANEL_WELCOME_MS) {
+      beepShort();
+      gPanelBrowseDirty = true;
+    }
   } else {
+    bool prev = gUiPickOn;
     gUiPickOn = !gUiPickOn;
+    if (prev != gUiPickOn) {
+      beepShort();
+    }
   }
 }
 
@@ -426,6 +456,9 @@ static void panelHandleClick(uint32_t nowMs) {
   }
   gBtnLastMs = nowMs;
   if (gUiMode == UI_BROWSE) {
+    if (!gLcdWelcomed || (int32_t)(millis() - gLcdWelcomeAtMs) < (int32_t)PANEL_WELCOME_MS) {
+      return;
+    }
     gUiMode = UI_EDIT;
     gUiPickOn = (digitalRead(CH_PIN[gUiCh]) == HIGH);
     beepShort();
@@ -434,6 +467,7 @@ static void panelHandleClick(uint32_t nowMs) {
     beepLong();
     publishTelemetry();
     gUiMode = UI_BROWSE;
+    gPanelBrowseDirty = true;
   }
 }
 
@@ -1033,6 +1067,19 @@ void loop() {
   pollMqtt();
 
   uint32_t now = millis();
+  // I2C 패널은 전원/리셋 타이밍으로 setup()에서 프로브가 실패할 수 있어,
+  // loop에서 주기적으로 재시도하여 “부팅 화면에서 멈춤” 상태를 자동 복구합니다.
+  if (!gPanelReady && (int32_t)(now - gNextPanelProbeMs) >= 0) {
+    gNextPanelProbeMs = now + 1000;
+    if (panelProbe()) {
+      gPanelReady = true;
+      gLcdWelcomed = false;
+      gPanelBrowseDirty = true;
+      panelClear();
+      panelPrintLine(0, "CronusFarm");
+      panelPrintLine(1, "패널 연결됨");
+    }
+  }
   panelPollEvents(now);
 
   // 채널별 AUTO/수동 처리
@@ -1072,24 +1119,21 @@ void loop() {
   bool mqttOk = mqtt.connected();
   matrixTick(now, wifiOk, mqttOk);
 
-  // LCD: 시스템 정상(WiFi+MQTT) 시 환영문구 → 10초 후 채널 상태 순환 표시
+  // 패널: WiFi+MQTT 후 환영(5초)→채널 브라우즈 / 다이얼=채널·편집·비프
   lcdWelcomeIfOk(now, wifiOk, mqttOk);
-  if (gLcdWelcomed && gUiMode == UI_BROWSE && (now - gLcdWelcomeAtMs) < 10000) {
+  if (gLcdWelcomed && gUiMode == UI_BROWSE &&
+      (now - gLcdWelcomeAtMs) < PANEL_WELCOME_MS) {
     if (now - gLastLcdRtcMs >= 1000) {
       gLastLcdRtcMs = now;
       lcdRefreshRtcDateTime();
     }
   }
-  // UI가 EDIT 중이면 UI 화면 우선
   if (gUiMode == UI_EDIT) {
     lcdRenderUi(now, wifiOk, mqttOk);
+  } else if (!gLcdWelcomed) {
+    lcdRenderUi(now, wifiOk, mqttOk);
   } else {
-    if (gLcdWelcomed && (now - gLcdWelcomeAtMs) >= 10000) {
-      lcdRotateStatus(now);
-    } else if (!gLcdWelcomed) {
-      lcdRenderUi(now, wifiOk, mqttOk);
-    }
-    // gLcdWelcomed && 첫 10초: 환영+RTC 유지 / gLcdWelcomed && 10초 후: 순환만
+    lcdBrowseDraw(now);
   }
 }
 
