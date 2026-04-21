@@ -385,7 +385,9 @@
     "y": 360,
     "wires": [
       [
-        "fn_seen_status"
+        "fn_seen_status",
+        "ui_txt_status_raw",
+        "ui_tpl_status_line"
       ]
     ]
   },
@@ -408,9 +410,84 @@
       [
         "fn_seen_tele",
         "fn_parse_tele_v2",
-        "ui_txt_tele_raw"
+        "ui_txt_tele_raw",
+        "fn_cf_arduino_wifi_tele"
       ]
     ]
+  },
+  {
+    "id": "fn_cf_arduino_wifi_tele",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "tele→Arduino SSID/IP",
+    "func": "const s = (msg.payload || '').toString();\nconst parts = s.split('|').map(x => x.trim());\nconst w = parts.find(x => x.startsWith('W:'));\nlet ssid = '-';\nlet ip = '-';\nif (w) {\n  const rest = w.slice(2).trim();\n  const k = rest.lastIndexOf(' ip=');\n  if (k >= 0 && rest.startsWith('ssid=')) {\n    ssid = rest.slice(5, k).trim();\n    ip = rest.slice(k + 4).trim();\n    if (!ssid) ssid = '-';\n    if (!ip) ip = '-';\n    if (ip === '0.0.0.0') ip = '-';\n  }\n}\nreturn [[{ payload: ssid }], [{ payload: ip }]];",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 400,
+    "y": 480,
+    "wires": [
+      [
+        "ui_txt_arduino_wifi_ssid"
+      ],
+      [
+        "ui_txt_arduino_wifi_ip"
+      ]
+    ]
+  },
+  {
+    "id": "ui_txt_arduino_wifi_ssid",
+    "type": "ui_text",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_arduino",
+    "order": 2,
+    "width": 0,
+    "height": 0,
+    "name": "Arduino WiFi SSID",
+    "label": "Arduino WiFi SSID",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 920,
+    "y": 400,
+    "wires": []
+  },
+  {
+    "id": "ui_txt_arduino_wifi_ip",
+    "type": "ui_text",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_arduino",
+    "order": 3,
+    "width": 0,
+    "height": 0,
+    "name": "Arduino IP",
+    "label": "Arduino IP",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 920,
+    "y": 440,
+    "wires": []
+  },
+  {
+    "id": "ui_txt_status_raw",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_arduino",
+    "order": 5,
+    "width": 0,
+    "height": 0,
+    "name": "status raw",
+    "label": "status(raw)",
+    "format": "<div class=\"cf-raw\"><div class=\"cf-raw-title\">status(raw)</div><pre>{{msg.payload}}</pre></div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 740,
+    "y": 360,
+    "wires": []
   },
   {
     "id": "ui_txt_tele_raw",
@@ -969,9 +1046,45 @@
     "y": 520,
     "wires": [
       [
-        
+        "ui_tpl_conn_line"
       ]
     ]
+  },
+  {
+    "id": "ui_tpl_conn_line",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_arduino",
+    "name": "연결 상태 표시",
+    "order": 1,
+    "width": "12",
+    "height": "2",
+    "format": "<div class=\"cf-row cf-arduino-conn\"><div class=\"cf-label\">Arduino 연결</div><div style=\"display:flex;align-items:center;gap:10px;flex-shrink:0;\"><div class=\"cf-dot\" ng-class=\"msg._ok ? 'cf-dot-on' : 'cf-dot-off'\"></div><div style=\"font-size:12px;color:var(--cf-text);white-space:nowrap;\">{{msg._ok ? 'online' : 'offline'}} <span class=\"cf-muted\">(tele {{msg.teleAge}}s / status {{msg.statusAge}}s)</span></div></div></div><div class=\"cf-tele-preview\"><div class=\"cf-raw-title\">tele(요약)</div><pre>{{msg.telePreview}}</pre></div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "ui_tpl_status_line",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_arduino",
+    "name": "Arduino MQTT 상태",
+    "order": 4,
+    "width": "12",
+    "height": "1",
+    "format": "<div class=\"cf-row cf-row-pi-srv\"><div class=\"cf-label\">Arduino MQTT</div><div style=\"display:flex;align-items:center;gap:10px;flex-shrink:0;\"><div class=\"cf-dot\" ng-class=\"(msg.payload||'').toString().trim()==='online' ? 'cf-dot-on' : 'cf-dot-off'\"></div><div style=\"font-size:12px;color:var(--cf-text);white-space:nowrap;\">{{(msg.payload||'').toString().trim()==='online' ? 'online' : 'offline'}}</div></div></div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
   },
   {
     "id": "fn_parse_tele_v2",
