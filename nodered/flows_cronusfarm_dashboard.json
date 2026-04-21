@@ -5918,7 +5918,7 @@
     "type": "function",
     "z": "tab_cronus_flexdash",
     "name": "FlexDash: 수동고정+ON/OFF",
-    "func": "const devId = flow.get('deviceId') || 'cronusfarm-01';\nflow.set('deviceId', devId);\n\n// FlexDash 위젯마다 topic이 다르게 들어올 수 있어 방어적으로 처리\nconst k = (\n  (msg.topic ?? '') ||\n  (msg.fd_output_topic ?? '') ||\n  (msg.fdOutputTopic ?? '')\n).toString().trim();\nif(!k) return null;\n\n// FlexDash toggle payload는 기본 true/false 또는 1/0\nconst v = (msg.payload===1 || msg.payload===true || msg.payload==='1' || msg.payload==='on') ? 1 : 0;\n\nconst t = `cronusfarm/${devId}/cmd`;\nconst m1 = {topic:t, payload:`auto_${k}=0`};\nconst m2 = {topic:t, payload:`${k}=${v}`};\nreturn [[m1, m2]];",
+    "func": "const devId = flow.get('deviceId') || 'cronusfarm-01';\nflow.set('deviceId', devId);\n\n// FlexDash 위젯마다 topic이 다르게 들어올 수 있어 방어적으로 처리\nconst candidates = [\n  msg.topic,\n  msg.fd_output_topic,\n  msg.fdOutputTopic,\n  msg?._fd?.output_topic,\n  msg?._fd?.outputTopic,\n  msg?.widget?.topic\n];\nconst k = (candidates.find(x => (x ?? '').toString().trim().length > 0) ?? '').toString().trim();\nif(!k) return null;\n\n// FlexDash toggle payload는 기본 true/false 또는 1/0\nconst v = (msg.payload===1 || msg.payload===true || msg.payload==='1' || msg.payload==='on') ? 1 : 0;\n\nconst t = `cronusfarm/${devId}/cmd`;\nconst m1 = {topic:t, payload:`auto_${k}=0`};\nconst m2 = {topic:t, payload:`${k}=${v}`};\nreturn [[m1, m2]];",
     "outputs": 1,
     "noerr": 0,
     "initialize": "",
