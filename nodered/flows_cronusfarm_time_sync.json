@@ -1,0 +1,66 @@
+[
+  {
+    "id": "tab_cronus_timesync",
+    "type": "tab",
+    "label": "CronusFarm TimeSync",
+    "disabled": false,
+    "info": "Pi 시간을 MQTT retain으로 발행\n- topic: cronusfarm/pi/epoch\n- payload: epoch seconds (KST 오프셋 적용)\n\nR4는 MQTT 구독 후 RTC.setTime(RTCTime(epoch))로 반영"
+  },
+  {
+    "id": "inj_epoch_60s",
+    "type": "inject",
+    "z": "tab_cronus_timesync",
+    "name": "epoch 발행(부팅+60초)",
+    "props": [],
+    "repeat": "60",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "2",
+    "topic": "",
+    "x": 170,
+    "y": 120,
+    "wires": [
+      [
+        "fn_epoch_kst"
+      ]
+    ]
+  },
+  {
+    "id": "fn_epoch_kst",
+    "type": "function",
+    "z": "tab_cronus_timesync",
+    "name": "epoch(KST) 만들기",
+    "func": "const nowUtc = Math.floor(Date.now()/1000);\n// R4 RTC 표시는 타임존 개념이 없어, 로컬(KST) 표시를 원하면 +9시간 오프셋을 적용\nconst kst = nowUtc + 9*3600;\nmsg.topic = 'cronusfarm/pi/epoch';\nmsg.payload = String(kst);\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 120,
+    "wires": [
+      [
+        "mqtt_out_epoch"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_out_epoch",
+    "type": "mqtt out",
+    "z": "tab_cronus_timesync",
+    "name": "publish cronusfarm/pi/epoch (retain)",
+    "topic": "",
+    "qos": "1",
+    "retain": "true",
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "mqtt_broker_pi",
+    "x": 720,
+    "y": 120,
+    "wires": []
+  }
+]
+

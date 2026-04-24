@@ -52,6 +52,7 @@ Assert-Command "scp"
 $PiHost = Get-CronusPiHost -PiHost $PiHost -PiHostLan $PiHostLan -PiHostWan $PiHostWan -PiUser $PiUser
 
 $SshOpts = @("-o", "ConnectTimeout=30", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new")
+$SshOpts += @("-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3")
 
 $localSketchDir = Join-Path $PSScriptRoot "..\\arduino\\CronusFarm"
 

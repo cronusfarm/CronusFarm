@@ -8,6 +8,9 @@
 #define PANEL_CMD_CLEAR 0x01    // 인자 없음
 #define PANEL_CMD_SET_LINE 0x02 // row(0~3), len(0~20), len바이트 텍스트
 #define PANEL_CMD_BEEP 0x03     // mode: 0=짧음, 1=김
+// Trigorilla(패널+확장보드) 제어
+// - param0: 펌프 비트마스크 (bit0=A1, bit1=A2, bit2=B1, bit3=B2)
+#define PANEL_CMD_SET_PUMPS 0x10
 
 // 슬레이브 → 마스터 (requestFrom 응답): [이벤트 개수 n][t0][p0][t1][p1]...
 #define PANEL_EVT_ENC_CW 1

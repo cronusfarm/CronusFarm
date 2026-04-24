@@ -16,7 +16,8 @@ if [[ -f ~/.node-red/flows.json ]]; then
 fi
 
 # 본문은 export 그대로의 JSON 배열이므로 API v1(기본) 사용. v2는 {"flows":[...]} 객체가 필요해 400이 난다.
-curl -sS -f -X POST http://127.0.0.1:1880/flows \
+# httpAdminRoot를 /admin 으로 옮긴 경우, Admin API도 /admin 아래로 이동한다.
+curl -sS -f -X POST http://127.0.0.1:1880/admin/flows \
   -H 'Content-Type: application/json' \
   -d @"$MERGED"
 echo ""

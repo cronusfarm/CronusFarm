@@ -1,0 +1,105 @@
+[
+  {
+    "id": "tab_cronus_influx",
+    "type": "tab",
+    "label": "CronusFarm InfluxDB",
+    "disabled": false,
+    "info": "MQTT → InfluxDB 저장\n\n- sensor: cronusfarm/sensor/#\n- actuator: cronusfarm/actuator/#\n(아두이노는 tele 외 actuator 토픽으로 핀 상태를 발행)\n\nInfluxDB 1.x(로컬): DB=cronusfarm\nGrafana: 데이터소스 미등록 시 Pi에서 scripts/pi-grafana-ensure-influx-datasource.sh 실행 후 대시보드 import\n"
+  },
+  {
+    "id": "mqtt_in_sensor_all",
+    "type": "mqtt in",
+    "z": "tab_cronus_influx",
+    "name": "sensor subscribe",
+    "topic": "cronusfarm/sensor/#",
+    "qos": "1",
+    "datatype": "auto",
+    "broker": "mqtt_broker_pi",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 180,
+    "y": 100,
+    "wires": [
+      [
+        "fn_to_influx_point"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_in_act_all",
+    "type": "mqtt in",
+    "z": "tab_cronus_influx",
+    "name": "actuator subscribe",
+    "topic": "cronusfarm/actuator/#",
+    "qos": "1",
+    "datatype": "auto",
+    "broker": "mqtt_broker_pi",
+    "nl": false,
+    "rap": true,
+    "rh": 0,
+    "inputs": 0,
+    "x": 190,
+    "y": 160,
+    "wires": [
+      [
+        "fn_to_influx_point"
+      ]
+    ]
+  },
+  {
+    "id": "fn_to_influx_point",
+    "type": "function",
+    "z": "tab_cronus_influx",
+    "name": "topic→influx point",
+    "func": "const topic = (msg.topic ?? '').toString();\nconst payload = msg.payload;\n\n// topic 예:\n// - cronusfarm/sensor/temp\n// - cronusfarm/actuator/led_a1\n// - cronusfarm/sensor/3178/ph\n\nconst parts = topic.split('/').filter(Boolean);\nif (parts.length < 3) return null;\n\nconst domain = parts[1];   // sensor|actuator\nconst rest = parts.slice(2);\nconst key = rest.join('/');\n\n// 값 숫자화(실패 시 문자열로 저장)\nlet num = Number(payload);\nconst isNum = Number.isFinite(num);\n\nmsg.payload = [{\n  measurement: domain,\n  tags: {\n    key,\n  },\n  fields: isNum ? { value: num } : { value_str: (payload ?? '').toString() },\n  timestamp: new Date()\n}];\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 130,
+    "wires": [
+      [
+        "influx_out_write"
+      ]
+    ]
+  },
+  {
+    "id": "influx_out_write",
+    "type": "influxdb out",
+    "z": "tab_cronus_influx",
+    "influxdb": "influx_cfg_local",
+    "name": "write influx",
+    "measurement": "",
+    "precision": "",
+    "retentionPolicy": "",
+    "database": "",
+    "precisionV18FluxV20": "ms",
+    "retentionPolicyV18Flux": "",
+    "org": "",
+    "bucket": "",
+    "x": 650,
+    "y": 130,
+    "wires": []
+  },
+  {
+    "id": "influx_cfg_local",
+    "type": "influxdb",
+    "hostname": "127.0.0.1",
+    "port": "8086",
+    "protocol": "http",
+    "database": "cronusfarm",
+    "name": "InfluxDB(local, cronusfarm)",
+    "username": "cronusfarm",
+    "password": "cronusfarm1234",
+    "usetls": false,
+    "tls": "",
+    "influxdbVersion": "1.x",
+    "url": "http://127.0.0.1:8086",
+    "rejectUnauthorized": true
+  }
+]
+

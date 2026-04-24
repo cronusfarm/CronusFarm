@@ -4,7 +4,7 @@
     "type": "ui_group",
     "name": "A Bed",
     "tab": "ui_tab_monitor",
-    "order": 3,
+    "order": 4,
     "disp": true,
     "width": "6",
     "collapse": false
@@ -14,7 +14,7 @@
     "type": "ui_group",
     "name": "B Bed",
     "tab": "ui_tab_monitor",
-    "order": 4,
+    "order": 5,
     "disp": true,
     "width": "6",
     "collapse": false
@@ -410,8 +410,32 @@
       [
         "fn_seen_tele",
         "fn_parse_tele_v2",
+        "fn_d2_tele_passthru",
         "ui_txt_tele_raw",
         "fn_cf_arduino_wifi_tele"
+      ]
+    ]
+  },
+  {
+    "id": "fn_d2_tele_passthru",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "D2 tele 전달",
+    "func": "const raw = (msg.payload ?? '').toString();\nconst m = raw.match(/S:\\s*([^|]+)/);\nconst s = m ? m[1].trim().replace(/\\s+/g, ' ') : '-';\nreturn [[{ payload: raw }], [{ payload: s }]];",
+    "outputs": 2,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 410,
+    "y": 420,
+    "wires": [
+      [
+        "d2_txt_tele_raw"
+      ],
+      [
+        "d2_txt_state_s"
       ]
     ]
   },
@@ -527,9 +551,76 @@
     "y": 520,
     "wires": [
       [
-        "fn_calc_online"
+        "fn_calc_online",
+        "fn_pack_mon_dash"
       ]
     ]
+  },
+  {
+    "id": "ui_grp_monitor_dash",
+    "type": "ui_group",
+    "name": "채널 요약 (tele·flow)",
+    "tab": "ui_tab_monitor",
+    "order": 3,
+    "disp": true,
+    "width": "12",
+    "collapse": false
+  },
+  {
+    "id": "ui_tpl_css_mon_dash",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_monitor_dash",
+    "name": "모니터 스위치·요약 CSS",
+    "order": 0,
+    "width": "12",
+    "height": "1",
+    "format": "<style>\n/* 참고: 스마트팜 펌프 UI — md-switch 확대 + 모니터 요약 카드 */\n.nr-dashboard-theme md-switch.cf-mon-sw{\n  transform: scale(1.32);\n  transform-origin: left center;\n  margin: 10px 0 6px 0;\n}\n.nr-dashboard-theme md-switch.cf-mon-sw .md-label{\n  font-size: 14px !important;\n  font-weight: 600 !important;\n}\n\n/* 모니터(SVG) 토글 버튼 */\n.cf-svg-toggle{\n  display:flex;\n  align-items:center;\n  gap:10px;\n  padding:6px 10px;\n  border-radius: 12px;\n  border: 1px solid rgba(255,255,255,.10);\n  background: rgba(255,255,255,.03);\n  cursor: pointer;\n  user-select: none;\n}\n.cf-svg-toggle:hover{ background: rgba(255,255,255,.05); }\n.cf-svg-wrap{ display:flex; align-items:center; }\n.cf-svg-text{ font-weight: 900; letter-spacing:.06em; font-size: 12px; }\n.cf-svg-text.on{ color: #b8ffd0; }\n.cf-svg-text.off{ color: #ffd0d0; }\n\n.cf-dash-grid{ width:100%; box-sizing:border-box; }\n.cf-dash-head{\n  display:flex; flex-wrap:wrap; align-items:center; gap:8px;\n  padding:8px 0 12px; margin-bottom:10px;\n  border-bottom:1px solid rgba(255,255,255,.08);\n}\n.cf-dash-t{ color:var(--cf-muted); font-size:11px; letter-spacing:.04em; }\n.cf-dash-code{ font-size:11px; color:var(--cf-text); opacity:.92; max-width:100%; word-break:break-all; }\n.cf-dash-cards{\n  display:grid;\n  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));\n  gap:10px;\n}\n.cf-dash-card{\n  background: rgba(255,255,255,.04);\n  border: 1px solid rgba(255,255,255,.08);\n  border-radius: 12px;\n  padding: 10px 12px;\n}\n.cf-dash-card-t{ font-size:12px; font-weight:700; color:var(--cf-text); margin-bottom:8px; }\n.cf-dash-pills{ display:flex; gap:6px; flex-wrap:wrap; }\n.cf-dash-p{ font-size:11px; font-weight:700; padding:3px 8px; border-radius:999px; }\n.cf-dash-p.on{ background:rgba(0,200,83,.22); color:#b8ffd0; border:1px solid rgba(0,200,83,.5); }\n.cf-dash-p.on.inactive{ opacity:.4; }\n.cf-dash-p.au{ background:rgba(79,140,255,.2); color:#c8d9ff; border:1px solid rgba(79,140,255,.45); }\n.cf-dash-p.au.inactive{ opacity:.38; }\n.cf-dash-timer{ margin-top:6px; font-size:10px; color:var(--cf-muted); }\n</style>",
+    "storeOutMessages": false,
+    "fwdInMessages": false,
+    "resendOnRefresh": true,
+    "templateScope": "global",
+    "x": 0,
+    "y": 0,
+    "wires": []
+  },
+  {
+    "id": "fn_pack_mon_dash",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "모니터 요약 payload",
+    "func": "const chKeys = ['led_a1','led_a2','pump_a1','pump_a2','led_b1','pump_b1','pump_b2'];\nconst labels = { led_a1:'LED A1', led_a2:'LED A2', pump_a1:'PUMP A1', pump_a2:'PUMP A2', led_b1:'LED B1', pump_b1:'PUMP B1', pump_b2:'PUMP B2' };\nconst rows = chKeys.map(k => {\n  const st = flow.get(k);\n  const au = flow.get('auto_'+k);\n  const ons = flow.get('on_'+k);\n  const offs = flow.get('off_'+k);\n  return {\n    key: k,\n    label: labels[k] || k,\n    on: st === 1 || st === true || st === '1',\n    auto: au === 1 || au === true || au === '1',\n    onSec: (typeof ons === 'number' && !Number.isNaN(ons)) ? ons : null,\n    offSec: (typeof offs === 'number' && !Number.isNaN(offs)) ? offs : null\n  };\n});\nmsg.payload = rows;\nmsg.deviceId = flow.get('deviceId') || 'cronusfarm-01';\nconst lt = (flow.get('lastTeleStr') || '').toString();\nmsg.lastTele = lt;\nmsg.teleShort = lt.length > 140 ? lt.slice(0, 140) + '…' : lt;\nmsg.stats = {\n  onCh: rows.filter(r => r.on).length,\n  autoCh: rows.filter(r => r.auto).length,\n  total: rows.length\n};\nreturn msg;",
+    "outputs": 1,
+    "timeout": 0,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 320,
+    "y": 520,
+    "wires": [
+      [
+        "ui_tpl_mon_overview"
+      ]
+    ]
+  },
+  {
+    "id": "ui_tpl_mon_overview",
+    "type": "ui_template",
+    "z": "tab_cronus_dash",
+    "group": "ui_grp_monitor_dash",
+    "name": "채널 카드 요약",
+    "order": 1,
+    "width": "12",
+    "height": "1",
+    "format": "<div class=\"cf-dash-grid\">\n  <div class=\"cf-dash-head\">\n    <span class=\"cf-dash-t\">DEVICE</span>\n    <strong style=\"color:var(--cf-text);font-size:13px;\">{{msg.deviceId}}</strong>\n    <span class=\"cf-dash-t\" style=\"margin-left:10px\">tele 요약</span>\n    <code class=\"cf-dash-code\">{{msg.teleShort || '—'}}</code>\n  </div>\n  <div class=\"cf-dash-cards\">\n    <div class=\"cf-dash-card\" ng-repeat=\"r in msg.payload track by r.key\">\n      <div class=\"cf-dash-card-t\">{{r.label}}</div>\n      <div class=\"cf-dash-pills\">\n        <span class=\"cf-dash-p on\" ng-class=\"{inactive:!r.on}\">{{r.on ? '🟢 ON' : '🔴 OFF'}}</span>\n        <span class=\"cf-dash-p au\" ng-class=\"{inactive:!r.auto}\">{{r.auto ? '⚙ AUTO' : '✋ MAN'}}</span>\n      </div>\n      <div class=\"cf-dash-timer\" ng-if=\"r.onSec!=null && r.offSec!=null\">⏱ 주기 ON {{r.onSec}}s / OFF {{r.offSec}}s</div>\n    </div>\n  </div>\n  <div class=\"cf-dash-foot\" ng-if=\"msg.stats\" style=\"margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,.07);font-size:11px;color:var(--cf-muted);display:flex;flex-wrap:wrap;gap:12px;\">\n    <span>📊 ON {{msg.stats.onCh}}/{{msg.stats.total}}</span>\n    <span>🤖 AUTO {{msg.stats.autoCh}}/{{msg.stats.total}}</span>\n  </div>\n</div>",
+    "storeOutMessages": false,
+    "fwdInMessages": true,
+    "resendOnRefresh": true,
+    "templateScope": "local",
+    "x": 0,
+    "y": 0,
+    "wires": []
   },
   {
     "id": "mqtt_out_cmd",
@@ -608,6 +699,7 @@
     "type": "ui_tab",
     "name": "CronusFarm-모니터",
     "icon": "dashboard",
+    "order": 10,
     "disabled": false,
     "hidden": false
   },
@@ -616,6 +708,7 @@
     "type": "ui_tab",
     "name": "CronusFarm-설정",
     "icon": "tune",
+    "order": 20,
     "disabled": false,
     "hidden": false
   },
@@ -934,7 +1027,8 @@
     "y": 40,
     "wires": [
       [
-        "ui_txt_uptime"
+        "ui_txt_uptime",
+        "fd_stat_uptime"
       ]
     ]
   },
@@ -949,7 +1043,8 @@
     "y": 80,
     "wires": [
       [
-        "ui_txt_ssid"
+        "ui_txt_ssid",
+        "fd_stat_ssid"
       ]
     ]
   },
@@ -964,7 +1059,8 @@
     "y": 120,
     "wires": [
       [
-        "ui_txt_ip"
+        "ui_txt_ip",
+        "fd_stat_ip"
       ]
     ]
   },
@@ -1046,7 +1142,23 @@
     "y": 520,
     "wires": [
       [
-        "ui_tpl_conn_line"
+        "ui_tpl_conn_line",
+        "fn_kpi_online"
+      ]
+    ]
+  },
+  {
+    "id": "fn_kpi_online",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "KPI online(Arduino)",
+    "func": "const ok = !!msg._ok;\nmsg.payload = ok ? 'online' : 'offline';\nmsg.color = ok ? 'lime' : 'grey';\nreturn msg;",
+    "outputs": 1,
+    "x": 660,
+    "y": 520,
+    "wires": [
+      [
+        "fd_stat_online"
       ]
     ]
   },
@@ -1091,7 +1203,7 @@
     "type": "function",
     "z": "tab_cronus_dash",
     "name": "tele 파싱(v2)",
-    "func": "// tele 예)\n// S:led_a1=0 ... pump_b2=1 | A:led_a1=0 ... | T:pump_a1=30/90 ...\n//\n// 중요: tele이 1초마다 오기 때문에, UI 드롭다운(dd_*)을 매번 덮어쓰면 \"시간이 계속 바뀌는\" 것처럼 보일 수 있습니다.\n// 여기서는 on_/off_ 초 값만 반영하고(dd_ 분/초 UI 갱신은 하지 않음), 드롭다운은 사용자가 바꾼 값이 유지되도록 합니다.\n\nconst s=(msg.payload||'').toString();\nfunction parseKV(part){\n  const out={};\n  (part||'').trim().split(/\\s+/).forEach(tok=>{\n    const m=tok.match(/^([^=]+)=(.+)$/);\n    if(!m) return;\n    out[m[1]] = m[2];\n  });\n  return out;\n}\n\nconst ps = s.split('|').map(x=>x.trim());\nconst pS = ps.find(x=>x.startsWith('S:'));\nconst pA = ps.find(x=>x.startsWith('A:'));\nconst pT = ps.find(x=>x.startsWith('T:'));\n\nconst kvS = parseKV(pS ? pS.slice(2) : '');\nconst kvA = parseKV(pA ? pA.slice(2) : '');\nconst kvT = parseKV(pT ? pT.slice(2) : '');\n\nconst chKeys = ['led_a1','led_a2','pump_a1','pump_a2','led_b1','pump_b1','pump_b2'];\n\nconst out=[];\nchKeys.forEach(k=>{\n  if(k in kvS) {\n    const v = (kvS[k]==='1')?1:0;\n    flow.set(k, v);\n    out.push({topic:k, payload: v});\n  }\n});\nchKeys.forEach(k=>{\n  const ak = 'auto_'+k;\n  if(k in kvA) {\n    const v = (kvA[k]==='1')?1:0;\n    flow.set(ak, v);\n    out.push({topic:ak, payload: v});\n  }\n});\n\nObject.keys(kvT).forEach(k=>{\n  // pump_x=30/90\n  const m = (kvT[k]||'').match(/^(\\d+)\\/(\\d+)$/);\n  if(!m) return;\n  const onV = parseInt(m[1],10);\n  const offV = parseInt(m[2],10);\n  const onK = 'on_'+k;\n  const offK = 'off_'+k;\n  flow.set(onK, onV);\n  flow.set(offK, offV);\n  out.push({topic:onK, payload: onV});\n  out.push({topic:offK, payload: offV});\n});\n\nreturn [out];",
+    "func": "// tele 예)\n// S:실제 출력 | AUTO:auto_*=1(자동)/0(수동) … 구형 펌웨어는 \"A:led_a1=0\"처럼 채널키=자동여부\n//\n// 중요: tele이 1초마다 오기 때문에, UI 드롭다운(dd_*)을 매번 덮어쓰면 \"시간이 계속 바뀌는\" 것처럼 보일 수 있습니다.\n// 여기서는 on_/off_ 초 값만 반영하고(dd_ 분/초 UI 갱신은 하지 않음), 드롭다운은 사용자가 바꾼 값이 유지되도록 합니다.\n\nconst s=(msg.payload||'').toString();\nfunction parseKV(part){\n  const out={};\n  (part||'').trim().split(/\\s+/).forEach(tok=>{\n    const m=tok.match(/^([^=]+)=(.+)$/);\n    if(!m) return;\n    out[m[1]] = m[2];\n  });\n  return out;\n}\n\nconst ps = s.split('|').map(x=>x.trim());\nconst pS = ps.find(x=>x.startsWith('S:'));\nconst pA = ps.find(x=>x.startsWith('AUTO:')) || ps.find(x=>x.startsWith('A:'));\nconst pT = ps.find(x=>x.startsWith('T:'));\n\nconst kvS = parseKV(pS ? pS.slice(2) : '');\nconst kvA = parseKV(pA ? (pA.startsWith('AUTO:') ? pA.slice(5) : pA.slice(2)) : '');\nconst kvT = parseKV(pT ? pT.slice(2) : '');\n\nconst chKeys = ['led_a1','led_a2','pump_a1','pump_a2','led_b1','pump_b1','pump_b2'];\n\nconst out=[];\nchKeys.forEach(k=>{\n  if(k in kvS) {\n    const v = (kvS[k]==='1')?1:0;\n    flow.set(k, v);\n    out.push({topic:k, payload: v});\n  }\n});\nchKeys.forEach(k=>{\n  const ak = 'auto_'+k;\n  let raw = kvA[ak];\n  if (raw === undefined) raw = kvA[k];\n  if (raw === undefined) return;\n  const v = (raw==='1')?1:0;\n  flow.set(ak, v);\n  out.push({topic:ak, payload: v});\n});\n\nObject.keys(kvT).forEach(k=>{\n  // pump_x=30/90\n  const m = (kvT[k]||'').match(/^(\\d+)\\/(\\d+)$/);\n  if(!m) return;\n  const onV = parseInt(m[1],10);\n  const offV = parseInt(m[2],10);\n  const onK = 'on_'+k;\n  const offK = 'off_'+k;\n  flow.set(onK, onV);\n  flow.set(offK, offV);\n  out.push({topic:onK, payload: onV});\n  out.push({topic:offK, payload: offV});\n});\n\nreturn [out];",
     "outputs": 1,
     "x": 430,
     "y": 460,
@@ -1152,13 +1264,13 @@
     "x": 360,
     "y": 660,
     "wires": [
-      ["ui_tpl_state_led_a1","fd_toggle_led_a1","sw_auto_led_a1"],
-      ["ui_tpl_state_led_a2","fd_toggle_led_a2","sw_auto_led_a2"],
-      ["ui_tpl_state_pump_a1","fd_toggle_pump_a1","sw_auto_pump_a1"],
-      ["ui_tpl_state_pump_a2","fd_toggle_pump_a2","sw_auto_pump_a2"],
-      ["ui_tpl_state_led_b1","fd_toggle_led_b1","sw_auto_led_b1"],
-      ["ui_tpl_state_pump_b1","fd_toggle_pump_b1","sw_auto_pump_b1"],
-      ["ui_tpl_state_pump_b2","fd_toggle_pump_b2","sw_auto_pump_b2"]
+      ["ui_tpl_state_led_a1","sw_auto_led_a1"],
+      ["ui_tpl_state_led_a2","sw_auto_led_a2"],
+      ["ui_tpl_state_pump_a1","sw_auto_pump_a1"],
+      ["ui_tpl_state_pump_a2","sw_auto_pump_a2"],
+      ["ui_tpl_state_led_b1","sw_auto_led_b1"],
+      ["ui_tpl_state_pump_b1","sw_auto_pump_b1"],
+      ["ui_tpl_state_pump_b2","sw_auto_pump_b2"]
     ]
   },
   {
@@ -1221,127 +1333,127 @@
     "id": "ui_tpl_state_led_a1",
     "type": "ui_template",
     "z": "tab_cronus_dash",
+    "name": "모니터 LED A1(SVG)",
     "group": "ui_grp_a",
-    "name": "LED A1 상태",
     "order": 1,
     "width": "6",
-    "height": "1",
-    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">LED A1 (D2)</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
-    "storeOutMessages": false,
-    "fwdInMessages": true,
-    "resendOnRefresh": true,
-    "templateScope": "local",
+    "height": "2",
+    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">LED A1 (R4·D2)</div>\n  <div class=\"cf-svg-toggle\" ng-click=\"send({topic:'led_a1', payload:(msg.payload==1?0:1)})\" title=\"누르면 토글 (MQTT cmd)\">\n    <div class=\"cf-svg-wrap\" ng-if=\"msg.payload==1\">\n      <svg width=\"32\" height=\"44\" viewBox=\"0 0 48 64\">\n        <line x1=\"24\" y1=\"4\"  x2=\"24\" y2=\"0\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"36\" y1=\"8\"  x2=\"39\" y2=\"5\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"44\" y1=\"20\" x2=\"47\" y2=\"18\" stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"12\" y1=\"8\"  x2=\"9\"  y2=\"5\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"4\"  y1=\"20\" x2=\"1\"  y2=\"18\" stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <path d=\"M8 36 Q4 28 4 22 A20 20 0 1 1 44 22 Q44 28 40 36 Z\" fill=\"#FAC775\" stroke=\"#BA7517\" stroke-width=\"1.5\"/>\n        <path d=\"M16 33 L16 28 Q16 24 20 24 Q24 24 24 20 Q24 24 28 24 Q32 24 32 28 L32 33\" fill=\"none\" stroke=\"#BA7517\" stroke-width=\"1.5\" stroke-linecap=\"round\"/>\n        <rect x=\"17\" y=\"36\" width=\"14\" height=\"4\" rx=\"1\" fill=\"#BA7517\"/>\n        <rect x=\"17\" y=\"40\" width=\"14\" height=\"3\" rx=\"1.5\" fill=\"#EF9F27\"/>\n      </svg>\n    </div>\n    <div class=\"cf-svg-wrap\" ng-if=\"msg.payload!=1\">\n      <svg width=\"32\" height=\"44\" viewBox=\"0 0 48 64\">\n        <path d=\"M8 36 Q4 28 4 22 A20 20 0 1 1 44 22 Q44 28 40 36 Z\" fill=\"#D3D1C7\" stroke=\"#888780\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n        <line x1=\"16\" y1=\"16\" x2=\"32\" y2=\"32\" stroke=\"#888780\" stroke-width=\"1.5\" stroke-linecap=\"round\" opacity=\"0.5\"/>\n        <line x1=\"32\" y1=\"16\" x2=\"16\" y2=\"32\" stroke=\"#888780\" stroke-width=\"1.5\" stroke-linecap=\"round\" opacity=\"0.5\"/>\n        <rect x=\"17\" y=\"36\" width=\"14\" height=\"4\" rx=\"1\" fill=\"#888780\"/>\n        <rect x=\"17\" y=\"40\" width=\"14\" height=\"3\" rx=\"1.5\" fill=\"#B4B2A9\"/>\n      </svg>\n    </div>\n    <div class=\"cf-svg-text\" ng-class=\"msg.payload==1 ? 'on' : 'off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div>\n  </div>\n</div>",
     "x": 0,
     "y": 0,
-    "wires": []
+    "wires": [
+      [
+        "fn_force_manual_and_set"
+      ]
+    ]
   },
   {
     "id": "ui_tpl_state_led_a2",
     "type": "ui_template",
     "z": "tab_cronus_dash",
+    "name": "모니터 LED A2(SVG)",
     "group": "ui_grp_a",
-    "name": "LED A2 상태",
     "order": 2,
     "width": "6",
-    "height": "1",
-    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">LED A2 (D3)</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
-    "storeOutMessages": false,
-    "fwdInMessages": true,
-    "resendOnRefresh": true,
-    "templateScope": "local",
+    "height": "2",
+    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">LED A2 (R4·D3)</div>\n  <div class=\"cf-svg-toggle\" ng-click=\"send({topic:'led_a2', payload:(msg.payload==1?0:1)})\" title=\"누르면 토글 (MQTT cmd)\">\n    <div class=\"cf-svg-wrap\" ng-if=\"msg.payload==1\">\n      <svg width=\"32\" height=\"44\" viewBox=\"0 0 48 64\">\n        <line x1=\"24\" y1=\"4\"  x2=\"24\" y2=\"0\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"36\" y1=\"8\"  x2=\"39\" y2=\"5\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"44\" y1=\"20\" x2=\"47\" y2=\"18\" stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"12\" y1=\"8\"  x2=\"9\"  y2=\"5\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"4\"  y1=\"20\" x2=\"1\"  y2=\"18\" stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <path d=\"M8 36 Q4 28 4 22 A20 20 0 1 1 44 22 Q44 28 40 36 Z\" fill=\"#FAC775\" stroke=\"#BA7517\" stroke-width=\"1.5\"/>\n        <path d=\"M16 33 L16 28 Q16 24 20 24 Q24 24 24 20 Q24 24 28 24 Q32 24 32 28 L32 33\" fill=\"none\" stroke=\"#BA7517\" stroke-width=\"1.5\" stroke-linecap=\"round\"/>\n        <rect x=\"17\" y=\"36\" width=\"14\" height=\"4\" rx=\"1\" fill=\"#BA7517\"/>\n        <rect x=\"17\" y=\"40\" width=\"14\" height=\"3\" rx=\"1.5\" fill=\"#EF9F27\"/>\n      </svg>\n    </div>\n    <div class=\"cf-svg-wrap\" ng-if=\"msg.payload!=1\">\n      <svg width=\"32\" height=\"44\" viewBox=\"0 0 48 64\">\n        <path d=\"M8 36 Q4 28 4 22 A20 20 0 1 1 44 22 Q44 28 40 36 Z\" fill=\"#D3D1C7\" stroke=\"#888780\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n        <line x1=\"16\" y1=\"16\" x2=\"32\" y2=\"32\" stroke=\"#888780\" stroke-width=\"1.5\" stroke-linecap=\"round\" opacity=\"0.5\"/>\n        <line x1=\"32\" y1=\"16\" x2=\"16\" y2=\"32\" stroke=\"#888780\" stroke-width=\"1.5\" stroke-linecap=\"round\" opacity=\"0.5\"/>\n        <rect x=\"17\" y=\"36\" width=\"14\" height=\"4\" rx=\"1\" fill=\"#888780\"/>\n        <rect x=\"17\" y=\"40\" width=\"14\" height=\"3\" rx=\"1.5\" fill=\"#B4B2A9\"/>\n      </svg>\n    </div>\n    <div class=\"cf-svg-text\" ng-class=\"msg.payload==1 ? 'on' : 'off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div>\n  </div>\n</div>",
     "x": 0,
     "y": 0,
-    "wires": []
+    "wires": [
+      [
+        "fn_force_manual_and_set"
+      ]
+    ]
   },
   {
     "id": "ui_tpl_state_pump_a1",
     "type": "ui_template",
     "z": "tab_cronus_dash",
+    "name": "모니터 PUMP A1(SVG)",
     "group": "ui_grp_a",
-    "name": "PUMP A1 상태",
     "order": 3,
     "width": "6",
-    "height": "1",
-    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">PUMP A1 (D4)</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
-    "storeOutMessages": false,
-    "fwdInMessages": true,
-    "resendOnRefresh": true,
-    "templateScope": "local",
+    "height": "2",
+    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">PUMP A1 (패널·D11)</div>\n  <div class=\"cf-svg-toggle\" ng-click=\"send({topic:'pump_a1', payload:(msg.payload==1?0:1)})\" title=\"누르면 토글 (MQTT cmd)\">\n    <div class=\"cf-svg-wrap\" ng-if=\"msg.payload==1\">\n      <svg width=\"32\" height=\"44\" viewBox=\"0 0 48 64\">\n        <line x1=\"24\" y1=\"4\"  x2=\"24\" y2=\"0\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"36\" y1=\"8\"  x2=\"39\" y2=\"5\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"44\" y1=\"20\" x2=\"47\" y2=\"18\" stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"12\" y1=\"8\"  x2=\"9\"  y2=\"5\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"4\"  y1=\"20\" x2=\"1\"  y2=\"18\" stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <path d=\"M8 36 Q4 28 4 22 A20 20 0 1 1 44 22 Q44 28 40 36 Z\" fill=\"#FAC775\" stroke=\"#BA7517\" stroke-width=\"1.5\"/>\n        <path d=\"M16 33 L16 28 Q16 24 20 24 Q24 24 24 20 Q24 24 28 24 Q32 24 32 28 L32 33\" fill=\"none\" stroke=\"#BA7517\" stroke-width=\"1.5\" stroke-linecap=\"round\"/>\n        <rect x=\"17\" y=\"36\" width=\"14\" height=\"4\" rx=\"1\" fill=\"#BA7517\"/>\n        <rect x=\"17\" y=\"40\" width=\"14\" height=\"3\" rx=\"1.5\" fill=\"#EF9F27\"/>\n      </svg>\n    </div>\n    <div class=\"cf-svg-wrap\" ng-if=\"msg.payload!=1\">\n      <svg width=\"32\" height=\"44\" viewBox=\"0 0 48 64\">\n        <path d=\"M8 36 Q4 28 4 22 A20 20 0 1 1 44 22 Q44 28 40 36 Z\" fill=\"#D3D1C7\" stroke=\"#888780\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n        <line x1=\"16\" y1=\"16\" x2=\"32\" y2=\"32\" stroke=\"#888780\" stroke-width=\"1.5\" stroke-linecap=\"round\" opacity=\"0.5\"/>\n        <line x1=\"32\" y1=\"16\" x2=\"16\" y2=\"32\" stroke=\"#888780\" stroke-width=\"1.5\" stroke-linecap=\"round\" opacity=\"0.5\"/>\n        <rect x=\"17\" y=\"36\" width=\"14\" height=\"4\" rx=\"1\" fill=\"#888780\"/>\n        <rect x=\"17\" y=\"40\" width=\"14\" height=\"3\" rx=\"1.5\" fill=\"#B4B2A9\"/>\n      </svg>\n    </div>\n    <div class=\"cf-svg-text\" ng-class=\"msg.payload==1 ? 'on' : 'off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div>\n  </div>\n</div>",
     "x": 0,
     "y": 0,
-    "wires": []
+    "wires": [
+      [
+        "fn_force_manual_and_set"
+      ]
+    ]
   },
   {
     "id": "ui_tpl_state_pump_a2",
     "type": "ui_template",
     "z": "tab_cronus_dash",
+    "name": "모니터 PUMP A2(SVG)",
     "group": "ui_grp_a",
-    "name": "PUMP A2 상태",
     "order": 4,
     "width": "6",
-    "height": "1",
-    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">PUMP A2 (D5)</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
-    "storeOutMessages": false,
-    "fwdInMessages": true,
-    "resendOnRefresh": true,
-    "templateScope": "local",
+    "height": "2",
+    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">PUMP A2 (패널·D6)</div>\n  <div class=\"cf-svg-toggle\" ng-click=\"send({topic:'pump_a2', payload:(msg.payload==1?0:1)})\" title=\"누르면 토글 (MQTT cmd)\">\n    <div class=\"cf-svg-wrap\" ng-if=\"msg.payload==1\">\n      <svg width=\"32\" height=\"44\" viewBox=\"0 0 48 64\">\n        <line x1=\"24\" y1=\"4\"  x2=\"24\" y2=\"0\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"36\" y1=\"8\"  x2=\"39\" y2=\"5\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"44\" y1=\"20\" x2=\"47\" y2=\"18\" stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"12\" y1=\"8\"  x2=\"9\"  y2=\"5\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"4\"  y1=\"20\" x2=\"1\"  y2=\"18\" stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <path d=\"M8 36 Q4 28 4 22 A20 20 0 1 1 44 22 Q44 28 40 36 Z\" fill=\"#FAC775\" stroke=\"#BA7517\" stroke-width=\"1.5\"/>\n        <path d=\"M16 33 L16 28 Q16 24 20 24 Q24 24 24 20 Q24 24 28 24 Q32 24 32 28 L32 33\" fill=\"none\" stroke=\"#BA7517\" stroke-width=\"1.5\" stroke-linecap=\"round\"/>\n        <rect x=\"17\" y=\"36\" width=\"14\" height=\"4\" rx=\"1\" fill=\"#BA7517\"/>\n        <rect x=\"17\" y=\"40\" width=\"14\" height=\"3\" rx=\"1.5\" fill=\"#EF9F27\"/>\n      </svg>\n    </div>\n    <div class=\"cf-svg-wrap\" ng-if=\"msg.payload!=1\">\n      <svg width=\"32\" height=\"44\" viewBox=\"0 0 48 64\">\n        <path d=\"M8 36 Q4 28 4 22 A20 20 0 1 1 44 22 Q44 28 40 36 Z\" fill=\"#D3D1C7\" stroke=\"#888780\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n        <line x1=\"16\" y1=\"16\" x2=\"32\" y2=\"32\" stroke=\"#888780\" stroke-width=\"1.5\" stroke-linecap=\"round\" opacity=\"0.5\"/>\n        <line x1=\"32\" y1=\"16\" x2=\"16\" y2=\"32\" stroke=\"#888780\" stroke-width=\"1.5\" stroke-linecap=\"round\" opacity=\"0.5\"/>\n        <rect x=\"17\" y=\"36\" width=\"14\" height=\"4\" rx=\"1\" fill=\"#888780\"/>\n        <rect x=\"17\" y=\"40\" width=\"14\" height=\"3\" rx=\"1.5\" fill=\"#B4B2A9\"/>\n      </svg>\n    </div>\n    <div class=\"cf-svg-text\" ng-class=\"msg.payload==1 ? 'on' : 'off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div>\n  </div>\n</div>",
     "x": 0,
     "y": 0,
-    "wires": []
+    "wires": [
+      [
+        "fn_force_manual_and_set"
+      ]
+    ]
   },
   {
     "id": "ui_tpl_state_led_b1",
     "type": "ui_template",
     "z": "tab_cronus_dash",
+    "name": "모니터 LED B1(SVG)",
     "group": "ui_grp_b",
-    "name": "LED B1 상태",
     "order": 1,
     "width": "6",
-    "height": "1",
-    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">LED B1 (D6)</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
-    "storeOutMessages": false,
-    "fwdInMessages": true,
-    "resendOnRefresh": true,
-    "templateScope": "local",
+    "height": "2",
+    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">LED B1 (R4·D6)</div>\n  <div class=\"cf-svg-toggle\" ng-click=\"send({topic:'led_b1', payload:(msg.payload==1?0:1)})\" title=\"누르면 토글 (MQTT cmd)\">\n    <div class=\"cf-svg-wrap\" ng-if=\"msg.payload==1\">\n      <svg width=\"32\" height=\"44\" viewBox=\"0 0 48 64\">\n        <line x1=\"24\" y1=\"4\"  x2=\"24\" y2=\"0\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"36\" y1=\"8\"  x2=\"39\" y2=\"5\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"44\" y1=\"20\" x2=\"47\" y2=\"18\" stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"12\" y1=\"8\"  x2=\"9\"  y2=\"5\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"4\"  y1=\"20\" x2=\"1\"  y2=\"18\" stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <path d=\"M8 36 Q4 28 4 22 A20 20 0 1 1 44 22 Q44 28 40 36 Z\" fill=\"#FAC775\" stroke=\"#BA7517\" stroke-width=\"1.5\"/>\n        <path d=\"M16 33 L16 28 Q16 24 20 24 Q24 24 24 20 Q24 24 28 24 Q32 24 32 28 L32 33\" fill=\"none\" stroke=\"#BA7517\" stroke-width=\"1.5\" stroke-linecap=\"round\"/>\n        <rect x=\"17\" y=\"36\" width=\"14\" height=\"4\" rx=\"1\" fill=\"#BA7517\"/>\n        <rect x=\"17\" y=\"40\" width=\"14\" height=\"3\" rx=\"1.5\" fill=\"#EF9F27\"/>\n      </svg>\n    </div>\n    <div class=\"cf-svg-wrap\" ng-if=\"msg.payload!=1\">\n      <svg width=\"32\" height=\"44\" viewBox=\"0 0 48 64\">\n        <path d=\"M8 36 Q4 28 4 22 A20 20 0 1 1 44 22 Q44 28 40 36 Z\" fill=\"#D3D1C7\" stroke=\"#888780\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n        <line x1=\"16\" y1=\"16\" x2=\"32\" y2=\"32\" stroke=\"#888780\" stroke-width=\"1.5\" stroke-linecap=\"round\" opacity=\"0.5\"/>\n        <line x1=\"32\" y1=\"16\" x2=\"16\" y2=\"32\" stroke=\"#888780\" stroke-width=\"1.5\" stroke-linecap=\"round\" opacity=\"0.5\"/>\n        <rect x=\"17\" y=\"36\" width=\"14\" height=\"4\" rx=\"1\" fill=\"#888780\"/>\n        <rect x=\"17\" y=\"40\" width=\"14\" height=\"3\" rx=\"1.5\" fill=\"#B4B2A9\"/>\n      </svg>\n    </div>\n    <div class=\"cf-svg-text\" ng-class=\"msg.payload==1 ? 'on' : 'off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div>\n  </div>\n</div>",
     "x": 0,
     "y": 0,
-    "wires": []
+    "wires": [
+      [
+        "fn_force_manual_and_set"
+      ]
+    ]
   },
   {
     "id": "ui_tpl_state_pump_b1",
     "type": "ui_template",
     "z": "tab_cronus_dash",
+    "name": "모니터 PUMP B1(SVG)",
     "group": "ui_grp_b",
-    "name": "PUMP B1 상태",
     "order": 2,
     "width": "6",
-    "height": "1",
-    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">PUMP B1 (D7)</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
-    "storeOutMessages": false,
-    "fwdInMessages": true,
-    "resendOnRefresh": true,
-    "templateScope": "local",
+    "height": "2",
+    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">PUMP B1 (패널·D5)</div>\n  <div class=\"cf-svg-toggle\" ng-click=\"send({topic:'pump_b1', payload:(msg.payload==1?0:1)})\" title=\"누르면 토글 (MQTT cmd)\">\n    <div class=\"cf-svg-wrap\" ng-if=\"msg.payload==1\">\n      <svg width=\"32\" height=\"44\" viewBox=\"0 0 48 64\">\n        <line x1=\"24\" y1=\"4\"  x2=\"24\" y2=\"0\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"36\" y1=\"8\"  x2=\"39\" y2=\"5\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"44\" y1=\"20\" x2=\"47\" y2=\"18\" stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"12\" y1=\"8\"  x2=\"9\"  y2=\"5\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"4\"  y1=\"20\" x2=\"1\"  y2=\"18\" stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <path d=\"M8 36 Q4 28 4 22 A20 20 0 1 1 44 22 Q44 28 40 36 Z\" fill=\"#FAC775\" stroke=\"#BA7517\" stroke-width=\"1.5\"/>\n        <path d=\"M16 33 L16 28 Q16 24 20 24 Q24 24 24 20 Q24 24 28 24 Q32 24 32 28 L32 33\" fill=\"none\" stroke=\"#BA7517\" stroke-width=\"1.5\" stroke-linecap=\"round\"/>\n        <rect x=\"17\" y=\"36\" width=\"14\" height=\"4\" rx=\"1\" fill=\"#BA7517\"/>\n        <rect x=\"17\" y=\"40\" width=\"14\" height=\"3\" rx=\"1.5\" fill=\"#EF9F27\"/>\n      </svg>\n    </div>\n    <div class=\"cf-svg-wrap\" ng-if=\"msg.payload!=1\">\n      <svg width=\"32\" height=\"44\" viewBox=\"0 0 48 64\">\n        <path d=\"M8 36 Q4 28 4 22 A20 20 0 1 1 44 22 Q44 28 40 36 Z\" fill=\"#D3D1C7\" stroke=\"#888780\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n        <line x1=\"16\" y1=\"16\" x2=\"32\" y2=\"32\" stroke=\"#888780\" stroke-width=\"1.5\" stroke-linecap=\"round\" opacity=\"0.5\"/>\n        <line x1=\"32\" y1=\"16\" x2=\"16\" y2=\"32\" stroke=\"#888780\" stroke-width=\"1.5\" stroke-linecap=\"round\" opacity=\"0.5\"/>\n        <rect x=\"17\" y=\"36\" width=\"14\" height=\"4\" rx=\"1\" fill=\"#888780\"/>\n        <rect x=\"17\" y=\"40\" width=\"14\" height=\"3\" rx=\"1.5\" fill=\"#B4B2A9\"/>\n      </svg>\n    </div>\n    <div class=\"cf-svg-text\" ng-class=\"msg.payload==1 ? 'on' : 'off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div>\n  </div>\n</div>",
     "x": 0,
     "y": 0,
-    "wires": []
+    "wires": [
+      [
+        "fn_force_manual_and_set"
+      ]
+    ]
   },
   {
     "id": "ui_tpl_state_pump_b2",
     "type": "ui_template",
     "z": "tab_cronus_dash",
+    "name": "모니터 PUMP B2(SVG)",
     "group": "ui_grp_b",
-    "name": "PUMP B2 상태",
     "order": 3,
     "width": "6",
-    "height": "1",
-    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">PUMP B2 (D8)</div><div class=\"cf-pill\" ng-class=\"msg.payload==1 ? 'cf-on' : 'cf-off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div></div>",
-    "storeOutMessages": false,
-    "fwdInMessages": true,
-    "resendOnRefresh": true,
-    "templateScope": "local",
+    "height": "2",
+    "format": "<div class=\"cf-row cf-row-bed\"><div class=\"cf-label\">PUMP B2 (패널·D4)</div>\n  <div class=\"cf-svg-toggle\" ng-click=\"send({topic:'pump_b2', payload:(msg.payload==1?0:1)})\" title=\"누르면 토글 (MQTT cmd)\">\n    <div class=\"cf-svg-wrap\" ng-if=\"msg.payload==1\">\n      <svg width=\"32\" height=\"44\" viewBox=\"0 0 48 64\">\n        <line x1=\"24\" y1=\"4\"  x2=\"24\" y2=\"0\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"36\" y1=\"8\"  x2=\"39\" y2=\"5\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"44\" y1=\"20\" x2=\"47\" y2=\"18\" stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"12\" y1=\"8\"  x2=\"9\"  y2=\"5\"  stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <line x1=\"4\"  y1=\"20\" x2=\"1\"  y2=\"18\" stroke=\"#EF9F27\" stroke-width=\"2\" stroke-linecap=\"round\"/>\n        <path d=\"M8 36 Q4 28 4 22 A20 20 0 1 1 44 22 Q44 28 40 36 Z\" fill=\"#FAC775\" stroke=\"#BA7517\" stroke-width=\"1.5\"/>\n        <path d=\"M16 33 L16 28 Q16 24 20 24 Q24 24 24 20 Q24 24 28 24 Q32 24 32 28 L32 33\" fill=\"none\" stroke=\"#BA7517\" stroke-width=\"1.5\" stroke-linecap=\"round\"/>\n        <rect x=\"17\" y=\"36\" width=\"14\" height=\"4\" rx=\"1\" fill=\"#BA7517\"/>\n        <rect x=\"17\" y=\"40\" width=\"14\" height=\"3\" rx=\"1.5\" fill=\"#EF9F27\"/>\n      </svg>\n    </div>\n    <div class=\"cf-svg-wrap\" ng-if=\"msg.payload!=1\">\n      <svg width=\"32\" height=\"44\" viewBox=\"0 0 48 64\">\n        <path d=\"M8 36 Q4 28 4 22 A20 20 0 1 1 44 22 Q44 28 40 36 Z\" fill=\"#D3D1C7\" stroke=\"#888780\" stroke-width=\"1.5\" opacity=\"0.7\"/>\n        <line x1=\"16\" y1=\"16\" x2=\"32\" y2=\"32\" stroke=\"#888780\" stroke-width=\"1.5\" stroke-linecap=\"round\" opacity=\"0.5\"/>\n        <line x1=\"32\" y1=\"16\" x2=\"16\" y2=\"32\" stroke=\"#888780\" stroke-width=\"1.5\" stroke-linecap=\"round\" opacity=\"0.5\"/>\n        <rect x=\"17\" y=\"36\" width=\"14\" height=\"4\" rx=\"1\" fill=\"#888780\"/>\n        <rect x=\"17\" y=\"40\" width=\"14\" height=\"3\" rx=\"1.5\" fill=\"#B4B2A9\"/>\n      </svg>\n    </div>\n    <div class=\"cf-svg-text\" ng-class=\"msg.payload==1 ? 'on' : 'off'\">{{msg.payload==1 ? 'ON' : 'OFF'}}</div>\n  </div>\n</div>",
     "x": 0,
     "y": 0,
-    "wires": []
+    "wires": [
+      [
+        "fn_force_manual_and_set"
+      ]
+    ]
   },
   {
     "id": "fn_force_manual_and_set",
@@ -5879,7 +5991,7 @@
     "allOrigins": true,
     "devServer": false,
     "devInstall": false,
-    "name": "FlexDash",
+    "name": "CronusFarm",
     "fd_children": ",fd_tab_cronus"
   },
   {
@@ -5888,7 +6000,138 @@
     "name": "CronusFarm",
     "icon": "mdi-sprout",
     "fd": "fd_dashboard_main",
-    "fd_children": ",fd_grid_a,fd_grid_b"
+    "fd_children": ",fd_grid_sys,fd_grid_a,fd_grid_b"
+  },
+  {
+    "id": "fd_grid_sys",
+    "type": "flexdash container",
+    "name": "System",
+    "kind": "StdGrid",
+    "fd_children": ",fd_stat_uptime,fd_stat_ssid,fd_stat_ip,fd_stat_online",
+    "title": "System",
+    "tab": "fd_tab_cronus",
+    "min_cols": "1",
+    "max_cols": "12",
+    "parent": "",
+    "solid": true,
+    "cols": "4",
+    "rows": "1"
+  },
+  {
+    "id": "fd_stat_uptime",
+    "type": "fd-stat",
+    "z": "tab_cronus_flexdash",
+    "fd_container": "fd_grid_sys",
+    "fd_cols": "1",
+    "fd_rows": "1",
+    "fd_array": false,
+    "fd_array_max": 10,
+    "name": "KPI Uptime",
+    "title": "Uptime",
+    "popup_info": "",
+    "unit": "",
+    "value": null,
+    "color": "lime",
+    "low_color": "blue",
+    "high_color": "pink",
+    "low_threshold": null,
+    "high_threshold": null,
+    "low_regexp": null,
+    "high_regexp": null,
+    "chip": true,
+    "iso_prefix": false,
+    "precision": 3,
+    "zoom": 1.1,
+    "x": 220,
+    "y": 60,
+    "wires": []
+  },
+  {
+    "id": "fd_stat_ssid",
+    "type": "fd-stat",
+    "z": "tab_cronus_flexdash",
+    "fd_container": "fd_grid_sys",
+    "fd_cols": "1",
+    "fd_rows": "1",
+    "fd_array": false,
+    "fd_array_max": 10,
+    "name": "KPI SSID",
+    "title": "SSID",
+    "popup_info": "",
+    "unit": "",
+    "value": null,
+    "color": "lime",
+    "low_color": "blue",
+    "high_color": "pink",
+    "low_threshold": null,
+    "high_threshold": null,
+    "low_regexp": null,
+    "high_regexp": null,
+    "chip": true,
+    "iso_prefix": false,
+    "precision": 3,
+    "zoom": 1.1,
+    "x": 220,
+    "y": 100,
+    "wires": []
+  },
+  {
+    "id": "fd_stat_ip",
+    "type": "fd-stat",
+    "z": "tab_cronus_flexdash",
+    "fd_container": "fd_grid_sys",
+    "fd_cols": "1",
+    "fd_rows": "1",
+    "fd_array": false,
+    "fd_array_max": 10,
+    "name": "KPI IP",
+    "title": "IP",
+    "popup_info": "",
+    "unit": "",
+    "value": null,
+    "color": "lime",
+    "low_color": "blue",
+    "high_color": "pink",
+    "low_threshold": null,
+    "high_threshold": null,
+    "low_regexp": null,
+    "high_regexp": null,
+    "chip": true,
+    "iso_prefix": false,
+    "precision": 3,
+    "zoom": 1.1,
+    "x": 220,
+    "y": 140,
+    "wires": []
+  },
+  {
+    "id": "fd_stat_online",
+    "type": "fd-stat",
+    "z": "tab_cronus_flexdash",
+    "fd_container": "fd_grid_sys",
+    "fd_cols": "1",
+    "fd_rows": "1",
+    "fd_array": false,
+    "fd_array_max": 10,
+    "name": "KPI Online",
+    "title": "Arduino",
+    "popup_info": "",
+    "unit": "",
+    "value": null,
+    "color": "grey",
+    "low_color": "blue",
+    "high_color": "pink",
+    "low_threshold": null,
+    "high_threshold": null,
+    "low_regexp": null,
+    "high_regexp": null,
+    "chip": true,
+    "iso_prefix": false,
+    "precision": 3,
+    "zoom": 1.1,
+    "x": 220,
+    "y": 180,
+    "wires": []
   },
   {
     "id": "fd_grid_a",
@@ -5901,7 +6144,7 @@
     "min_cols": "1",
     "max_cols": "6",
     "parent": "",
-    "solid": false,
+    "solid": true,
     "cols": "2",
     "rows": "2"
   },
@@ -5916,7 +6159,7 @@
     "min_cols": "1",
     "max_cols": "6",
     "parent": "",
-    "solid": false,
+    "solid": true,
     "cols": "2",
     "rows": "2"
   },
@@ -5955,7 +6198,7 @@
     "popup_info": "",
     "value": null,
     "enabled": true,
-    "color": "warning",
+    "color": "success",
     "on_value": 1,
     "off_value": 0,
     "show_value": false,
@@ -5986,7 +6229,7 @@
     "popup_info": "",
     "value": null,
     "enabled": true,
-    "color": "warning",
+    "color": "success",
     "on_value": 1,
     "off_value": 0,
     "show_value": false,
@@ -6017,7 +6260,7 @@
     "popup_info": "",
     "value": null,
     "enabled": true,
-    "color": "primary",
+    "color": "success",
     "on_value": 1,
     "off_value": 0,
     "show_value": false,
@@ -6048,7 +6291,7 @@
     "popup_info": "",
     "value": null,
     "enabled": true,
-    "color": "primary",
+    "color": "success",
     "on_value": 1,
     "off_value": 0,
     "show_value": false,
@@ -6079,7 +6322,7 @@
     "popup_info": "",
     "value": null,
     "enabled": true,
-    "color": "warning",
+    "color": "success",
     "on_value": 1,
     "off_value": 0,
     "show_value": false,
@@ -6110,7 +6353,7 @@
     "popup_info": "",
     "value": null,
     "enabled": true,
-    "color": "primary",
+    "color": "success",
     "on_value": 1,
     "off_value": 0,
     "show_value": false,
@@ -6141,7 +6384,7 @@
     "popup_info": "",
     "value": null,
     "enabled": true,
-    "color": "primary",
+    "color": "success",
     "on_value": 1,
     "off_value": 0,
     "show_value": false,
@@ -6165,7 +6408,7 @@
     "order": 0,
     "width": "12",
     "height": "1",
-    "format": "<style>\n:root{\n  --cf-bg:#0b1220;\n  --cf-card:#0f1b31;\n  --cf-text:#e6edf7;\n  --cf-muted:#9db0cc;\n  --cf-accent:#4f8cff;\n}\nbody.nr-dashboard-theme md-content{\n  background: linear-gradient(180deg, #070c15 0%, var(--cf-bg) 60%, #070c15 100%) !important;\n  color: var(--cf-text) !important;\n}\n.nr-dashboard-theme .nr-dashboard-cardpanel,\n.nr-dashboard-theme .nr-dashboard-template{\n  background: var(--cf-card) !important;\n  border-radius: 14px !important;\n  box-shadow: 0 10px 30px rgba(0,0,0,.35) !important;\n  border: 1px solid rgba(255,255,255,.06) !important;\n}\n.nr-dashboard-theme .nr-dashboard-cardpanel .md-title{ color: var(--cf-text) !important; font-weight: 700 !important; }\n.nr-dashboard-theme .nr-dashboard-cardpanel .md-subhead{ color: var(--cf-muted) !important; }\n.nr-dashboard-theme md-switch .md-bar{ opacity:.75; }\n.nr-dashboard-theme md-switch.md-checked .md-bar{ background: rgba(79,140,255,.55) !important; }\n.nr-dashboard-theme md-switch.md-checked .md-thumb{ background: var(--cf-accent) !important; }\n\n/* 자동/수동 모드 스위치: ON=자동(녹색), OFF=수동(빨강) */\n.nr-dashboard-theme md-switch.cf-mode .md-bar{ background: rgba(220,53,69,.45) !important; }\n.nr-dashboard-theme md-switch.cf-mode .md-thumb{ background: rgba(220,53,69,1) !important; }\n.nr-dashboard-theme md-switch.cf-mode.md-checked .md-bar{ background: rgba(40,167,69,.55) !important; }\n.nr-dashboard-theme md-switch.cf-mode.md-checked .md-thumb{ background: rgba(40,167,69,1) !important; }\n\n/* raw text blocks (status/tele/cmd): wrap + thin font + scroll */\n.cf-raw{ width:100%; }\n.cf-raw-title{ color: var(--cf-muted); font-size: 12px; margin-bottom: 6px; }\n.cf-raw pre{\n  margin:0;\n  padding:10px 12px;\n  background: rgba(255,255,255,.04);\n  border: 1px solid rgba(255,255,255,.06);\n  border-radius: 12px;\n  color: var(--cf-text);\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace;\n  font-size: 12px;\n  font-weight: 400;\n  line-height: 1.35;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  max-height: 140px;\n  overflow: auto;\n}\n\n/* tele 요약 + 보조 텍스트 */\n.cf-muted{ color: var(--cf-muted); font-size: 11px; }\n.cf-tele-preview{ width:100%; margin-top: 6px; }\n.cf-tele-preview pre{\n  margin:0;\n  padding:8px 10px;\n  background: rgba(255,255,255,.03);\n  border: 1px solid rgba(255,255,255,.06);\n  border-radius: 10px;\n  color: var(--cf-text);\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace;\n  font-size: 11px;\n  line-height: 1.35;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  /* 요약 영역은 스크롤바 없이 자동 줄바꿈만 */\n  max-height: none !important;\n  overflow: visible !important;\n}\n\n/* 숫자 입력 스핀 숨김(남아 있는 ui_numeric 등) */\n.nr-dashboard-theme input[type=number]::-webkit-outer-spin-button,\n.nr-dashboard-theme input[type=number]::-webkit-inner-spin-button{\n  -webkit-appearance: none;\n  margin: 0;\n}\n.nr-dashboard-theme input[type=number]{ -moz-appearance: textfield; }\n\n/* 드롭다운: tele 갱신 시 트랜지션으로 보이는 깜빡임 완화 */\n.nr-dashboard-theme md-select .md-select-value{ transition:none !important; }\n</style>",
+    "format": "<style>\n:root{\n  --cf-bg:#0b1220;\n  --cf-card:#0f1b31;\n  --cf-text:#e6edf7;\n  --cf-muted:#9db0cc;\n  --cf-accent:#4f8cff;\n}\nbody.nr-dashboard-theme md-content{\n  background: linear-gradient(180deg, #070c15 0%, var(--cf-bg) 60%, #070c15 100%) !important;\n  color: var(--cf-text) !important;\n  overflow-x: hidden !important;\n}\n.nr-dashboard-theme .nr-dashboard-cardpanel,\n.nr-dashboard-theme .nr-dashboard-template{\n  background: var(--cf-card) !important;\n  border-radius: 14px !important;\n  box-shadow: 0 10px 30px rgba(0,0,0,.35) !important;\n  border: 1px solid rgba(255,255,255,.06) !important;\n}\n.nr-dashboard-theme .nr-dashboard-cardpanel .md-title{ color: var(--cf-text) !important; font-weight: 700 !important; }\n.nr-dashboard-theme .nr-dashboard-cardpanel .md-subhead{ color: var(--cf-muted) !important; }\n.nr-dashboard-theme md-switch .md-bar{ opacity:.75; }\n.nr-dashboard-theme md-switch.md-checked .md-bar{ background: rgba(79,140,255,.55) !important; }\n.nr-dashboard-theme md-switch.md-checked .md-thumb{ background: var(--cf-accent) !important; }\n\n/* 자동/수동 모드 스위치: ON=자동(녹색), OFF=수동(빨강) */\n.nr-dashboard-theme md-switch.cf-mode .md-bar{ background: rgba(220,53,69,.45) !important; }\n.nr-dashboard-theme md-switch.cf-mode .md-thumb{ background: rgba(220,53,69,1) !important; }\n.nr-dashboard-theme md-switch.cf-mode.md-checked .md-bar{ background: rgba(40,167,69,.55) !important; }\n.nr-dashboard-theme md-switch.cf-mode.md-checked .md-thumb{ background: rgba(40,167,69,1) !important; }\n\n/* raw text blocks (status/tele/cmd): wrap + thin font + scroll */\n.cf-raw{ width:100%; }\n.cf-raw-title{ color: var(--cf-muted); font-size: 12px; margin-bottom: 6px; }\n.cf-raw pre{\n  margin:0;\n  padding:10px 12px;\n  background: rgba(255,255,255,.04);\n  border: 1px solid rgba(255,255,255,.06);\n  border-radius: 12px;\n  color: var(--cf-text);\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace;\n  font-size: 12px;\n  font-weight: 400;\n  line-height: 1.35;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  max-height: 140px;\n  overflow: auto;\n}\n\n/* tele 요약 + 보조 텍스트 */\n.cf-muted{ color: var(--cf-muted); font-size: 11px; }\n.cf-tele-preview{ width:100%; margin-top: 6px; }\n.cf-tele-preview pre{\n  margin:0;\n  padding:8px 10px;\n  background: rgba(255,255,255,.03);\n  border: 1px solid rgba(255,255,255,.06);\n  border-radius: 10px;\n  color: var(--cf-text);\n  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Liberation Mono\", \"Courier New\", monospace;\n  font-size: 11px;\n  line-height: 1.35;\n  white-space: pre-wrap;\n  overflow-wrap: anywhere;\n  /* 요약 영역은 스크롤바 없이 자동 줄바꿈만 */\n  max-height: none !important;\n  overflow: visible !important;\n}\n\n/* 숫자 입력 스핀 숨김(남아 있는 ui_numeric 등) */\n.nr-dashboard-theme input[type=number]::-webkit-outer-spin-button,\n.nr-dashboard-theme input[type=number]::-webkit-inner-spin-button{\n  -webkit-appearance: none;\n  margin: 0;\n}\n.nr-dashboard-theme input[type=number]{ -moz-appearance: textfield; }\n\n/* 드롭다운: tele 갱신 시 트랜지션으로 보이는 깜빡임 완화 */\n.nr-dashboard-theme md-select .md-select-value{ transition:none !important; }\n</style>",
     "storeOutMessages": false,
     "fwdInMessages": false,
     "resendOnRefresh": true,
@@ -6183,7 +6426,7 @@
     "order": 0,
     "width": "12",
     "height": "1",
-    "format": "<style>\n/* common row */\n.cf-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 0; min-width:0; }\n.cf-label{ color: var(--cf-text); font-size: 13px; font-weight: 500; min-width:0; }\n\n/* A/B Bed 상태 줄: 가로 스크롤바 방지 */\n.cf-row-bed{ overflow-x: hidden; width:100%; }\n.cf-row-bed .cf-pill{ flex-shrink:0; }\n\n/* Pi 서비스 줄 */\n.cf-row-pi-srv{ overflow-x: hidden; }\n\n/* ON/OFF status pills */\n.cf-pill{ min-width:54px; text-align:center; padding:6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing:.2px; }\n.cf-on{ background: rgba(40,167,69,.18); border:1px solid rgba(40,167,69,.45); color:#7CFF9C; }\n.cf-off{ background: rgba(220,53,69,.14); border:1px solid rgba(220,53,69,.45); color:#FF7C88; }\n\n/* dot lamps */\n.cf-dot{ width:12px; height:12px; border-radius:50%; box-shadow: 0 0 0 1px rgba(255,255,255,.12) inset; }\n.cf-dot-on{ background: rgba(40,167,69,1); box-shadow: 0 0 14px rgba(40,167,69,.55); }\n.cf-dot-off{ background: rgba(220,53,69,1); box-shadow: 0 0 14px rgba(220,53,69,.35); }\n</style>",
+    "format": "<style>\n/* common row */\n.cf-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 0; min-width:0; }\n.cf-label{ color: var(--cf-text); font-size: 13px; font-weight: 500; min-width:0; }\n\n/* A/B Bed 상태 줄: 가로 스크롤 방지(라벨 말줄임 + 폭 고정) */\n.cf-row-bed{ overflow-x: hidden; width:100%; max-width:100%; box-sizing:border-box; }\n.cf-row-bed .cf-label{\n  flex: 1 1 0;\n  min-width: 0;\n  overflow: hidden;\n  text-overflow: ellipsis;\n  white-space: nowrap;\n}\n.cf-row-bed .cf-pill{ flex-shrink:0; }\n\n/* Pi 서비스 줄 */\n.cf-row-pi-srv{ overflow-x: hidden; max-width:100%; }\n\n/* ON/OFF status pills */\n.cf-pill{ min-width:54px; text-align:center; padding:6px 10px; border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing:.2px; }\n.cf-on{ background: rgba(40,167,69,.18); border:1px solid rgba(40,167,69,.45); color:#7CFF9C; }\n.cf-off{ background: rgba(220,53,69,.14); border:1px solid rgba(220,53,69,.45); color:#FF7C88; }\n\n/* dot lamps */\n.cf-dot{ width:12px; height:12px; border-radius:50%; box-shadow: 0 0 0 1px rgba(255,255,255,.12) inset; }\n.cf-dot-on{ background: rgba(40,167,69,1); box-shadow: 0 0 14px rgba(40,167,69,.55); }\n.cf-dot-off{ background: rgba(220,53,69,1); box-shadow: 0 0 14px rgba(220,53,69,.35); }\n\n/* 모니터 탭: 탭하면 MQTT 토글(녹=ON, 적=OFF) */\n.cf-mon-tap{ cursor:pointer; user-select:none; min-width:72px; text-align:center; padding:10px 14px; border-radius:10px; font-size:13px; font-weight:800; transition: filter .12s, background .12s; }\n.cf-mon-on{ background: rgba(40,167,69,.38); border:2px solid rgba(40,167,69,.9); color:#E8FFE8; }\n.cf-mon-off{ background: rgba(220,53,69,.34); border:2px solid rgba(220,53,69,.82); color:#FFE8E8; }\n.cf-mon-tap:active{ filter: brightness(1.1); }\n</style>",
     "storeOutMessages": false,
     "fwdInMessages": false,
     "resendOnRefresh": true,
@@ -6201,13 +6444,490 @@
     "order": 0,
     "width": "12",
     "height": "1",
-    "format": "<style>\n/* HomeKit 스타일(Glassmorphism) — Dashboard 2(@flowfuse, Vuetify) + Dashboard 1 fallback */\n:root{\n  --hk-bg:#F2F2F7;\n  --hk-card: rgba(255, 255, 255, 0.78);\n  --hk-radius: 20px;\n  --hk-shadow: 0 4px 20px rgba(0,0,0,0.05);\n  --hk-text:#111;\n  --hk-muted:#6b7280;\n  --hk-accent:#007AFF;\n}\n\n/* 전체 배경 */\nhtml, body{ background: var(--hk-bg) !important; }\n\n/* -------------------- Dashboard 2 (Vuetify) -------------------- */\n/* Vuetify 앱 루트 */\n.v-application{ background: var(--hk-bg) !important; color: var(--hk-text) !important; }\n\n/* 카드(그룹/위젯) — Vuetify card/sheet 기반 */\n.v-card, .v-sheet{\n  background: var(--hk-card) !important;\n  backdrop-filter: blur(12px);\n  -webkit-backdrop-filter: blur(12px);\n  border-radius: var(--hk-radius) !important;\n  box-shadow: var(--hk-shadow) !important;\n  border: 1px solid rgba(255,255,255,0.35) !important;\n}\n\n/* 그룹(섹션) 타이틀: 환경마다 다를 수 있어 보수적으로 적용 */\n.nrdb-ui-group-title, .nrdb-ui-group__title, .v-card-title, .v-toolbar-title{\n  font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif !important;\n  font-weight: 800 !important;\n  color: var(--hk-text) !important;\n}\n\n/* 버튼 */\n.v-btn{\n  border-radius: 15px !important;\n  background: rgba(255,255,255,0.92) !important;\n  color: #333 !important;\n  box-shadow: 0 2px 8px rgba(0,0,0,0.06) !important;\n  transition: transform 0.12s ease, background-color 0.2s ease;\n}\n.v-btn:active{ transform: scale(0.98); background: rgba(229,229,234,0.95) !important; }\n\n/* 스위치(토글) — 과한 오버라이드는 피하고, 크기/여백만 정리 */\n.v-switch{ margin-top: 0 !important; margin-bottom: 0 !important; }\n\n/* -------------------- Dashboard 1 fallback (Angular) -------------------- */\nbody{ background-color: var(--hk-bg) !important; }\n.nr-dashboard-group{\n  background: var(--hk-card) !important;\n  backdrop-filter: blur(10px);\n  border-radius: var(--hk-radius) !important;\n  box-shadow: var(--hk-shadow) !important;\n  border: 1px solid rgba(255,255,255,0.3) !important;\n  margin: 12px !important;\n  padding: 10px !important;\n}\n.nr-dashboard-group-title{\n  font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif !important;\n  font-weight: 700 !important;\n  color: #000 !important;\n  font-size: 1.2rem !important;\n  padding-bottom: 8px !important;\n}\n.nr-dashboard-ui_button{ border-radius: 15px !important; }\n\n/* -------------------- 반응형 타일(템플릿용) -------------------- */\n.hk-container{\n  display: grid;\n  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));\n  gap: 14px;\n  padding: 8px;\n  font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif;\n}\n.hk-card{\n  background: rgba(255, 255, 255, 0.7);\n  backdrop-filter: blur(14px);\n  -webkit-backdrop-filter: blur(14px);\n  border-radius: 22px;\n  padding: 16px;\n  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);\n  border: 1px solid rgba(255, 255, 255, 0.35);\n  display:flex;\n  flex-direction: column;\n  justify-content: space-between;\n  aspect-ratio: 1 / 1;\n}\n.hk-card:active{ transform: scale(0.98); background: rgba(255,255,255,0.92); }\n.hk-icon{ font-size: 22px; margin-bottom: 10px; color: #8E8E93; }\n.hk-value{ font-size: 1.7rem; font-weight: 700; color: #000; margin: 4px 0; }\n.hk-label{ font-size: 0.9rem; font-weight: 600; color: #8E8E93; }\n\n/* 작은 화면에서는 카드 간격 축소 */\n@media (max-width: 420px){\n  .hk-container{ gap: 10px; padding: 6px; }\n  .hk-card{ padding: 14px; border-radius: 18px; }\n}\n</style>",
+    "format": "<style>\n/* HomeKit 스타일(Glassmorphism) — Dashboard 2(@flowfuse, Vuetify) + Dashboard 1 fallback */\n:root{\n  --hk-bg:#F2F2F7;\n  --hk-card: rgba(255, 255, 255, 0.78);\n  --hk-radius: 20px;\n  --hk-shadow: 0 4px 20px rgba(0,0,0,0.05);\n  --hk-text:#111;\n  --hk-muted:#6b7280;\n  --hk-accent:#007AFF;\n  --hk-btn-top:#EEF4FF;\n  --hk-btn-bot:#E2E8F8;\n  --hk-btn-hover-top:#E5EEFF;\n  --hk-btn-hover-bot:#D6E0F5;\n  --hk-btn-text:#3d4d68;\n  --hk-btn-border:rgba(160, 180, 210, 0.45);\n}\n\n/* 전체 배경 + 페이지 가로 스크롤 방지(100vw·자식 overflow 누적) */\nhtml, body{\n  background: var(--hk-bg) !important;\n  overflow-x: hidden !important;\n  max-width: 100%;\n}\n\n/* -------------------- Dashboard 2 (Vuetify) -------------------- */\n/* Vuetify 앱 루트 */\n.v-application{\n  background: var(--hk-bg) !important;\n  color: var(--hk-text) !important;\n  overflow-x: hidden !important;\n}\n.v-application__wrap,\n.v-main,\n.v-layout{\n  overflow-x: hidden !important;\n  max-width: 100%;\n}\n\n/* NR Dashboard 2 페이지 루트(클래스명 환경별 상이) */\n[id=\"app\"],\n.v-application > div{\n  max-width: 100%;\n}\n\n/* 카드(그룹/위젯) — Vuetify card/sheet 기반 */\n.v-card, .v-sheet{\n  background: var(--hk-card) !important;\n  backdrop-filter: blur(12px);\n  -webkit-backdrop-filter: blur(12px);\n  border-radius: var(--hk-radius) !important;\n  box-shadow: var(--hk-shadow) !important;\n  border: 1px solid rgba(255,255,255,0.35) !important;\n}\n\n/* 그룹(섹션) 타이틀: 환경마다 다를 수 있어 보수적으로 적용 */\n.nrdb-ui-group-title, .nrdb-ui-group__title, .v-card-title, .v-toolbar-title{\n  font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif !important;\n  font-weight: 800 !important;\n  color: var(--hk-text) !important;\n}\n\n/* 버튼 — 파스텔 톤 */\n.v-btn{\n  border-radius: 15px !important;\n  background: linear-gradient(180deg, var(--hk-btn-top) 0%, var(--hk-btn-bot) 100%) !important;\n  color: var(--hk-btn-text) !important;\n  border: 1px solid var(--hk-btn-border) !important;\n  box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;\n  transition: transform 0.12s ease, background 0.2s ease, box-shadow 0.2s ease;\n}\n.v-btn:hover{\n  background: linear-gradient(180deg, var(--hk-btn-hover-top) 0%, var(--hk-btn-hover-bot) 100%) !important;\n}\n.v-btn:active{ transform: scale(0.98); filter: brightness(0.97); }\n\n/* 스위치(토글) — 과한 오버라이드는 피하고, 크기/여백만 정리 */\n.v-switch{ margin-top: 0 !important; margin-bottom: 0 !important; }\n\n/* -------------------- Dashboard 1 fallback (Angular) -------------------- */\nbody{ background-color: var(--hk-bg) !important; }\n.nr-dashboard-group{\n  background: var(--hk-card) !important;\n  backdrop-filter: blur(10px);\n  border-radius: var(--hk-radius) !important;\n  box-shadow: var(--hk-shadow) !important;\n  border: 1px solid rgba(255,255,255,0.3) !important;\n  margin: 12px !important;\n  padding: 10px !important;\n}\n.nr-dashboard-group-title{\n  font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif !important;\n  font-weight: 700 !important;\n  color: #000 !important;\n  font-size: 1.2rem !important;\n  padding-bottom: 8px !important;\n}\n.nr-dashboard-theme md-button.md-button,\n.nr-dashboard-ui_button{\n  border-radius: 15px !important;\n  background: linear-gradient(180deg, var(--hk-btn-top) 0%, var(--hk-btn-bot) 100%) !important;\n  color: var(--hk-btn-text) !important;\n  border: 1px solid var(--hk-btn-border) !important;\n}\n\n/* -------------------- 반응형 타일(템플릿용) -------------------- */\n.hk-container{\n  display: grid;\n  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));\n  gap: 14px;\n  padding: 8px;\n  max-width: 100%;\n  overflow-x: hidden;\n  box-sizing: border-box;\n  font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif;\n}\n.hk-card{\n  background: rgba(255, 255, 255, 0.7);\n  backdrop-filter: blur(14px);\n  -webkit-backdrop-filter: blur(14px);\n  border-radius: 22px;\n  padding: 16px;\n  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);\n  border: 1px solid rgba(255, 255, 255, 0.35);\n  display:flex;\n  flex-direction: column;\n  justify-content: space-between;\n  aspect-ratio: 1 / 1;\n}\n.hk-card:active{ transform: scale(0.98); background: rgba(255,255,255,0.92); }\n.hk-icon{ font-size: 22px; margin-bottom: 10px; color: #8E8E93; }\n.hk-value{ font-size: 1.7rem; font-weight: 700; color: #000; margin: 4px 0; }\n.hk-label{ font-size: 0.9rem; font-weight: 600; color: #8E8E93; }\n\n/* 작은 화면에서는 카드 간격 축소 */\n@media (max-width: 420px){\n  .hk-container{ gap: 10px; padding: 6px; }\n  .hk-card{ padding: 14px; border-radius: 18px; }\n}\n</style>",
     "storeOutMessages": false,
     "fwdInMessages": false,
     "resendOnRefresh": true,
     "templateScope": "global",
     "x": 0,
     "y": 0,
+    "wires": []
+  },
+  {
+    "id": "d2_base_cronus",
+    "type": "ui-base",
+    "name": "CronusFarm Dashboard2",
+    "path": "/dashboard"
+  },
+  {
+    "id": "d2_page_cronus",
+    "type": "ui-page",
+    "name": "CronusFarm",
+    "ui": "d2_base_cronus",
+    "path": "",
+    "icon": "mdi-sprout",
+    "theme": "d2_theme_cronus",
+    "order": 1
+  },
+  {
+    "id": "d2_theme_cronus",
+    "type": "ui-theme",
+    "name": "CronusFarm 파스텔",
+    "colors": {
+      "surface": "#F2F2F7",
+      "primary": "#8AA8FF",
+      "background": "#F2F2F7",
+      "groupBackground": "rgba(255,255,255,0.78)",
+      "groupOutline": "rgba(160, 180, 210, 0.45)"
+    },
+    "sizes": {
+      "rowHeight": "comfortable",
+      "pagePadding": "12px",
+      "groupGap": "12px",
+      "groupBorderRadius": "20px",
+      "widgetGap": "12px"
+    }
+  },
+  {
+    "id": "d2_group_status",
+    "type": "ui-group",
+    "name": "상태",
+    "page": "d2_page_cronus",
+    "order": 1,
+    "width": "12",
+    "className": ""
+  },
+  {
+    "id": "d2_txt_state_s",
+    "type": "ui-text",
+    "z": "tab_cronus_dash",
+    "name": "D2 S 요약",
+    "group": "d2_group_status",
+    "order": 1,
+    "width": 12,
+    "height": 1,
+    "label": "채널(S:)",
+    "layout": "row-spread",
+    "value": "payload",
+    "valueType": "msg"
+  },
+  {
+    "id": "d2_txt_tele_raw",
+    "type": "ui-text",
+    "z": "tab_cronus_dash",
+    "name": "D2 tele raw",
+    "group": "d2_group_status",
+    "order": 2,
+    "width": 12,
+    "height": 2,
+    "label": "tele(raw)",
+    "layout": "row-spread",
+    "value": "payload",
+    "valueType": "msg"
+  }
+  ,
+  {
+    "id": "ui_tab_demo",
+    "type": "ui_tab",
+    "name": "CronusFarm-데모(랜덤)",
+    "icon": "insert_chart",
+    "order": 30,
+    "disabled": false,
+    "hidden": false
+  },
+  {
+    "id": "ui_grp_demo_sensors",
+    "type": "ui_group",
+    "name": "센서(4월 랜덤)",
+    "tab": "ui_tab_demo",
+    "order": 1,
+    "disp": true,
+    "width": "12",
+    "collapse": false
+  },
+  {
+    "id": "ui_grp_demo_act",
+    "type": "ui_group",
+    "name": "LED/펌프 상태(4월 랜덤)",
+    "tab": "ui_tab_demo",
+    "order": 2,
+    "disp": true,
+    "width": "12",
+    "collapse": false
+  },
+  {
+    "id": "inj_demo_refresh",
+    "type": "inject",
+    "z": "tab_cronus_dash",
+    "name": "데모 데이터(최근 30일) 새로고침",
+    "props": [
+      { "p": "payload" }
+    ],
+    "repeat": "300",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "2",
+    "topic": "",
+    "payload": "",
+    "payloadType": "date",
+    "x": 210,
+    "y": 860,
+    "wires": [
+      [
+        "fn_demo_build_queries"
+      ]
+    ]
+  },
+  {
+    "id": "fn_demo_build_queries",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "Influx 쿼리 만들기(최근 30일, 1h)",
+    "func": "const sensors = [\n  { key: 'temp', unit: '°C' },\n  { key: 'hum', unit: '%' },\n  { key: 'ec', unit: 'mS/cm' },\n  { key: 'ph', unit: 'pH' },\n];\n\nconst actKeys = ['led_a1','led_a2','led_b1','pump_a1','pump_a2','pump_b1','pump_b2'];\n\nconst out = [];\nfor (const s of sensors) {\n  out.push({\n    _demo: { kind: 'sensor', key: s.key, unit: s.unit },\n    query: `SELECT mean(\"value\") AS value FROM \"sensor\" WHERE (\"key\"='${s.key}') AND time > now() - 30d GROUP BY time(1h) fill(null)`\n  });\n}\n\nout.push({\n  _demo: { kind: 'act', key: 'actuator' },\n  query: `SELECT last(\"value\") AS value FROM \"actuator\" WHERE (\"key\" =~ /^(led|pump)_/) AND time > now() - 30d GROUP BY time(1h), \"key\" fill(previous)`\n});\n\nreturn [out];",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 470,
+    "y": 860,
+    "wires": [
+      [
+        "influx_in_demo"
+      ]
+    ]
+  },
+  {
+    "id": "influx_in_demo",
+    "type": "influxdb in",
+    "z": "tab_cronus_dash",
+    "influxdb": "influx_cfg_local",
+    "name": "query influx (demo)",
+    "query": "",
+    "rawOutput": true,
+    "precision": "ms",
+    "retentionPolicy": "",
+    "org": "",
+    "x": 720,
+    "y": 860,
+    "wires": [
+      [
+        "fn_demo_to_ui"
+      ]
+    ]
+  },
+  {
+    "id": "fn_demo_to_ui",
+    "type": "function",
+    "z": "tab_cronus_dash",
+    "name": "UI 차트 포맷 변환",
+    "func": "const meta = msg._demo || {};\nconst rows = msg.payload;\n\n// influxdb in(rawOutput=true) 결과는 배열/객체가 섞일 수 있어 방어\nconst arr = Array.isArray(rows) ? rows : (rows ? [rows] : []);\n\nfunction toSeries(points, label) {\n  const out = [];\n  for (const p of points) {\n    const t = p.time || p.timestamp || p._time;\n    const v = (p.value ?? p.mean ?? p.last ?? p.value_float ?? null);\n    const ts = t ? new Date(t).getTime() : Date.now();\n    if (v === null || v === undefined) continue;\n    out.push({ x: ts, y: Number(v) });\n  }\n  return { series: [{ name: label, data: out }] };\n}\n\n// 센서(단일 키) 쿼리\nif (meta.kind === 'sensor') {\n  const label = `${meta.key}${meta.unit ? ' ('+meta.unit+')' : ''}`;\n  msg.payload = toSeries(arr, label).series;\n  msg.topic = `demo/sensor/${meta.key}`;\n  return msg;\n}\n\n// actuator(키별로 섞여 올 수 있음): key별로 분리\nif (meta.kind === 'act') {\n  const byKey = new Map();\n  for (const p of arr) {\n    const k = p.key || (p.tags && p.tags.key) || p.tag_key || 'unknown';\n    if (!byKey.has(k)) byKey.set(k, []);\n    byKey.get(k).push(p);\n  }\n  const series = [];\n  for (const [k, pts] of byKey.entries()) {\n    const s = toSeries(pts, k).series[0];\n    series.push(s);\n  }\n  msg.payload = series;\n  msg.topic = `demo/actuator`;\n  return msg;\n}\n\nreturn null;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 960,
+    "y": 860,
+    "wires": [
+      [
+        "sw_demo_route"
+      ]
+    ]
+  },
+  {
+    "id": "sw_demo_route",
+    "type": "switch",
+    "z": "tab_cronus_dash",
+    "name": "topic 라우팅",
+    "property": "topic",
+    "propertyType": "msg",
+    "rules": [
+      { "t": "cont", "v": "demo/sensor/temp", "vt": "str" },
+      { "t": "cont", "v": "demo/sensor/hum", "vt": "str" },
+      { "t": "cont", "v": "demo/sensor/ec", "vt": "str" },
+      { "t": "cont", "v": "demo/sensor/ph", "vt": "str" },
+      { "t": "cont", "v": "demo/actuator", "vt": "str" }
+    ],
+    "checkall": "true",
+    "repair": false,
+    "outputs": 5,
+    "x": 1160,
+    "y": 860,
+    "wires": [
+      [ "ui_chart_demo_temp" ],
+      [ "ui_chart_demo_hum" ],
+      [ "ui_chart_demo_ec" ],
+      [ "ui_chart_demo_ph" ],
+      [ "ui_chart_demo_act" ]
+    ]
+  },
+  {
+    "id": "ui_chart_demo_temp",
+    "type": "ui_chart",
+    "z": "tab_cronus_dash",
+    "name": "온도(데모)",
+    "group": "ui_grp_demo_sensors",
+    "order": 1,
+    "width": 12,
+    "height": 5,
+    "label": "온도(최근 30일, 1h 평균)",
+    "chartType": "line",
+    "legend": "false",
+    "xformat": "MM/DD HH:mm",
+    "interpolate": "linear",
+    "nodata": "데이터 없음(Influx 시드 필요)",
+    "dot": false,
+    "ymin": "",
+    "ymax": "",
+    "removeOlder": "30",
+    "removeOlderPoints": "",
+    "removeOlderUnit": "86400",
+    "cutout": 0,
+    "useOneColor": false,
+    "colors": [ "#a3d5ff", "#b6f2c0", "#ffd6a5", "#ffadad", "#cdb4db", "#bde0fe" ],
+    "useOldStyle": false,
+    "outputs": 0,
+    "x": 1430,
+    "y": 800,
+    "wires": []
+  },
+  {
+    "id": "ui_chart_demo_hum",
+    "type": "ui_chart",
+    "z": "tab_cronus_dash",
+    "name": "습도(데모)",
+    "group": "ui_grp_demo_sensors",
+    "order": 2,
+    "width": 12,
+    "height": 5,
+    "label": "습도(최근 30일, 1h 평균)",
+    "chartType": "line",
+    "legend": "false",
+    "xformat": "MM/DD HH:mm",
+    "interpolate": "linear",
+    "nodata": "데이터 없음(Influx 시드 필요)",
+    "dot": false,
+    "ymin": "",
+    "ymax": "",
+    "removeOlder": "30",
+    "removeOlderPoints": "",
+    "removeOlderUnit": "86400",
+    "cutout": 0,
+    "useOneColor": false,
+    "colors": [ "#bde0fe", "#ffc8dd", "#caffbf", "#ffd6a5", "#cdb4db", "#a3d5ff" ],
+    "useOldStyle": false,
+    "outputs": 0,
+    "x": 1430,
+    "y": 840,
+    "wires": []
+  },
+  {
+    "id": "ui_chart_demo_ec",
+    "type": "ui_chart",
+    "z": "tab_cronus_dash",
+    "name": "EC(데모)",
+    "group": "ui_grp_demo_sensors",
+    "order": 3,
+    "width": 12,
+    "height": 5,
+    "label": "EC(최근 30일, 1h 평균)",
+    "chartType": "line",
+    "legend": "false",
+    "xformat": "MM/DD HH:mm",
+    "interpolate": "linear",
+    "nodata": "데이터 없음(Influx 시드 필요)",
+    "dot": false,
+    "ymin": "",
+    "ymax": "",
+    "removeOlder": "30",
+    "removeOlderPoints": "",
+    "removeOlderUnit": "86400",
+    "cutout": 0,
+    "useOneColor": false,
+    "colors": [ "#caffbf", "#bde0fe", "#ffd6a5", "#ffc8dd", "#cdb4db", "#a3d5ff" ],
+    "useOldStyle": false,
+    "outputs": 0,
+    "x": 1430,
+    "y": 880,
+    "wires": []
+  },
+  {
+    "id": "ui_chart_demo_ph",
+    "type": "ui_chart",
+    "z": "tab_cronus_dash",
+    "name": "pH(데모)",
+    "group": "ui_grp_demo_sensors",
+    "order": 4,
+    "width": 12,
+    "height": 5,
+    "label": "pH(최근 30일, 1h 평균)",
+    "chartType": "line",
+    "legend": "false",
+    "xformat": "MM/DD HH:mm",
+    "interpolate": "linear",
+    "nodata": "데이터 없음(Influx 시드 필요)",
+    "dot": false,
+    "ymin": "",
+    "ymax": "",
+    "removeOlder": "30",
+    "removeOlderPoints": "",
+    "removeOlderUnit": "86400",
+    "cutout": 0,
+    "useOneColor": false,
+    "colors": [ "#ffc8dd", "#caffbf", "#bde0fe", "#ffd6a5", "#cdb4db", "#a3d5ff" ],
+    "useOldStyle": false,
+    "outputs": 0,
+    "x": 1430,
+    "y": 920,
+    "wires": []
+  },
+  {
+    "id": "ui_chart_demo_act",
+    "type": "ui_chart",
+    "z": "tab_cronus_dash",
+    "name": "액추에이터(데모)",
+    "group": "ui_grp_demo_act",
+    "order": 1,
+    "width": 12,
+    "height": 8,
+    "label": "LED/펌프 상태(최근 30일, 1h last)",
+    "chartType": "line",
+    "legend": "true",
+    "xformat": "MM/DD HH:mm",
+    "interpolate": "step",
+    "nodata": "데이터 없음(Influx 시드 필요)",
+    "dot": false,
+    "ymin": "0",
+    "ymax": "1",
+    "removeOlder": "30",
+    "removeOlderPoints": "",
+    "removeOlderUnit": "86400",
+    "cutout": 0,
+    "useOneColor": false,
+    "colors": [ "#a3d5ff", "#b6f2c0", "#ffd6a5", "#ffadad", "#cdb4db", "#bde0fe", "#ffc8dd" ],
+    "useOldStyle": false,
+    "outputs": 0,
+    "x": 1440,
+    "y": 980,
+    "wires": []
+  },
+  {
+    "id": "tab_cronus_web",
+    "type": "tab",
+    "label": "CronusFarm Web(/farm)",
+    "disabled": false,
+    "info": "Stitch 디자인 HTML 제공\n- GET /farm\n\n데이터 연동용 API\n- GET /api/cronus/summary\n\n주의: /ui(Node-RED Dashboard1)와 별도 페이지입니다."
+  },
+  {
+    "id": "http_in_farm",
+    "type": "http in",
+    "z": "tab_cronus_web",
+    "name": "GET /farm",
+    "url": "/farm",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 160,
+    "y": 120,
+    "wires": [
+      [
+        "tpl_farm_html"
+      ]
+    ]
+  },
+  {
+    "id": "tpl_farm_html",
+    "type": "template",
+    "z": "tab_cronus_web",
+    "name": "farm.html (Stitch export)",
+    "field": "payload",
+    "fieldType": "msg",
+    "format": "<!DOCTYPE html>\n<html class=\"dark\" lang=\"en\"><head>\n<meta charset=\"utf-8\"/>\n<meta content=\"width=device-width, initial-scale=1.0\" name=\"viewport\"/>\n<script src=\"https://cdn.tailwindcss.com?plugins=forms,container-queries\"></script>\n<link href=\"https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&amp;family=Space+Grotesk:wght@500;600&amp;display=swap\" rel=\"stylesheet\"/>\n<link href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap\" rel=\"stylesheet\"/>\n<link href=\"https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap\" rel=\"stylesheet\"/>\n<script id=\"tailwind-config\">\n      tailwind.config = {\n        darkMode: \"class\",\n        theme: {\n          extend: {\n            \"colors\": {\n                    \"on-tertiary-fixed\": \"#410006\",\n                    \"outline-variant\": \"#414754\",\n                    \"outline\": \"#8b90a0\",\n                    \"on-primary-fixed\": \"#001a41\",\n                    \"tertiary\": \"#ffb3b0\",\n                    \"tertiary-fixed\": \"#ffdad8\",\n                    \"surface\": \"#10131b\",\n                    \"error\": \"#ffb4ab\",\n                    \"tertiary-fixed-dim\": \"#ffb3b0\",\n                    \"on-surface\": \"#e0e2ed\",\n                    \"tertiary-container\": \"#f16161\",\n                    \"surface-container-lowest\": \"#0b0e16\",\n                    \"primary-fixed\": \"#d8e2ff\",\n                    \"on-background\": \"#e0e2ed\",\n                    \"on-tertiary-fixed-variant\": \"#8c1520\",\n                    \"surface-dim\": \"#10131b\",\n                    \"primary-fixed-dim\": \"#adc7ff\",\n                    \"primary-container\": \"#4a8eff\",\n                    \"inverse-surface\": \"#e0e2ed\",\n                    \"on-secondary-fixed\": \"#00210c\",\n                    \"secondary-container\": \"#06bb63\",\n                    \"surface-container\": \"#1c2027\",\n                    \"surface-tint\": \"#adc7ff\",\n                    \"on-secondary-fixed-variant\": \"#005228\",\n                    \"surface-variant\": \"#31353d\",\n                    \"inverse-primary\": \"#005bc0\",\n                    \"surface-bright\": \"#363942\",\n                    \"on-primary\": \"#002e68\",\n                    \"primary\": \"#adc7ff\",\n                    \"on-secondary\": \"#003919\",\n                    \"on-primary-fixed-variant\": \"#004493\",\n                    \"on-surface-variant\": \"#c1c6d7\",\n                    \"on-error\": \"#690005\",\n                    \"on-primary-container\": \"#00285b\",\n                    \"secondary-fixed\": \"#6bfe9c\",\n                    \"secondary\": \"#4ae183\",\n                    \"inverse-on-surface\": \"#2d3039\",\n                    \"secondary-fixed-dim\": \"#4ae183\",\n                    \"on-tertiary\": \"#68000f\",\n                    \"on-error-container\": \"#ffdad6\",\n                    \"surface-container-low\": \"#181c23\",\n                    \"error-container\": \"#93000a\",\n                    \"surface-container-high\": \"#272a32\",\n                    \"surface-container-highest\": \"#31353d\",\n                    \"on-tertiary-container\": \"#5c000c\",\n                    \"background\": \"#10131b\",\n                    \"on-secondary-container\": \"#00431f\"\n            },\n            \"borderRadius\": {\n                    \"DEFAULT\": \"0.125rem\",\n                    \"lg\": \"0.25rem\",\n                    \"xl\": \"0.5rem\",\n                    \"full\": \"0.75rem\"\n            },\n            \"spacing\": {\n                    \"unit\": \"8px\",\n                    \"margin\": \"2rem\",\n                    \"gutter\": \"1.5rem\",\n                    \"card-padding\": \"1.25rem\"\n            },\n            \"fontFamily\": {\n                    \"heading-md\": [\"Inter\"],\n                    \"body-base\": [\"Inter\"],\n                    \"display-lg\": [\"Inter\"],\n                    \"data-mono\": [\"Space Grotesk\"],\n                    \"label-caps\": [\"Space Grotesk\"]\n            },\n            \"fontSize\": {\n                    \"heading-md\": [\"20px\", {\"lineHeight\": \"1.4\", \"fontWeight\": \"600\"}],\n                    \"body-base\": [\"16px\", {\"lineHeight\": \"1.5\", \"fontWeight\": \"400\"}],\n                    \"display-lg\": [\"32px\", {\"lineHeight\": \"1.2\", \"fontWeight\": \"700\"}],\n                    \"data-mono\": [\"14px\", {\"lineHeight\": \"1.2\", \"fontWeight\": \"500\"}],\n                    \"label-caps\": [\"12px\", {\"lineHeight\": \"1\", \"letterSpacing\": \"0.05em\", \"fontWeight\": \"600\"}]\n            }\n          },\n        },\n      }\n    </script>\n<style>\n        .material-symbols-outlined {\n            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;\n        }\n        .chart-grid {\n            background-image: linear-gradient(to right, #1c2027 1px, transparent 1px), linear-gradient(to bottom, #1c2027 1px, transparent 1px);\n            background-size: 40px 40px;\n        }\n        .line-glow {\n            filter: drop-shadow(0 0 4px rgba(74, 142, 255, 0.4));\n        }\n    </style>\n</head>\n<body class=\"bg-surface text-on-surface font-body-base text-body-base antialiased\">\n<div class=\"flex min-h-screen\">\n<!-- SideNavBar -->\n<aside class=\"flex flex-col h-full sticky top-0 left-0 bg-slate-950 h-screen w-64 border-r border-slate-800 shadow-none font-inter antialiased text-sm font-medium\">\n<div class=\"p-6 mb-4\">\n<div class=\"flex items-center gap-3 mb-6\">\n<img alt=\"Operator Avatar\" class=\"w-10 h-10 rounded-lg bg-surface-container-highest p-1\" data-alt=\"Stylized robotic tractor icon in neon blue on a dark industrial background\" src=\"https://lh3.googleusercontent.com/aida-public/AB6AXuDoc4AcBRSGMhh59WFY_otHLO1z4QjcxEmhd8Ttcjt53bLXNZ1AZv_mCIOnIOIm_kC1xzNNIA_kkT-OLIZUTYTz2OAsdQ2QgkrmfGZUR53hIj5vwX03NpJ2T67w5E1tdx9gtIgZo7Do4BpTVaEC0w4AXoQ_YNV4XWwtUHyYE_6CbUFJbCLnYRQ_5aoMmvT00Q2ifO64ff7j2PDq9SaVWFOO7qzf41seQ57BjDfbl7qWTf5cFL17GraOb8BrfD1X6n9YT2KsjDQ72muG\"/>\n<div>\n<h1 class=\"text-xl font-black tracking-tighter text-blue-500 dark:text-blue-400\">FarmOS Control</h1>\n<p class=\"text-xs text-slate-500\">Sector 07 - Active</p>\n</div>\n</div>\n<nav class=\"space-y-1\">\n<a class=\"text-blue-400 bg-blue-500/10 border-r-2 border-blue-500 px-4 py-3 flex items-center gap-3 active:scale-95 transition-all\" href=\"#\">\n<span class=\"material-symbols-outlined\">dashboard</span>\n<span>Dashboard</span>\n</a>\n<a class=\"text-slate-500 hover:text-slate-300 px-4 py-3 flex items-center gap-3 hover:bg-slate-900 transition-colors duration-200\" href=\"#\">\n<span class=\"material-symbols-outlined\">sensors</span>\n<span>Sensors</span>\n</a>\n<a class=\"text-slate-500 hover:text-slate-300 px-4 py-3 flex items-center gap-3 hover:bg-slate-900 transition-colors duration-200\" href=\"#\">\n<span class=\"material-symbols-outlined\">settings_input_component</span>\n<span>Automation</span>\n</a>\n<a class=\"text-slate-500 hover:text-slate-300 px-4 py-3 flex items-center gap-3 hover:bg-slate-900 transition-colors duration-200\" href=\"#\">\n<span class=\"material-symbols-outlined\">inventory_2</span>\n<span>Inventory</span>\n</a>\n<a class=\"text-slate-500 hover:text-slate-300 px-4 py-3 flex items-center gap-3 hover:bg-slate-900 transition-colors duration-200\" href=\"#\">\n<span class=\"material-symbols-outlined\">terminal</span>\n<span>System Logs</span>\n</a>\n</nav>\n</div>\n<div class=\"mt-auto border-t border-slate-800 p-6 space-y-1\">\n<a class=\"text-slate-500 hover:text-slate-300 px-4 py-2 flex items-center gap-3 hover:bg-slate-900 transition-colors duration-200\" href=\"#\">\n<span class=\"material-symbols-outlined\">help_outline</span>\n<span>Support</span>\n</a>\n<a class=\"text-slate-500 hover:text-slate-300 px-4 py-2 flex items-center gap-3 hover:bg-slate-900 transition-colors duration-200\" href=\"#\">\n<span class=\"material-symbols-outlined\">settings</span>\n<span>Settings</span>\n</a>\n</div>\n</aside>\n<div class=\"flex-1 flex flex-col min-w-0\">\n<!-- TopNavBar -->\n<header class=\"flex items-center justify-between px-6 sticky top-0 z-40 bg-slate-950/80 backdrop-blur-md w-full h-16 border-b border-slate-800 shadow-sm font-inter text-sm\">\n<div class=\"flex items-center gap-4\">\n<span class=\"text-on-surface-variant font-medium\">Monitoring &gt; Sector 07 &gt; Dashboard</span>\n</div>\n<div class=\"flex items-center gap-6\">\n<div class=\"relative\">\n<input class=\"bg-surface-container-lowest border border-outline-variant rounded-lg pl-10 pr-4 py-1.5 w-64 focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all\" placeholder=\"Search parameters...\" type=\"text\"/>\n<span class=\"material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-lg\">search</span>\n</div>\n<div class=\"flex items-center gap-4 text-slate-400\">\n<span class=\"material-symbols-outlined cursor-pointer hover:text-blue-300 transition-opacity\">notifications</span>\n<span class=\"material-symbols-outlined cursor-pointer hover:text-blue-300 transition-opacity\">power_settings_new</span>\n<div class=\"h-8 w-8 rounded-full bg-primary-container flex items-center justify-center overflow-hidden border border-primary-fixed\">\n<img alt=\"User Avatar\" data-alt=\"Close up portrait of a professional system administrator in a dark office environment\" src=\"https://lh3.googleusercontent.com/aida-public/AB6AXuDOFie-aeG2cOVSoP_N5W01tG3bVQuZPALEmk8HWCKa6ZAlP1R-Y36Wx0FiuEy0NZEGYu8LLOKTCODduOtgN95sqNXyItpI7QK6mpLer2Yi7kxwAwxowO4woyIYdTg1uvQia65X1Cl0qDlqwbP3uFlLsJ_z3mha9-9kqZBRX6tASqEZCxdAl2KoqqM5XZ-Wwk5GwR0Dn4bGKSfgfT8XEpLr6TFiXqOUB5GxhSdPvOCkEtc6Bc48s4l5R-mqrmqrCDR41dOyrLaSbF2h\"/>\n</div>\n</div>\n</div>\n</header>\n<!-- Main Canvas -->\n<main class=\"p-8 space-y-6\">\n<!-- (Stitch export 원문 그대로) -->\n</main>\n</div>\n</div>\n</body></html>\n",
+    "output": "str",
+    "x": 380,
+    "y": 120,
+    "wires": [
+      [
+        "fn_farm_headers"
+      ]
+    ]
+  },
+  {
+    "id": "fn_farm_headers",
+    "type": "function",
+    "z": "tab_cronus_web",
+    "name": "HTML 헤더 설정",
+    "func": "msg.headers = msg.headers || {};\nmsg.headers['Content-Type'] = 'text/html; charset=utf-8';\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 600,
+    "y": 120,
+    "wires": [
+      [
+        "http_res_farm"
+      ]
+    ]
+  },
+  {
+    "id": "http_res_farm",
+    "type": "http response",
+    "z": "tab_cronus_web",
+    "name": "",
+    "statusCode": "",
+    "headers": {},
+    "x": 800,
+    "y": 120,
+    "wires": []
+  },
+  {
+    "id": "http_in_api_summary",
+    "type": "http in",
+    "z": "tab_cronus_web",
+    "name": "GET /api/cronus/summary",
+    "url": "/api/cronus/summary",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 180,
+    "y": 200,
+    "wires": [
+      [
+        "fn_api_summary_mock"
+      ]
+    ]
+  },
+  {
+    "id": "fn_api_summary_mock",
+    "type": "function",
+    "z": "tab_cronus_web",
+    "name": "요약(JSON) 만들기",
+    "func": "function pick(min, max, digits=1) {\n  const v = min + (max-min) * Math.random();\n  const p = Math.pow(10, digits);\n  return Math.round(v*p)/p;\n}\n\nmsg.payload = {\n  ts: new Date().toISOString(),\n  demo: true,\n  sensors: {\n    temp: pick(20, 28, 1),\n    hum: pick(45, 80, 1),\n    ec: pick(0.8, 2.4, 2),\n    ph: pick(5.5, 6.7, 2)\n  },\n  actuators: {\n    led_a1: Math.random() > 0.5 ? 1 : 0,\n    led_a2: Math.random() > 0.5 ? 1 : 0,\n    led_b1: Math.random() > 0.5 ? 1 : 0,\n    pump_a1: Math.random() > 0.7 ? 1 : 0,\n    pump_a2: Math.random() > 0.7 ? 1 : 0,\n    pump_b1: Math.random() > 0.7 ? 1 : 0,\n    pump_b2: Math.random() > 0.7 ? 1 : 0\n  }\n};\nmsg.headers = { 'Content-Type': 'application/json; charset=utf-8' };\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 420,
+    "y": 200,
+    "wires": [
+      [
+        "http_res_api"
+      ]
+    ]
+  },
+  {
+    "id": "http_res_api",
+    "type": "http response",
+    "z": "tab_cronus_web",
+    "name": "",
+    "statusCode": "",
+    "headers": {},
+    "x": 800,
+    "y": 200,
     "wires": []
   }
 ]

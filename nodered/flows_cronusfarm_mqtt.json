@@ -4,7 +4,7 @@
     "type": "tab",
     "label": "CronusFarm MQTT",
     "disabled": false,
-    "info": "UNO R4 WiFi ↔ Node-RED (MQTT)\n- cmd 토픽: cronusfarm/<DEVICE_ID>/cmd\n- tele 토픽: cronusfarm/<DEVICE_ID>/tele\n\n기본 DEVICE_ID는 cronusfarm-01 입니다."
+    "info": "UNO R4 WiFi ↔ Node-RED (MQTT)\n- cmd: cronusfarm/<DEVICE_ID>/cmd (예: pump_a1=0/1 on_pump_a1=30)\n- tele: cronusfarm/<DEVICE_ID>/tele (S:|A:|T:|W:)\n\nUI CronusFarm 탭: 펌프 스위치=pump_a1, 슬라이더=ON 주기(초)=on_pump_a1\n기본 DEVICE_ID: cronusfarm-01 (function·tele 구독과 맞출 것)"
   },
   {
     "id": "d6b7f6c1b2b3c4d5",
@@ -37,8 +37,9 @@
   {
     "id": "c0d6f35bdbd7d7c1",
     "type": "ui_tab",
-    "name": "CronusFarm",
+    "name": "CronusFarm (MQTT)",
     "icon": "dashboard",
+    "order": 100,
     "disabled": false,
     "hidden": false
   },
@@ -75,7 +76,7 @@
     "height": 0,
     "passthru": true,
     "decouple": "false",
-    "topic": "",
+    "topic": "pump",
     "style": "",
     "onvalue": "1",
     "onvalueType": "str",
@@ -93,18 +94,18 @@
     "id": "a8c1c0fe3cc39d21",
     "type": "ui_slider",
     "z": "b1c5a1f1d7a2a3a1",
-    "name": "팬 PWM",
-    "label": "팬(0~255)",
-    "tooltip": "",
+    "name": "펌프 ON 시간",
+    "label": "펌프 ON(초)",
+    "tooltip": "아두이노 on_pump_a1 (초)",
     "group": "d1f9b55a9843c0a1",
     "order": 2,
     "width": 0,
     "height": 0,
     "passthru": true,
     "outs": "all",
-    "topic": "",
-    "min": 0,
-    "max": 255,
+    "topic": "onsec",
+    "min": 1,
+    "max": 300,
     "step": 1,
     "x": 160,
     "y": 180,
@@ -119,10 +120,10 @@
     "type": "function",
     "z": "b1c5a1f1d7a2a3a1",
     "name": "cmd payload 만들기",
-    "func": "// Arduino가 기대하는 형식: \"pump=1 fan=128\"\n// switch/slider가 각각 들어올 수 있어 마지막 값을 context에 저장해서 합칩니다.\n\nconst devId = flow.get('deviceId') || 'cronusfarm-01';\nflow.set('deviceId', devId);\n\nconst pump = (msg._ui && msg._ui.type === 'switch') ? msg.payload : flow.get('pump');\nconst fan  = (msg._ui && msg._ui.type === 'slider') ? msg.payload : flow.get('fan');\n\nif (msg._ui && msg._ui.type === 'switch') flow.set('pump', pump);\nif (msg._ui && msg._ui.type === 'slider') flow.set('fan', fan);\n\nconst p = (pump === undefined) ? (flow.get('pump') ?? '0') : pump;\nconst f = (fan === undefined)  ? (flow.get('fan')  ?? '0') : fan;\n\nmsg.topic = `cronusfarm/${devId}/cmd`;\nmsg.payload = `pump=${p} fan=${f}`;\nreturn msg;",
+    "func": "// 펌웨어(CronusFarm.ino): key=value — pump_a1=0/1, on_pump_a1=초(1~)\n// ui_switch/ui_slider에 topic을 pump / onsec 으로 두고 구분합니다.\n\nconst devId = flow.get('deviceId') || 'cronusfarm-01';\nflow.set('deviceId', devId);\n\nconst t = (msg.topic || '').toString();\nif (t === 'pump') {\n    flow.set('pump', String(msg.payload));\n} else if (t === 'onsec') {\n    flow.set('onsec', String(msg.payload));\n}\n\nif (flow.get('pump') === undefined) flow.set('pump', '0');\nif (flow.get('onsec') === undefined) flow.set('onsec', '30');\n\nconst p = flow.get('pump');\nconst o = flow.get('onsec');\n\nmsg.topic = `cronusfarm/${devId}/cmd`;\nmsg.payload = `pump_a1=${p} on_pump_a1=${o}`;\nreturn msg;",
+    "initialize": "flow.set('deviceId', flow.get('deviceId') || 'cronusfarm-01');\nflow.set('pump', flow.get('pump') || '0');\nflow.set('onsec', flow.get('onsec') || '30');\n",
     "outputs": 1,
     "noerr": 0,
-    "initialize": "",
     "finalize": "",
     "libs": [],
     "x": 400,
@@ -168,10 +169,48 @@
     "y": 260,
     "wires": [
       [
-        "a0c388b3a7d9b2a1",
-        "a9a2b2c3d4e5f6a1"
+        "f0e1d2c3b4a59687"
       ]
     ]
+  },
+  {
+    "id": "f0e1d2c3b4a59687",
+    "type": "function",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "tele → raw / S요약",
+    "func": "const raw = (msg.payload ?? '').toString();\nconst m = raw.match(/S:\\s*([^|]+)/);\nconst short = m ? m[1].trim().replace(/\\s+/g, ' ') : '(S: 없음 — 아두이노 tele 미수신)';\nreturn [[{ payload: raw, topic: msg.topic }], [{ payload: short }]];",
+    "outputs": 2,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 280,
+    "y": 260,
+    "wires": [
+      [
+        "a0c388b3a7d9b2a1",
+        "a9a2b2c3d4e5f6a1"
+      ],
+      [
+        "a1b2c3d4e5f60718"
+      ]
+    ]
+  },
+  {
+    "id": "a1b2c3d4e5f60718",
+    "type": "ui_text",
+    "z": "b1c5a1f1d7a2a3a1",
+    "group": "a3d2cf2a6f27a2b1",
+    "order": 2,
+    "width": 0,
+    "height": 0,
+    "name": "tele S 요약",
+    "label": "채널(S:)",
+    "format": "{{msg.payload}}",
+    "layout": "row-spread",
+    "x": 390,
+    "y": 200,
+    "wires": []
   },
   {
     "id": "a0c388b3a7d9b2a1",
