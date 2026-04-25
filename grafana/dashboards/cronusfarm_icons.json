@@ -1,0 +1,142 @@
+{
+  "uid": "cronusfarm-icons",
+  "title": "CronusFarm 아이콘 상태",
+  "tags": ["cronusfarm"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "marcusolsson-dynamictext-panel",
+      "title": "LED A1 (아이콘)",
+      "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"led_a1\")\n  |> last()"
+        }
+      ],
+      "options": {
+        "content": "<div class=\"cf-card\">\n  {{#if (eq _value 1)}}\n    <div class=\"cf-title\">LED A1</div>\n    <svg class=\"cf-icon\" viewBox=\"0 0 64 64\" aria-label=\"LED ON\">\n      <circle cx=\"32\" cy=\"24\" r=\"14\" fill=\"#2ecc71\"/>\n      <rect x=\"26\" y=\"38\" width=\"12\" height=\"12\" rx=\"3\" fill=\"#2ecc71\"/>\n      <path d=\"M22 54h20\" stroke=\"#2ecc71\" stroke-width=\"4\" stroke-linecap=\"round\"/>\n    </svg>\n    <div class=\"cf-state on\">ON</div>\n  {{else}}\n    <div class=\"cf-title\">LED A1</div>\n    <svg class=\"cf-icon\" viewBox=\"0 0 64 64\" aria-label=\"LED OFF\">\n      <circle cx=\"32\" cy=\"24\" r=\"14\" fill=\"#e74c3c\"/>\n      <rect x=\"26\" y=\"38\" width=\"12\" height=\"12\" rx=\"3\" fill=\"#e74c3c\"/>\n      <path d=\"M22 54h20\" stroke=\"#e74c3c\" stroke-width=\"4\" stroke-linecap=\"round\"/>\n    </svg>\n    <div class=\"cf-state off\">OFF</div>\n  {{/if}}\n</div>",
+        "defaultContent": "No data",
+        "helpers": "",
+        "afterRender": "",
+        "styles": ".cf-card{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:6px}.cf-title{font-weight:700;opacity:.9}.cf-icon{width:56px;height:56px}.cf-state{font-weight:800;letter-spacing:.5px}.cf-state.on{color:#2ecc71}.cf-state.off{color:#e74c3c}",
+        "externalStyles": [],
+        "contentPartials": [],
+        "wrap": false,
+        "status": ""
+      },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }, "overrides": [] }
+    },
+    {
+      "id": 2,
+      "type": "marcusolsson-dynamictext-panel",
+      "title": "LED A2 (아이콘)",
+      "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+      "gridPos": { "h": 6, "w": 4, "x": 4, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"led_a2\")\n  |> last()"
+        }
+      ],
+      "options": {
+        "content": "<div class=\"cf-card\">\n  {{#if (eq _value 1)}}\n    <div class=\"cf-title\">LED A2</div>\n    <svg class=\"cf-icon\" viewBox=\"0 0 64 64\" aria-label=\"LED ON\">\n      <circle cx=\"32\" cy=\"24\" r=\"14\" fill=\"#2ecc71\"/>\n      <rect x=\"26\" y=\"38\" width=\"12\" height=\"12\" rx=\"3\" fill=\"#2ecc71\"/>\n      <path d=\"M22 54h20\" stroke=\"#2ecc71\" stroke-width=\"4\" stroke-linecap=\"round\"/>\n    </svg>\n    <div class=\"cf-state on\">ON</div>\n  {{else}}\n    <div class=\"cf-title\">LED A2</div>\n    <svg class=\"cf-icon\" viewBox=\"0 0 64 64\" aria-label=\"LED OFF\">\n      <circle cx=\"32\" cy=\"24\" r=\"14\" fill=\"#e74c3c\"/>\n      <rect x=\"26\" y=\"38\" width=\"12\" height=\"12\" rx=\"3\" fill=\"#e74c3c\"/>\n      <path d=\"M22 54h20\" stroke=\"#e74c3c\" stroke-width=\"4\" stroke-linecap=\"round\"/>\n    </svg>\n    <div class=\"cf-state off\">OFF</div>\n  {{/if}}\n</div>",
+        "defaultContent": "No data",
+        "helpers": "",
+        "afterRender": "",
+        "styles": ".cf-card{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:6px}.cf-title{font-weight:700;opacity:.9}.cf-icon{width:56px;height:56px}.cf-state{font-weight:800;letter-spacing:.5px}.cf-state.on{color:#2ecc71}.cf-state.off{color:#e74c3c}",
+        "externalStyles": [],
+        "contentPartials": [],
+        "wrap": false,
+        "status": ""
+      },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }, "overrides": [] }
+    },
+    {
+      "id": 3,
+      "type": "marcusolsson-dynamictext-panel",
+      "title": "FAN A1 (아이콘)",
+      "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+      "gridPos": { "h": 6, "w": 4, "x": 8, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"fan_a1\")\n  |> last()"
+        }
+      ],
+      "options": {
+        "content": "<div class=\"cf-card\">\n  {{#if (eq _value 1)}}\n    <div class=\"cf-title\">FAN A1</div>\n    <svg class=\"cf-icon\" viewBox=\"0 0 64 64\" aria-label=\"FAN ON\">\n      <circle cx=\"32\" cy=\"32\" r=\"5\" fill=\"#2ecc71\"/>\n      <path d=\"M32 10c7 0 12 5 12 12 0 6-6 6-12 10-4-8-6-10 0-22z\" fill=\"#2ecc71\"/>\n      <path d=\"M54 32c0 7-5 12-12 12-6 0-6-6-10-12 8-4 10-6 22 0z\" fill=\"#2ecc71\"/>\n      <path d=\"M32 54c-7 0-12-5-12-12 0-6 6-6 12-10 4 8 6 10 0 22z\" fill=\"#2ecc71\"/>\n      <path d=\"M10 32c0-7 5-12 12-12 6 0 6 6 10 12-8 4-10 6-22 0z\" fill=\"#2ecc71\"/>\n    </svg>\n    <div class=\"cf-state on\">ON</div>\n  {{else}}\n    <div class=\"cf-title\">FAN A1</div>\n    <svg class=\"cf-icon\" viewBox=\"0 0 64 64\" aria-label=\"FAN OFF\">\n      <circle cx=\"32\" cy=\"32\" r=\"5\" fill=\"#e74c3c\"/>\n      <path d=\"M32 10c7 0 12 5 12 12 0 6-6 6-12 10-4-8-6-10 0-22z\" fill=\"#e74c3c\"/>\n      <path d=\"M54 32c0 7-5 12-12 12-6 0-6-6-10-12 8-4 10-6 22 0z\" fill=\"#e74c3c\"/>\n      <path d=\"M32 54c-7 0-12-5-12-12 0-6 6-6 12-10 4 8 6 10 0 22z\" fill=\"#e74c3c\"/>\n      <path d=\"M10 32c0-7 5-12 12-12 6 0 6 6 10 12-8 4-10 6-22 0z\" fill=\"#e74c3c\"/>\n    </svg>\n    <div class=\"cf-state off\">OFF</div>\n  {{/if}}\n</div>",
+        "defaultContent": "No data",
+        "helpers": "",
+        "afterRender": "",
+        "styles": ".cf-card{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:6px}.cf-title{font-weight:700;opacity:.9}.cf-icon{width:58px;height:58px}.cf-state{font-weight:800;letter-spacing:.5px}.cf-state.on{color:#2ecc71}.cf-state.off{color:#e74c3c}",
+        "externalStyles": [],
+        "contentPartials": [],
+        "wrap": false,
+        "status": ""
+      },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }, "overrides": [] }
+    },
+    {
+      "id": 4,
+      "type": "marcusolsson-dynamictext-panel",
+      "title": "FAN B1 (아이콘)",
+      "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+      "gridPos": { "h": 6, "w": 4, "x": 0, "y": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"fan_b1\")\n  |> last()"
+        }
+      ],
+      "options": {
+        "content": "<div class=\"cf-card\">\n  {{#if (eq _value 1)}}\n    <div class=\"cf-title\">FAN B1</div>\n    <svg class=\"cf-icon\" viewBox=\"0 0 64 64\" aria-label=\"FAN ON\">\n      <circle cx=\"32\" cy=\"32\" r=\"5\" fill=\"#2ecc71\"/>\n      <path d=\"M32 10c7 0 12 5 12 12 0 6-6 6-12 10-4-8-6-10 0-22z\" fill=\"#2ecc71\"/>\n      <path d=\"M54 32c0 7-5 12-12 12-6 0-6-6-10-12 8-4 10-6 22 0z\" fill=\"#2ecc71\"/>\n      <path d=\"M32 54c-7 0-12-5-12-12 0-6 6-6 12-10 4 8 6 10 0 22z\" fill=\"#2ecc71\"/>\n      <path d=\"M10 32c0-7 5-12 12-12 6 0 6 6 10 12-8 4-10 6-22 0z\" fill=\"#2ecc71\"/>\n    </svg>\n    <div class=\"cf-state on\">ON</div>\n  {{else}}\n    <div class=\"cf-title\">FAN B1</div>\n    <svg class=\"cf-icon\" viewBox=\"0 0 64 64\" aria-label=\"FAN OFF\">\n      <circle cx=\"32\" cy=\"32\" r=\"5\" fill=\"#e74c3c\"/>\n      <path d=\"M32 10c7 0 12 5 12 12 0 6-6 6-12 10-4-8-6-10 0-22z\" fill=\"#e74c3c\"/>\n      <path d=\"M54 32c0 7-5 12-12 12-6 0-6-6-10-12 8-4 10-6 22 0z\" fill=\"#e74c3c\"/>\n      <path d=\"M32 54c-7 0-12-5-12-12 0-6 6-6 12-10 4 8 6 10 0 22z\" fill=\"#e74c3c\"/>\n      <path d=\"M10 32c0-7 5-12 12-12 6 0 6 6 10 12-8 4-10 6-22 0z\" fill=\"#e74c3c\"/>\n    </svg>\n    <div class=\"cf-state off\">OFF</div>\n  {{/if}}\n</div>",
+        "defaultContent": "No data",
+        "helpers": "",
+        "afterRender": "",
+        "styles": ".cf-card{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:6px}.cf-title{font-weight:700;opacity:.9}.cf-icon{width:58px;height:58px}.cf-state{font-weight:800;letter-spacing:.5px}.cf-state.on{color:#2ecc71}.cf-state.off{color:#e74c3c}",
+        "externalStyles": [],
+        "contentPartials": [],
+        "wrap": false,
+        "status": ""
+      },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }, "overrides": [] }
+    },
+    {
+      "id": 5,
+      "type": "marcusolsson-dynamictext-panel",
+      "title": "FAN B2 (아이콘)",
+      "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+      "gridPos": { "h": 6, "w": 4, "x": 4, "y": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"fan_b2\")\n  |> last()"
+        }
+      ],
+      "options": {
+        "content": "<div class=\"cf-card\">\n  {{#if (eq _value 1)}}\n    <div class=\"cf-title\">FAN B2</div>\n    <svg class=\"cf-icon\" viewBox=\"0 0 64 64\" aria-label=\"FAN ON\">\n      <circle cx=\"32\" cy=\"32\" r=\"5\" fill=\"#2ecc71\"/>\n      <path d=\"M32 10c7 0 12 5 12 12 0 6-6 6-12 10-4-8-6-10 0-22z\" fill=\"#2ecc71\"/>\n      <path d=\"M54 32c0 7-5 12-12 12-6 0-6-6-10-12 8-4 10-6 22 0z\" fill=\"#2ecc71\"/>\n      <path d=\"M32 54c-7 0-12-5-12-12 0-6 6-6 12-10 4 8 6 10 0 22z\" fill=\"#2ecc71\"/>\n      <path d=\"M10 32c0-7 5-12 12-12 6 0 6 6 10 12-8 4-10 6-22 0z\" fill=\"#2ecc71\"/>\n    </svg>\n    <div class=\"cf-state on\">ON</div>\n  {{else}}\n    <div class=\"cf-title\">FAN B2</div>\n    <svg class=\"cf-icon\" viewBox=\"0 0 64 64\" aria-label=\"FAN OFF\">\n      <circle cx=\"32\" cy=\"32\" r=\"5\" fill=\"#e74c3c\"/>\n      <path d=\"M32 10c7 0 12 5 12 12 0 6-6 6-12 10-4-8-6-10 0-22z\" fill=\"#e74c3c\"/>\n      <path d=\"M54 32c0 7-5 12-12 12-6 0-6-6-10-12 8-4 10-6 22 0z\" fill=\"#e74c3c\"/>\n      <path d=\"M32 54c-7 0-12-5-12-12 0-6 6-6 12-10 4 8 6 10 0 22z\" fill=\"#e74c3c\"/>\n      <path d=\"M10 32c0-7 5-12 12-12 6 0 6 6 10 12-8 4-10 6-22 0z\" fill=\"#e74c3c\"/>\n    </svg>\n    <div class=\"cf-state off\">OFF</div>\n  {{/if}}\n</div>",
+        "defaultContent": "No data",
+        "helpers": "",
+        "afterRender": "",
+        "styles": ".cf-card{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:6px}.cf-title{font-weight:700;opacity:.9}.cf-icon{width:58px;height:58px}.cf-state{font-weight:800;letter-spacing:.5px}.cf-state.on{color:#2ecc71}.cf-state.off{color:#e74c3c}",
+        "externalStyles": [],
+        "contentPartials": [],
+        "wrap": false,
+        "status": ""
+      },
+      "fieldConfig": { "defaults": { "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "green", "value": 1 }] } }, "overrides": [] }
+    }
+  ]
+}

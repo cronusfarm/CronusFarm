@@ -77,6 +77,10 @@ static void panelPollEvents(uint32_t nowMs);
 static void lcdWelcomeIfOk(uint32_t nowMs, bool wifiOk, bool mqttOk);
 static void lcdBrowseDraw(uint32_t nowMs);
 
+static void panelSetFansMask(uint8_t fanMask);
+static inline bool chIsRemote(uint8_t ch) { return (ch == CH_FAN_A1 || ch == CH_FAN_B1 || ch == CH_FAN_B2); }
+static uint8_t gRemoteFanMask = 0;
+
 // ============================================================
 // LCD + 엔코더 UI는 채널 정의/배열 이후에 선언(선언 순서 의존성 방지)
 enum UiMode : uint8_t { UI_BROWSE = 0, UI_EDIT = 1 };
@@ -102,24 +106,32 @@ enum Channel : uint8_t {
   CH_LED_B1 = 4,
   CH_PUMP_B1 = 5,
   CH_PUMP_B2 = 6,
-  CH_COUNT = 7
+  CH_FAN_A1 = 7,
+  CH_FAN_B1 = 8,
+  CH_FAN_B2 = 9,
+  CH_COUNT = 10
 };
 
+// 로컬 GPIO 제어 채널만 핀을 가집니다. FAN 채널은 Trigorilla로 I2C 전달(원격)이라 -1로 둡니다.
 static const int CH_PIN[CH_COUNT] = {
-  LED_A1, LED_A2, PUMP_A1, PUMP_A2, LED_B1, PUMP_B1, PUMP_B2
+  LED_A1, LED_A2, PUMP_A1, PUMP_A2, LED_B1, PUMP_B1, PUMP_B2,
+  -1, -1, -1
 };
 
 static const char* const CH_KEY[CH_COUNT] = {
-  "led_a1", "led_a2", "pump_a1", "pump_a2", "led_b1", "pump_b1", "pump_b2"
+  "led_a1", "led_a2", "pump_a1", "pump_a2", "led_b1", "pump_b1", "pump_b2",
+  "fan_a1", "fan_b1", "fan_b2"
 };
 
 static const char* const CH_LABEL_KO[CH_COUNT] = {
-  "LED A1", "LED A2", "PUMP A1", "PUMP A2", "LED B1", "PUMP B1", "PUMP B2"
+  "LED A1", "LED A2", "PUMP C1", "PUMP C2", "LED B1", "PUMP D1", "PUMP D2",
+  "FAN A1", "FAN B1", "FAN B2"
 };
 
 // 채널별 AUTO(1)/수동(0)
 static bool chAuto[CH_COUNT] = {
-  false, false, true, true, false, true, true
+  false, false, true, true, false, true, true,
+  false, false, false
 };
 
 static const char* chPinLabel(uint8_t ch) {
@@ -131,6 +143,9 @@ static const char* chPinLabel(uint8_t ch) {
     case CH_LED_B1: return "D6";
     case CH_PUMP_B1: return "D7";
     case CH_PUMP_B2: return "D8";
+    case CH_FAN_A1: return "I2C";
+    case CH_FAN_B1: return "I2C";
+    case CH_FAN_B2: return "I2C";
     default: return "?";
   }
 }
@@ -208,17 +223,68 @@ static void panelBeepLong() {
   }
 }
 
+static void panelSetFansMask(uint8_t fanMask) {
+  if (!gPanelReady) {
+    return;
+  }
+  Wire.beginTransmission(PANEL_I2C_ADDR);
+  Wire.write(PANEL_CMD_SET_FANS);
+  Wire.write((uint8_t)(fanMask & 0x07));
+  if (Wire.endTransmission() != 0) {
+    gPanelReady = false;
+  }
+}
+
 static void allOff();
 static void publishTelemetry();
 
 static void panelPollEvents(uint32_t nowMs) {
-  if (!gPanelReady) {
+  // gPanelReady=false여도 I2C 이벤트(엔코더/클릭)는 계속 읽어야 합니다.
+  // 여기서 return 하면 한번 끊긴 뒤 다이얼이 영구 무반응이 됩니다.
+  static uint32_t nextPollMs = 0;
+  if ((int32_t)(nowMs - nextPollMs) < 0) {
     return;
   }
+  nextPollMs = nowMs + 50;
+
+  static uint8_t fail = 0;
+  static uint32_t pollN = 0;
+  static uint32_t okN = 0;
+  static uint32_t lastLogMs = 0;
+
+  pollN++;
   uint8_t n = Wire.requestFrom((int)PANEL_I2C_ADDR, (int)16);
   if (n < 1) {
+    if (++fail >= 20) {
+      gPanelReady = false;
+      fail = 0;
+    }
+    // 진단 로그(2초마다): requestFrom 자체가 0바이트인지 확인
+    if (nowMs - lastLogMs >= 2000) {
+      lastLogMs = nowMs;
+      Serial.print(F("[I2C] req poll="));
+      Serial.print(pollN);
+      Serial.print(F(" ok="));
+      Serial.print(okN);
+      Serial.print(F(" n="));
+      Serial.println(n);
+    }
     return;
   }
+  fail = 0;
+  gPanelReady = true;
+  okN++;
+
+  if (nowMs - lastLogMs >= 2000) {
+    lastLogMs = nowMs;
+    Serial.print(F("[I2C] req poll="));
+    Serial.print(pollN);
+    Serial.print(F(" ok="));
+    Serial.print(okN);
+    Serial.print(F(" n="));
+    Serial.println(n);
+  }
+
   uint8_t cnt = (uint8_t)Wire.read();
   for (uint8_t i = 0; i < cnt; i++) {
     if (Wire.available() < 2) {
@@ -356,13 +422,13 @@ static void lcdBrowseDraw(uint32_t nowMs) {
 // (LCD + 엔코더 UI 구현은 chManual/chState 선언 이후로 이동)
 
 // 채널별 수동 상태(0/1)
-static bool chManual[CH_COUNT] = { false, false, false, false, false, false, false };
+static bool chManual[CH_COUNT] = { false, false, false, false, false, false, false, false, false, false };
 
 // 채널별 주기(ON/OFF ms) 및 타이머
-static uint32_t chOnMs[CH_COUNT]  = { 0, 0, 30000, 30000, 0, 30000, 30000 };
-static uint32_t chOffMs[CH_COUNT] = { 0, 0, 90000, 90000, 0, 90000, 90000 };
-static uint32_t chPrevMs[CH_COUNT] = { 0,0,0,0,0,0,0 };
-static bool chState[CH_COUNT] = { false, false, false, false, false, false, false };
+static uint32_t chOnMs[CH_COUNT]  = { 0, 0, 30000, 30000, 0, 30000, 30000, 0, 0, 0 };
+static uint32_t chOffMs[CH_COUNT] = { 0, 0, 90000, 90000, 0, 90000, 90000, 0, 0, 0 };
+static uint32_t chPrevMs[CH_COUNT] = { 0,0,0,0,0,0,0,0,0,0 };
+static bool chState[CH_COUNT] = { false, false, false, false, false, false, false, false, false, false };
 
 // ============================================================
 // 패널(R3) UI — 엔코더/클릭은 I2C 이벤트로 수신
@@ -379,8 +445,20 @@ static void uiApplySelection(uint8_t ch, bool on) {
   }
   chAuto[ch] = false;
   chManual[ch] = on;
-  digitalWrite(CH_PIN[ch], on ? HIGH : LOW);
-  chState[ch] = on;
+  if (chIsRemote(ch)) {
+    // FAN: Trigorilla로 I2C 전달(임시 FAN 핀)
+    const uint8_t bit =
+      (ch == CH_FAN_A1) ? 0x01 :
+      (ch == CH_FAN_B1) ? 0x02 :
+      0x04;
+    if (on) gRemoteFanMask |= bit;
+    else gRemoteFanMask &= (uint8_t)~bit;
+    panelSetFansMask(gRemoteFanMask);
+    chState[ch] = on;
+  } else {
+    digitalWrite(CH_PIN[ch], on ? HIGH : LOW);
+    chState[ch] = on;
+  }
 }
 
 static void lcdRenderUi(uint32_t nowMs, bool wifiOk, bool mqttOk) {
@@ -594,9 +672,15 @@ static void matrixShowFromPins() {
 
 static void allOff() {
   for (uint8_t i = 0; i < CH_COUNT; i++) {
-    digitalWrite(CH_PIN[i], LOW);
-    chState[i] = false;
+    if (chIsRemote(i)) {
+      chState[i] = false;
+    } else {
+      digitalWrite(CH_PIN[i], LOW);
+      chState[i] = false;
+    }
   }
+  gRemoteFanMask = 0;
+  panelSetFansMask(gRemoteFanMask);
 }
 
 static void publishTelemetry() {
@@ -609,7 +693,12 @@ static void publishTelemetry() {
   size_t off = 0;
   off += snprintf(payload + off, sizeof(payload) - off, "S:");
   for (uint8_t i = 0; i < CH_COUNT; i++) {
-    int v = (digitalRead(CH_PIN[i]) == HIGH) ? 1 : 0;
+    int v = 0;
+    if (chIsRemote(i)) {
+      v = chState[i] ? 1 : 0;
+    } else {
+      v = (digitalRead(CH_PIN[i]) == HIGH) ? 1 : 0;
+    }
     off += snprintf(payload + off, sizeof(payload) - off, "%s=%d%s", CH_KEY[i], v, (i + 1 < CH_COUNT) ? " " : "");
     if (off >= sizeof(payload)) break;
   }
@@ -622,6 +711,7 @@ static void publishTelemetry() {
   bool firstT = true;
   for (uint8_t i = 0; i < CH_COUNT; i++) {
     const bool isPump = (i == CH_PUMP_A1 || i == CH_PUMP_A2 || i == CH_PUMP_B1 || i == CH_PUMP_B2);
+    const bool isFan = (i == CH_FAN_A1 || i == CH_FAN_B1 || i == CH_FAN_B2);
     if (!isPump) continue;
     long onSec = (long)(chOnMs[i] / 1000);
     long offSec = (long)(chOffMs[i] / 1000);
@@ -1082,6 +1172,30 @@ void loop() {
   }
   panelPollEvents(now);
 
+  // I2C 스캔(진단용): 버스에 어떤 장치라도 잡히는지 확인 (5초마다)
+  static uint32_t nextScanMs = 0;
+  if (now - nextScanMs >= 5000) {
+    nextScanMs = now;
+    uint8_t found = 0;
+    uint8_t first = 0;
+    for (uint8_t addr = 1; addr < 127; addr++) {
+      Wire.beginTransmission(addr);
+      const uint8_t ec = (uint8_t)Wire.endTransmission();
+      if (ec == 0) {
+        found++;
+        if (first == 0) first = addr;
+      }
+    }
+    Serial.print(F("[I2C-SCAN] found="));
+    Serial.print(found);
+    if (found) {
+      Serial.print(F(" first=0x"));
+      if (first < 16) Serial.print('0');
+      Serial.print(first, HEX);
+    }
+    Serial.println();
+  }
+
   // 채널별 AUTO/수동 처리
   // - AUTO=1: 해당 채널이 펌프류면 on/off 주기로 토글, LED류면 수동(기본 OFF) 유지
   // - AUTO=0: chManual[] 값대로 출력
@@ -1089,13 +1203,41 @@ void loop() {
     const bool isPump = (i == CH_PUMP_A1 || i == CH_PUMP_A2 || i == CH_PUMP_B1 || i == CH_PUMP_B2);
 
     if (!chAuto[i]) {
-      digitalWrite(CH_PIN[i], chManual[i] ? HIGH : LOW);
-      chState[i] = chManual[i];
+      if (chIsRemote(i)) {
+        const bool on = chManual[i];
+        const uint8_t bit =
+          (i == CH_FAN_A1) ? 0x01 :
+          (i == CH_FAN_B1) ? 0x02 :
+          0x04;
+        if (on) gRemoteFanMask |= bit;
+        else gRemoteFanMask &= (uint8_t)~bit;
+        panelSetFansMask(gRemoteFanMask);
+        chState[i] = on;
+      } else {
+        digitalWrite(CH_PIN[i], chManual[i] ? HIGH : LOW);
+        chState[i] = chManual[i];
+      }
       continue;
     }
 
-    if (!isPump) {
-      digitalWrite(CH_PIN[i], LOW);
+    if (!isPump && !isFan) {
+      if (!chIsRemote(i)) {
+        digitalWrite(CH_PIN[i], LOW);
+      }
+      chState[i] = false;
+      continue;
+    }
+
+    // FAN은 AUTO를 아직 사용하지 않습니다(예상치 못한 분사/환기 방지)
+    if (isFan) {
+      if (chIsRemote(i)) {
+        const uint8_t bit =
+          (i == CH_FAN_A1) ? 0x01 :
+          (i == CH_FAN_B1) ? 0x02 :
+          0x04;
+        gRemoteFanMask &= (uint8_t)~bit;
+        panelSetFansMask(gRemoteFanMask);
+      }
       chState[i] = false;
       continue;
     }
@@ -1106,7 +1248,9 @@ void loop() {
     if (nowMs - chPrevMs[i] >= interval) {
       chPrevMs[i] = nowMs;
       chState[i] = !chState[i];
-      digitalWrite(CH_PIN[i], chState[i] ? HIGH : LOW);
+      if (!chIsRemote(i)) {
+        digitalWrite(CH_PIN[i], chState[i] ? HIGH : LOW);
+      }
     }
   }
 

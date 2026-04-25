@@ -1,0 +1,20 @@
+[Unit]
+Description=CronusFarm Panel time sync (USB serial)
+After=network.target
+# /dev/ttyUSB0 가 늦게 뜨는 경우를 대비(미존재 시에도 재시작으로 회복)
+After=dev-ttyUSB0.device
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=2
+
+# Mega2560 패널은 포트 오픈 시 리셋될 수 있어, 시작 후 잠깐 대기
+Environment=START_DELAY_SEC=3
+Environment=INTERVAL_SEC=1
+
+ExecStart=/usr/bin/env bash /home/dooly/CronusFarm/scripts/pi-panel-time-sync.sh /dev/ttyUSB0
+
+[Install]
+WantedBy=multi-user.target
+

@@ -4,7 +4,7 @@
     "type": "tab",
     "label": "CronusFarm MQTT",
     "disabled": false,
-    "info": "UNO R4 WiFi ↔ Node-RED (MQTT)\n- cmd 토픽: cronusfarm/<DEVICE_ID>/cmd\n- tele 토픽: cronusfarm/<DEVICE_ID>/tele\n\n기본 DEVICE_ID는 cronusfarm-01 입니다."
+    "info": "UNO R4 WiFi ↔ Node-RED (MQTT)\n- cmd 토픽: cronusfarm/<DEVICE_ID>/cmd\n- tele 토픽: cronusfarm/<DEVICE_ID>/tele\n\n기본 DEVICE_ID는 cronusfarm-01 입니다.\n\nInfluxDB 2.x (tele 적재)\n- tele 수신 → Line Protocol → POST /api/v2/write\n- Pi에서 Node-RED 서비스 환경변수 설정 예:\n  CRONUSFARM_INFLUX_TOKEN=(Influx API 토큰)\n  CRONUSFARM_INFLUX_ORG=cronusfarm\n  CRONUSFARM_INFLUX_BUCKET=cronusfarm\n  CRONUSFARM_INFLUX_MIN_MS=5000  (기본 5초에 한 번만 기록, tele 1Hz 부하 완화)\n- 토큰이 비어 있으면 기록을 건너뜁니다."
   },
   {
     "id": "d6b7f6c1b2b3c4d5",
@@ -169,7 +169,8 @@
     "wires": [
       [
         "a0c388b3a7d9b2a1",
-        "a9a2b2c3d4e5f6a1"
+        "a9a2b2c3d4e5f6a1",
+        "f1a2b3c4d5e6f708"
       ]
     ]
   },
@@ -287,6 +288,47 @@
     "x": 720,
     "y": 400,
     "wires": []
+  },
+  {
+    "id": "f1a2b3c4d5e6f708",
+    "type": "function",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "tele→Influx Line",
+    "func": "// MQTT tele → InfluxDB 2.x Line Protocol (측정값만, 토큰은 환경변수)\n// 필요: CRONUSFARM_INFLUX_TOKEN, 선택: CRONUSFARM_INFLUX_ORG, CRONUSFARM_INFLUX_BUCKET, CRONUSFARM_INFLUX_MIN_MS\n// 주의: Function 노드에서는 process.env 가 없으므로 env.get(...)를 사용합니다.\n\nconst token = (env.get('CRONUSFARM_INFLUX_TOKEN') || '').toString().trim();\nif (!token) {\n  if (!flow.get('_influxWarned')) {\n    flow.set('_influxWarned', true);\n    node.warn('Influx: CRONUSFARM_INFLUX_TOKEN 없음 → 기록 생략');\n  }\n  return null;\n}\n\nconst minMs = parseInt((env.get('CRONUSFARM_INFLUX_MIN_MS') || '5000').toString(), 10) || 5000;\nconst now = Date.now();\nconst last = flow.get('lastInfluxWriteMs') || 0;\nif (now - last < minMs) return null;\nflow.set('lastInfluxWriteMs', now);\n\nconst s = (msg.payload || '').toString();\nfunction parseKV(part) {\n  const out = {};\n  (part || '').trim().split(/\\s+/).forEach(tok => {\n    const m = tok.match(/^([^=]+)=(.+)$/);\n    if (!m) return;\n    out[m[1]] = m[2];\n  });\n  return out;\n}\n\nconst ps = s.split('|').map(x => x.trim());\nconst pS = ps.find(x => x.startsWith('S:'));\nconst pA = ps.find(x => x.startsWith('A:'));\nconst pT = ps.find(x => x.startsWith('T:'));\nconst kvS = parseKV(pS ? pS.slice(2) : '');\nconst kvA = parseKV(pA ? pA.slice(2) : '');\nconst kvT = parseKV(pT ? pT.slice(2) : '');\n\nconst parts = (msg.topic || '').toString().split('/').filter(Boolean);\nconst deviceId = (parts.length >= 2 ? parts[1] : 'cronusfarm-01').replace(/[^a-zA-Z0-9_-]/g, '_');\n\nconst fields = [];\nconst ch = ['led_a1', 'led_a2', 'pump_a1', 'pump_a2', 'led_b1', 'pump_b1', 'pump_b2'];\nch.forEach(k => {\n  if (kvS[k] === undefined) return;\n  fields.push(`${k}=${kvS[k] === '1' ? 1 : 0}i`);\n});\nch.forEach(k => {\n  if (kvA[k] === undefined) return;\n  fields.push(`auto_${k}=${kvA[k] === '1' ? 1 : 0}i`);\n});\nObject.keys(kvT).forEach(k => {\n  const m = (kvT[k] || '').toString().match(/^(\\d+)\\/(\\d+)$/);\n  if (!m) return;\n  fields.push(`${k}_on_s=${parseInt(m[1], 10)}i`);\n  fields.push(`${k}_off_s=${parseInt(m[2], 10)}i`);\n});\n\nif (!fields.length) return null;\n\nconst org = encodeURIComponent(((env.get('CRONUSFARM_INFLUX_ORG') || 'cronusfarm').toString()));\nconst bucket = encodeURIComponent(((env.get('CRONUSFARM_INFLUX_BUCKET') || 'cronusfarm').toString()));\nconst base = ((env.get('CRONUSFARM_INFLUX_URL') || 'http://127.0.0.1:8086/api/v2/write').toString()).replace(/\\/$/, '');\n\nmsg.method = 'POST';\nmsg.url = `${base}?org=${org}&bucket=${bucket}&precision=ns`;\nmsg.headers = {\n  Authorization: `Token ${token}`,\n  'Content-Type': 'text/plain; charset=utf-8'\n};\nmsg.payload = `tele,device_id=${deviceId} ${fields.join(',')} ${now * 1e6}`;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 390,
+    "y": 320,
+    "wires": [
+      [
+        "f1a2b3c4d5e6f709"
+      ]
+    ]
+  },
+  {
+    "id": "f1a2b3c4d5e6f709",
+    "type": "http request",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "Influx POST write",
+    "method": "use",
+    "ret": "txt",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "insecureHTTPParser": false,
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 610,
+    "y": 320,
+    "wires": [
+      []
+    ]
   }
 ]
 
