@@ -329,6 +329,134 @@
     "wires": [
       []
     ]
+  },
+  {
+    "id": "httpin_alert_events",
+    "type": "http in",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "알림 이벤트 입력",
+    "url": "/cronusfarm/alert",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 150,
+    "y": 520,
+    "wires": [
+      [
+        "json_alert_events"
+      ]
+    ]
+  },
+  {
+    "id": "json_alert_events",
+    "type": "json",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "JSON",
+    "property": "payload",
+    "action": "",
+    "pretty": false,
+    "x": 330,
+    "y": 520,
+    "wires": [
+      [
+        "fn_alert_to_influx",
+        "httpres_alert_ok"
+      ]
+    ]
+  },
+  {
+    "id": "fn_alert_to_influx",
+    "type": "function",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "alert_events→Influx Line",
+    "func": "// 알림/이벤트(JSON) → InfluxDB (measurement: alert_events)\n// bucket은 환경변수 CRONUSFARM_INFLUX_BUCKET(권장: CronusFarm)을 사용합니다.\n\nconst token = (env.get('CRONUSFARM_INFLUX_TOKEN') || '').toString().trim();\nif (!token) return null;\n\nconst p = (msg.payload && typeof msg.payload === 'object') ? msg.payload : {};\n\nfunction escTag(v) {\n  return (v ?? '').toString().replace(/[,=\\s]/g, '_');\n}\nfunction escStr(v) {\n  return (v ?? '').toString().replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"');\n}\nfunction numOrNull(v) {\n  const n = Number(v);\n  return Number.isFinite(n) ? n : null;\n}\n\nconst now = Date.now();\nconst org = encodeURIComponent(((env.get('CRONUSFARM_INFLUX_ORG') || 'cronusfarm').toString()));\nconst bucket = encodeURIComponent(((env.get('CRONUSFARM_INFLUX_BUCKET') || 'CronusFarm').toString()));\nconst base = ((env.get('CRONUSFARM_INFLUX_URL') || 'http://127.0.0.1:8086/api/v2/write').toString()).replace(/\\/$/, '');\n\nconst tags = [`source=${escTag(p.source || 'unknown')}`];\nif (p.zone) tags.push(`zone=${escTag(p.zone)}`);\nif (p.alert_type) tags.push(`alert_type=${escTag(p.alert_type)}`);\n\nconst fields = [];\nif (p.severity !== undefined) fields.push(`severity=\\\"${escStr(p.severity)}\\\"`);\nif (p.message !== undefined) fields.push(`message=\\\"${escStr(p.message)}\\\"`);\n\nconst va = numOrNull(p.value_actual);\nif (va !== null) fields.push(`value_actual=${va}`);\nconst vt = numOrNull(p.value_threshold);\nif (vt !== null) fields.push(`value_threshold=${vt}`);\n\nif (!fields.length) return null;\n\nmsg.method = 'POST';\nmsg.url = `${base}?org=${org}&bucket=${bucket}&precision=ns`;\nmsg.headers = { Authorization: `Token ${token}`, 'Content-Type': 'text/plain; charset=utf-8' };\nmsg.payload = `alert_events,${tags.join(',')} ${fields.join(',')} ${now * 1e6}`;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 590,
+    "y": 520,
+    "wires": [
+      [
+        "f1a2b3c4d5e6f709"
+      ]
+    ]
+  },
+  {
+    "id": "httpres_alert_ok",
+    "type": "http response",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "OK",
+    "statusCode": "204",
+    "headers": {},
+    "x": 580,
+    "y": 560,
+    "wires": []
+  },
+  {
+    "id": "httpin_ai_detections",
+    "type": "http in",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "AI 감지 입력",
+    "url": "/cronusfarm/ai",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 660,
+    "wires": [
+      [
+        "json_ai_detections"
+      ]
+    ]
+  },
+  {
+    "id": "json_ai_detections",
+    "type": "json",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "JSON",
+    "property": "payload",
+    "action": "",
+    "pretty": false,
+    "x": 330,
+    "y": 660,
+    "wires": [
+      [
+        "fn_ai_to_influx",
+        "httpres_ai_ok"
+      ]
+    ]
+  },
+  {
+    "id": "fn_ai_to_influx",
+    "type": "function",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "ai_detections→Influx Line",
+    "func": "// AI 감지(JSON) → InfluxDB (measurement: ai_detections)\n\nconst token = (env.get('CRONUSFARM_INFLUX_TOKEN') || '').toString().trim();\nif (!token) return null;\n\nconst p = (msg.payload && typeof msg.payload === 'object') ? msg.payload : {};\n\nfunction escTag(v) {\n  return (v ?? '').toString().replace(/[,=\\s]/g, '_');\n}\nfunction escStr(v) {\n  return (v ?? '').toString().replace(/\\\\/g, '\\\\\\\\').replace(/\"/g, '\\\\\"');\n}\nfunction numOrNull(v) {\n  const n = Number(v);\n  return Number.isFinite(n) ? n : null;\n}\n\nconst now = Date.now();\nconst org = encodeURIComponent(((env.get('CRONUSFARM_INFLUX_ORG') || 'cronusfarm').toString()));\nconst bucket = encodeURIComponent(((env.get('CRONUSFARM_INFLUX_BUCKET') || 'CronusFarm').toString()));\nconst base = ((env.get('CRONUSFARM_INFLUX_URL') || 'http://127.0.0.1:8086/api/v2/write').toString()).replace(/\\/$/, '');\n\nconst tags = [];\nif (p.zone) tags.push(`zone=${escTag(p.zone)}`);\nif (p.camera) tags.push(`camera=${escTag(p.camera)}`);\nif (p.detection_type) tags.push(`detection_type=${escTag(p.detection_type)}`);\nif (p.label) tags.push(`label=${escTag(p.label)}`);\n\nconst fields = [];\nconst conf = numOrNull(p.confidence);\nif (conf !== null) fields.push(`confidence=${conf}`);\nif (p.severity !== undefined) fields.push(`severity=\\\"${escStr(p.severity)}\\\"`);\nif (p.model_name !== undefined) fields.push(`model_name=\\\"${escStr(p.model_name)}\\\"`);\nif (p.model_version !== undefined) fields.push(`model_version=\\\"${escStr(p.model_version)}\\\"`);\nif (p.is_confirmed !== undefined) fields.push(`is_confirmed=${(p.is_confirmed ? 1 : 0)}i`);\n\nif (!fields.length) return null;\n\nmsg.method = 'POST';\nmsg.url = `${base}?org=${org}&bucket=${bucket}&precision=ns`;\nmsg.headers = { Authorization: `Token ${token}`, 'Content-Type': 'text/plain; charset=utf-8' };\nmsg.payload = `ai_detections${tags.length ? ',' + tags.join(',') : ''} ${fields.join(',')} ${now * 1e6}`;\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 600,
+    "y": 660,
+    "wires": [
+      [
+        "f1a2b3c4d5e6f709"
+      ]
+    ]
+  },
+  {
+    "id": "httpres_ai_ok",
+    "type": "http response",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "OK",
+    "statusCode": "204",
+    "headers": {},
+    "x": 580,
+    "y": 700,
+    "wires": []
   }
 ]
 

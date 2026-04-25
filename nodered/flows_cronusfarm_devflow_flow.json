@@ -52,5 +52,21 @@
     "x": 360,
     "y": 140,
     "wires": []
+  },
+  {
+    "id": "ui_txt_devflow_arch",
+    "type": "ui_text",
+    "z": "tab_cronus_devflow",
+    "group": "ui_grp_devflow",
+    "order": 2,
+    "width": 0,
+    "height": 0,
+    "name": "아키텍처 요약",
+    "label": "구성요소 역할 / 데이터 흐름(요약)",
+    "format": "Arduino(센서/릴레이) → Node-RED(수집·정규화·저장·제어 API) → InfluxDB(시계열: tele/alert_events/ai_detections) → Grafana(시각화/알림)\\n\\n- InfluxDB: 시간축 데이터(센서/장치상태/알림/AI)를 저장. bucket은 CronusFarm 권장.\\n- SQLite: 관계형(작물/스케줄/이미지/AI 메타/이벤트). Grafana에서 직접 조회하려면 플러그인이 필요하므로, 기본 구성에서는 Node-RED가 Influx에도 같이 저장하는 방식 권장.\\n\\n통신 방식 추천(Arduino → Node-RED): MQTT(추천)\\n- 장점: 저전력·유지형(retain) 상태, publish/subscribe로 확장 쉬움, 연결 끊김 복구에 강함\\n- 토픽 예: cronusfarm/<DEVICE_ID>/tele, cronusfarm/<DEVICE_ID>/cmd",
+    "layout": "col-center",
+    "x": 360,
+    "y": 200,
+    "wires": []
   }
 ]
