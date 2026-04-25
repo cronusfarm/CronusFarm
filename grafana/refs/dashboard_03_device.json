@@ -1,0 +1,46 @@
+{
+  "__inputs": [
+    { "name": "DS_INFLUXDB", "label": "InfluxDB", "type": "datasource", "pluginId": "influxdb", "pluginName": "InfluxDB" },
+    { "name": "DS_SQLITE", "label": "SQLite", "type": "datasource", "pluginId": "frser-sqlite-datasource", "pluginName": "SQLite" }
+  ],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
+    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
+    { "type": "panel", "id": "state-timeline", "name": "State timeline", "version": "" },
+    { "type": "panel", "id": "bargauge", "name": "Bar gauge", "version": "" },
+    { "type": "panel", "id": "barchart", "name": "Bar chart", "version": "" },
+    { "type": "panel", "id": "table", "name": "Table", "version": "" },
+    { "type": "panel", "id": "row", "name": "Row", "version": "" }
+  ],
+  "title": "⚙️ 장치 제어 모니터링",
+  "uid": "smartfarm-device-v1",
+  "description": "LED 1~5 / Pump 1~8 / Fan 1~4 상태, 가동 이력, 누적 운전 시간",
+  "tags": ["smartfarm", "device", "led", "pump", "fan"],
+  "timezone": "Asia/Seoul",
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "graphTooltip": 1,
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "zone",
+        "label": "구역",
+        "type": "custom",
+        "current": { "value": "$__all", "text": "전체" },
+        "options": [
+          { "value": "$__all", "text": "전체" },
+          { "value": "zone_a", "text": "재배동 A" },
+          { "value": "zone_b", "text": "재배동 B" }
+        ],
+        "includeAll": true,
+        "hide": 0
+      },
+      { "name": "bucket", "label": "Bucket", "type": "constant", "current": { "value": "smartfarm_raw" }, "hide": 2 }
+    ]
+  },
+  "panels": [
+    { "type": "row", "id": 1, "title": "💡 LED 현황 (1~5)", "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }, "collapsed": false }
+  ]
+}

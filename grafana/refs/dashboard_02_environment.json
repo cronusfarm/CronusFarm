@@ -1,0 +1,51 @@
+{
+  "__inputs": [
+    { "name": "DS_INFLUXDB", "label": "InfluxDB", "type": "datasource", "pluginId": "influxdb", "pluginName": "InfluxDB" }
+  ],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
+    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
+    { "type": "panel", "id": "gauge", "name": "Gauge", "version": "" },
+    { "type": "panel", "id": "row", "name": "Row", "version": "" }
+  ],
+  "title": "🌡️ 환경 모니터링",
+  "uid": "smartfarm-env-v1",
+  "description": "센서 7종 + 기상청 데이터 + 공기질 시계열 모니터링",
+  "tags": ["smartfarm", "environment", "sensor"],
+  "timezone": "Asia/Seoul",
+  "refresh": "1m",
+  "schemaVersion": 38,
+  "graphTooltip": 1,
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "zone",
+        "label": "구역",
+        "type": "custom",
+        "current": { "value": "zone_a", "text": "zone_a" },
+        "options": [
+          { "value": "zone_a", "text": "재배동 A" },
+          { "value": "zone_b", "text": "재배동 B" }
+        ],
+        "hide": 0
+      },
+      {
+        "name": "sensor_id",
+        "label": "센서 ID",
+        "type": "custom",
+        "current": { "value": "sensor_01", "text": "sensor_01" },
+        "options": [
+          { "value": "sensor_01", "text": "센서 01" },
+          { "value": "sensor_02", "text": "센서 02" }
+        ],
+        "hide": 0
+      },
+      { "name": "bucket", "label": "Bucket", "type": "constant", "current": { "value": "smartfarm_raw" }, "hide": 2 }
+    ]
+  },
+  "panels": [
+    { "type": "row", "id": 1, "title": "🧪 센서 현재값", "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }, "collapsed": false }
+  ]
+}

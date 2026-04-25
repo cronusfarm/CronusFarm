@@ -1,0 +1,45 @@
+{
+  "__inputs": [
+    { "name": "DS_INFLUXDB", "label": "InfluxDB", "type": "datasource", "pluginId": "influxdb", "pluginName": "InfluxDB" },
+    { "name": "DS_SQLITE", "label": "SQLite", "type": "datasource", "pluginId": "frser-sqlite-datasource", "pluginName": "SQLite" }
+  ],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
+    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
+    { "type": "panel", "id": "table", "name": "Table", "version": "" },
+    { "type": "panel", "id": "piechart", "name": "Pie chart", "version": "" },
+    { "type": "panel", "id": "barchart", "name": "Bar chart", "version": "" },
+    { "type": "panel", "id": "row", "name": "Row", "version": "" }
+  ],
+  "title": "🌿 작물 생육 & AI 감지",
+  "uid": "smartfarm-crop-ai-v1",
+  "description": "아티초크 생육 단계 추적 / AI 병충해·수확 감지 이력 / 카메라 상태",
+  "tags": ["smartfarm", "crop", "ai", "artichoke"],
+  "timezone": "Asia/Seoul",
+  "refresh": "1m",
+  "schemaVersion": 38,
+  "graphTooltip": 1,
+  "time": { "from": "now-7d", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "zone",
+        "label": "구역",
+        "type": "custom",
+        "current": { "value": "$__all", "text": "전체" },
+        "options": [
+          { "value": "$__all", "text": "전체" },
+          { "value": "zone_a", "text": "재배동 A" },
+          { "value": "zone_b", "text": "재배동 B" }
+        ],
+        "includeAll": true,
+        "hide": 0
+      },
+      { "name": "bucket", "label": "Bucket", "type": "constant", "current": { "value": "smartfarm_raw" }, "hide": 2 }
+    ]
+  },
+  "panels": [
+    { "type": "row", "id": 1, "title": "📷 카메라 상태", "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }, "collapsed": false }
+  ]
+}

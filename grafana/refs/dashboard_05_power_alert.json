@@ -1,0 +1,34 @@
+{
+  "__inputs": [
+    { "name": "DS_INFLUXDB", "label": "InfluxDB", "type": "datasource", "pluginId": "influxdb", "pluginName": "InfluxDB" },
+    { "name": "DS_SQLITE", "label": "SQLite", "type": "datasource", "pluginId": "frser-sqlite-datasource", "pluginName": "SQLite" }
+  ],
+  "__requires": [
+    { "type": "grafana", "id": "grafana", "name": "Grafana", "version": "10.0.0" },
+    { "type": "panel", "id": "stat", "name": "Stat", "version": "" },
+    { "type": "panel", "id": "timeseries", "name": "Time series", "version": "" },
+    { "type": "panel", "id": "table", "name": "Table", "version": "" },
+    { "type": "panel", "id": "gauge", "name": "Gauge", "version": "" },
+    { "type": "panel", "id": "bargauge", "name": "Bar gauge", "version": "" },
+    { "type": "panel", "id": "piechart", "name": "Pie chart", "version": "" },
+    { "type": "panel", "id": "row", "name": "Row", "version": "" }
+  ],
+  "title": "⚡ 전력 & 알림 관리",
+  "uid": "smartfarm-power-alert-v1",
+  "description": "전력 소비 모니터링 / 탱크 수위 / 알림 이력 관리",
+  "tags": ["smartfarm", "power", "alert", "tank"],
+  "timezone": "Asia/Seoul",
+  "refresh": "1m",
+  "schemaVersion": 38,
+  "graphTooltip": 1,
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      { "name": "circuit", "label": "회로", "type": "custom", "current": { "value": "$__all", "text": "전체" }, "options": [{ "value": "$__all", "text": "전체" }], "includeAll": true, "hide": 0 },
+      { "name": "bucket", "label": "Bucket", "type": "constant", "current": { "value": "smartfarm_raw" }, "hide": 2 }
+    ]
+  },
+  "panels": [
+    { "type": "row", "id": 1, "title": "⚡ 전력 현황", "gridPos": { "x": 0, "y": 0, "w": 24, "h": 1 }, "collapsed": false }
+  ]
+}
