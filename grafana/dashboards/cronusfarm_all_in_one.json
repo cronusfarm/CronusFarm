@@ -521,45 +521,8 @@
       "gridPos": { "x": 0, "y": 27, "w": 24, "h": 6 },
       "options": {
         "mode": "markdown",
-        "content": "원본 `dashboard_04_*`, `dashboard_05_*`는 **Influx의 다른 measurement**(예: `camera_status`, `power_consumption`, `tank_level`)와 **SQLite**(예: `ai_detections`, `alert_events`)를 전제로 합니다.\\n\\n현재 CronusFarm은 Influx에 주로 `tele`만 적재하므로, 해당 섹션은 **데이터 파이프라인을 추가로 구축**해야 “원본처럼” 채워집니다.\\n\\n이 페이지에서는 **tele로 바로 보이는 환경+장치**를 한 화면에 모았고, 아래에 SQLite 기반(알림/AI) 패널을 추가해 연결할 수 있게 했습니다."
+        "content": "원본 `dashboard_04_*`, `dashboard_05_*`는 **Influx의 다른 measurement**(예: `camera_status`, `power_consumption`, `tank_level`)와 **SQLite**(예: `ai_detections`, `alert_events`)를 전제로 합니다.\\n\\n현재 CronusFarm은 Influx에 주로 `tele`만 적재하므로, 해당 섹션은 **데이터 파이프라인을 추가로 구축**해야 “원본처럼” 채워집니다.\\n\\n※ SQLite는 Grafana 기본 내장 데이터소스로 직접 조회가 불가하므로(플러그인 필요), 본 올인원 페이지에서는 SQLite 패널을 제거했습니다. 알림/AI는 Influx로 적재하면 이 영역에 다시 추가할 수 있습니다."
       }
-    },
-    {
-      "type": "row",
-      "id": 32,
-      "title": "🗄️ SQLite (alert_events / ai_detections)",
-      "gridPos": { "x": 0, "y": 33, "w": 24, "h": 1 },
-      "collapsed": false
-    },
-    {
-      "type": "table",
-      "id": 33,
-      "title": "최근 알림( alert_events )",
-      "gridPos": { "x": 0, "y": 34, "w": 12, "h": 9 },
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "cronusfarm-sqlite" },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "cronusfarm-sqlite" },
-          "query": "SELECT\\n  occurred_at AS time,\\n  severity,\\n  alert_type,\\n  source,\\n  message,\\n  value_actual,\\n  value_threshold,\\n  resolved_at\\nFROM alert_events\\nORDER BY occurred_at DESC\\nLIMIT 50;"
-        }
-      ],
-      "options": { "showHeader": true, "cellHeight": "sm" }
-    },
-    {
-      "type": "table",
-      "id": 34,
-      "title": "최근 AI 감지( ai_detections )",
-      "gridPos": { "x": 12, "y": 34, "w": 12, "h": 9 },
-      "datasource": { "type": "frser-sqlite-datasource", "uid": "cronusfarm-sqlite" },
-      "targets": [
-        {
-          "refId": "A",
-          "datasource": { "type": "frser-sqlite-datasource", "uid": "cronusfarm-sqlite" },
-          "query": "SELECT\\n  detected_at AS time,\\n  detection_type,\\n  label,\\n  confidence,\\n  severity,\\n  model_name,\\n  model_version,\\n  is_confirmed\\nFROM ai_detections\\nORDER BY detected_at DESC\\nLIMIT 50;"
-        }
-      ],
-      "options": { "showHeader": true, "cellHeight": "sm" }
     }
   ]
 }
