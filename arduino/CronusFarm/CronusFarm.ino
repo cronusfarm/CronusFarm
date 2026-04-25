@@ -1,4 +1,5 @@
 /*
+  2026.4.26 수정
   CronusFarm - UNO R4 WiFi (메인 MQTT·릴레이·I2C 마스터)
   패널(RepRap 2004A)은 UNO R3 `CronusFarmPanel` 스케치 — 별도 업로드
 
@@ -78,7 +79,6 @@ static void lcdWelcomeIfOk(uint32_t nowMs, bool wifiOk, bool mqttOk);
 static void lcdBrowseDraw(uint32_t nowMs);
 
 static void panelSetFansMask(uint8_t fanMask);
-static inline bool chIsRemote(uint8_t ch) { return (ch == CH_FAN_A1 || ch == CH_FAN_B1 || ch == CH_FAN_B2); }
 static uint8_t gRemoteFanMask = 0;
 
 // ============================================================
@@ -111,6 +111,10 @@ enum Channel : uint8_t {
   CH_FAN_B2 = 9,
   CH_COUNT = 10
 };
+
+static inline bool chIsRemote(uint8_t ch) {
+  return (ch == CH_FAN_A1 || ch == CH_FAN_B1 || ch == CH_FAN_B2);
+}
 
 // 로컬 GPIO 제어 채널만 핀을 가집니다. FAN 채널은 Trigorilla로 I2C 전달(원격)이라 -1로 둡니다.
 static const int CH_PIN[CH_COUNT] = {
@@ -1201,6 +1205,7 @@ void loop() {
   // - AUTO=0: chManual[] 값대로 출력
   for (uint8_t i = 0; i < CH_COUNT; i++) {
     const bool isPump = (i == CH_PUMP_A1 || i == CH_PUMP_A2 || i == CH_PUMP_B1 || i == CH_PUMP_B2);
+    const bool isFan = (i == CH_FAN_A1 || i == CH_FAN_B1 || i == CH_FAN_B2);
 
     if (!chAuto[i]) {
       if (chIsRemote(i)) {
