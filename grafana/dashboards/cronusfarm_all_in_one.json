@@ -193,14 +193,14 @@
     {
       "type": "row",
       "id": 10,
-      "title": "⚙️ 장치(tele) — 이름 고정",
+      "title": "🧩 Bed 장치(tele) — A/B/C/D",
       "gridPos": { "x": 0, "y": 14, "w": 24, "h": 1 },
       "collapsed": false
     },
     {
       "type": "stat",
       "id": 11,
-      "title": "LED A1",
+      "title": "☀️ LED A1",
       "gridPos": { "x": 0, "y": 15, "w": 3, "h": 4 },
       "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
       "targets": [
@@ -228,7 +228,7 @@
     {
       "type": "stat",
       "id": 12,
-      "title": "LED A2",
+      "title": "☀️ LED A2",
       "gridPos": { "x": 3, "y": 15, "w": 3, "h": 4 },
       "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
       "targets": [
@@ -256,7 +256,7 @@
     {
       "type": "stat",
       "id": 13,
-      "title": "LED B1",
+      "title": "☀️ LED B1",
       "gridPos": { "x": 6, "y": 15, "w": 3, "h": 4 },
       "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
       "targets": [
@@ -284,7 +284,7 @@
     {
       "type": "stat",
       "id": 14,
-      "title": "PUMP C1",
+      "title": "💧 PUMP C1",
       "gridPos": { "x": 9, "y": 15, "w": 3, "h": 4 },
       "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
       "targets": [
@@ -312,7 +312,7 @@
     {
       "type": "stat",
       "id": 15,
-      "title": "PUMP C2",
+      "title": "💧 PUMP C2",
       "gridPos": { "x": 12, "y": 15, "w": 3, "h": 4 },
       "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
       "targets": [
@@ -340,7 +340,7 @@
     {
       "type": "stat",
       "id": 16,
-      "title": "PUMP D1",
+      "title": "💧 PUMP D1",
       "gridPos": { "x": 15, "y": 15, "w": 3, "h": 4 },
       "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
       "targets": [
@@ -368,7 +368,7 @@
     {
       "type": "stat",
       "id": 17,
-      "title": "PUMP D2",
+      "title": "💧 PUMP D2",
       "gridPos": { "x": 18, "y": 15, "w": 3, "h": 4 },
       "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
       "targets": [
@@ -396,7 +396,7 @@
     {
       "type": "stat",
       "id": 18,
-      "title": "FAN A1",
+      "title": "🌀 FAN A1",
       "gridPos": { "x": 21, "y": 15, "w": 3, "h": 4 },
       "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
       "targets": [
@@ -425,7 +425,7 @@
     {
       "type": "stat",
       "id": 19,
-      "title": "FAN B1",
+      "title": "🌀 FAN B1",
       "gridPos": { "x": 0, "y": 19, "w": 3, "h": 4 },
       "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
       "targets": [
@@ -453,7 +453,7 @@
     {
       "type": "stat",
       "id": 20,
-      "title": "FAN B2",
+      "title": "🌀 FAN B2",
       "gridPos": { "x": 3, "y": 19, "w": 3, "h": 4 },
       "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
       "targets": [
