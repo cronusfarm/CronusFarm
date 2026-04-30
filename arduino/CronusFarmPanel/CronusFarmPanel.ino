@@ -199,21 +199,41 @@ static void onRequestHandler() {
 }
 
 static void beepShortLocal() {
+#if defined(ARDUINO_AVR_MEGA2560) || defined(ARDUINO_AVR_MEGA)
+  // Trigorilla 계열 보드는 BEEPER가 트랜지스터/버퍼를 거치면서 Active-LOW로 동작하는 경우가 있어
+  // LOW=ON, HIGH=OFF 로 토글합니다.
+  for (int i = 0; i < 80; i++) {
+    digitalWrite(PIN_BEEPER, LOW);
+    delayMicroseconds(125);
+    digitalWrite(PIN_BEEPER, HIGH);
+    delayMicroseconds(125);
+  }
+#else
   for (int i = 0; i < 80; i++) {
     digitalWrite(PIN_BEEPER, HIGH);
     delayMicroseconds(125);
     digitalWrite(PIN_BEEPER, LOW);
     delayMicroseconds(125);
   }
+#endif
 }
 
 static void beepLongLocal() {
+#if defined(ARDUINO_AVR_MEGA2560) || defined(ARDUINO_AVR_MEGA)
+  for (int i = 0; i < 400; i++) {
+    digitalWrite(PIN_BEEPER, LOW);
+    delayMicroseconds(125);
+    digitalWrite(PIN_BEEPER, HIGH);
+    delayMicroseconds(125);
+  }
+#else
   for (int i = 0; i < 400; i++) {
     digitalWrite(PIN_BEEPER, HIGH);
     delayMicroseconds(125);
     digitalWrite(PIN_BEEPER, LOW);
     delayMicroseconds(125);
   }
+#endif
 }
 
 static void lcdWriteLine20(uint8_t row, const char line20[20]) {
@@ -589,9 +609,13 @@ static void encoderPoll() {
   gEncAccum = (int8_t)(gEncAccum + d);
   if (gEncAccum >= ENC_STEPS_PER_EVENT) {
     gEncAccum = 0;
+    // 디버그: 엔코더 입력이 실제로 잡히는지 부저로 즉시 확인
+    beepShortLocal();
     qPush(PANEL_EVT_ENC_CW, 0);
   } else if (gEncAccum <= (int8_t)(-ENC_STEPS_PER_EVENT)) {
     gEncAccum = 0;
+    // 디버그: 엔코더 입력이 실제로 잡히는지 부저로 즉시 확인
+    beepShortLocal();
     qPush(PANEL_EVT_ENC_CCW, 0);
   }
 }
@@ -611,6 +635,8 @@ static void clickPoll() {
     return;
   }
   gBtnLastMs = now;
+  // 디버그: 클릭 입력이 실제로 잡히는지 부저로 즉시 확인
+  beepLongLocal();
   qPush(PANEL_EVT_CLICK, 1);
 }
 
@@ -674,6 +700,13 @@ void setup() {
 
   Serial.begin(115200);
   PANEL_LINK_SERIAL.begin(PANEL_LINK_BAUD);
+
+  // 진단용: 엔코더/통신과 무관하게 "부저가 살아있는지"를 부팅 직후 확인합니다.
+  // - 여기서도 소리가 안 나면, 부저 자체/전원/핀맵(PIN_BEEPER) 문제가 1순위입니다.
+  delay(50);
+  beepShortLocal();
+  delay(80);
+  beepShortLocal();
 
   lcd.begin(20, 4);
   delay(50);  // HD44780 전원 안정·초기화 여유

@@ -599,12 +599,14 @@ static void lcdBrowseDraw(uint32_t nowMs) {
   // 2) MODE + 간단 설명(스케쥴/로컬)
   // 3) STATE + CH<현재>/<전체> (스페이스 포함 고정)
   // 4) "DIAL Next PUSH Edit"
-  snprintf(line1, sizeof(line1), "MODE:%s %s", isAuto ? "AUTO" : "MAN ",
-           isAuto ? "SCHED" : "LOCAL");
+  snprintf(line1, sizeof(line1), "MODE:%s", isAuto ? "AUTO" : "MAN ");
   const int8_t pos = uiOrderPos(ch);
   const uint8_t orderCh = (pos < 0) ? (uint8_t)(ch + 1) : (uint8_t)(pos + 1);
+  // "STATE:ON (또는 OFF) + 공백 4칸 + CHx/y" 고정 정렬
+  // - ON은 2글자라 뒤를 1칸 패딩("ON ")으로 맞춥니다.
+  const char* state3 = on ? "ON " : "OFF";
   snprintf(line2, sizeof(line2), "STATE:%s    CH%u/%u",
-           on ? "ON" : "OFF", (unsigned)orderCh, (unsigned)CH_COUNT);
+           state3, (unsigned)orderCh, (unsigned)CH_COUNT);
   snprintf(line3, sizeof(line3), "DIAL Next PUSH Edit");
 
   char pad0[21], pad1[21], pad2[21], pad3[21];
