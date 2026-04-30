@@ -9,12 +9,19 @@
 # - nginx(1880): 경로별 프록시
 # - node-red 최신: 1882로 이동
 # - node-red v0.5.1: 1881로 추가 인스턴스 실행(별도 userDir)
+#   - Dashboard path는 "ui0.5"로 설정(슬래시 포함 path는 dashboard가 정상 동작하지 않는 경우가 있어 회피)
 #
 # 주의
 # - 이 스크립트는 systemd 설정을 변경하고 서비스를 재시작합니다.
 # - 관리자 권한(sudo)이 필요합니다.
 
 set -euo pipefail
+
+if ! sudo -n true 2>/dev/null; then
+  echo "sudo 무비번 실행이 불가합니다. Pi에서 아래 명령을 직접 실행해 주세요:" >&2
+  echo "  bash ~/CronusFarm/scripts/pi-nodered-multiplex-v05.sh" >&2
+  exit 1
+fi
 
 echo "[1/6] 필수 패키지 설치(nginx)"
 if ! command -v nginx >/dev/null 2>&1; then
@@ -94,16 +101,16 @@ out = set_prop(out, "uiPort", "1881")
 out = set_prop(out, "httpAdminRoot", "'/admin/v0.5'")
 out = set_prop(out, "httpNodeRoot", "'/'")
 
-# dashboard path는 /ui/0.5 로
+# dashboard path는 내부적으로 /ui0.5 로(nginx가 /ui/0.5 ↔ /ui0.5 매핑)
 ui_block = re.search(r"(^\s*)ui\s*:\s*\{([\s\S]*?)\n\s*\}\s*,?", out, re.M)
 if ui_block:
     block = ui_block.group(0)
-    block2 = re.sub(r"(\bpath\s*:\s*)(['\"]).*?\2", r"\1'ui/0.5'", block)
+    block2 = re.sub(r"(\bpath\s*:\s*)(['\"]).*?\2", r"\1'ui0.5'", block)
     if block2 == block:
-        block2 = re.sub(r"(ui\s*:\s*\{\s*\n)", r"\1        path: 'ui/0.5',\n", block, count=1)
+        block2 = re.sub(r"(ui\s*:\s*\{\s*\n)", r"\1        path: 'ui0.5',\n", block, count=1)
     out = out.replace(block, block2)
 else:
-    ins = "\n    // CronusFarm: Dashboard(UI) v0.5 경로\n    ui: { path: 'ui/0.5' },\n"
+    ins = "\n    // CronusFarm: Dashboard(UI) v0.5 경로\n    ui: { path: 'ui0.5' },\n"
     m = re.search(r"(^\s*uiPort\s*:\s*.*?[,]\s*$)", out, re.M)
     if m:
         out = out[: m.end()] + ins + out[m.end():]
@@ -183,9 +190,9 @@ server {
     return 301 /admin/v0.5/;
   }
 
-  # 구버전 Dashboard(UI): /ui/0.5 -> 1881
+  # 구버전 Dashboard(UI): /ui/0.5 -> 1881(/ui0.5)
   location ^~ /ui/0.5/ {
-    proxy_pass http://127.0.0.1:1881/ui/0.5/;
+    proxy_pass http://127.0.0.1:1881/ui0.5/;
     proxy_http_version 1.1;
     proxy_set_header Host $host;
     proxy_set_header Upgrade $http_upgrade;
