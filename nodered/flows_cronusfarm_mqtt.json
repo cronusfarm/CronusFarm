@@ -457,6 +457,107 @@
     "x": 580,
     "y": 700,
     "wires": []
+  },
+  {
+    "id": "inj_kma_30m",
+    "type": "inject",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "KMA 30분 주기",
+    "props": [
+      { "p": "payload" },
+      { "p": "topic", "vt": "str" }
+    ],
+    "repeat": "1800",
+    "crontab": "",
+    "once": true,
+    "onceDelay": "10",
+    "topic": "kma/poll",
+    "payload": "",
+    "payloadType": "date",
+    "x": 170,
+    "y": 780,
+    "wires": [
+      [ "fn_kma_build_req" ]
+    ]
+  },
+  {
+    "id": "fn_kma_build_req",
+    "type": "function",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "KMA 요청 URL 생성",
+    "func": "// 기상청 초단기실황(getUltraSrtNcst) → JSON\n// env:\n// - CRONUSFARM_KMA_SERVICE_KEY : 디코딩된 서비스키(= 포함 원문) 권장\n// - CRONUSFARM_KMA_NX / CRONUSFARM_KMA_NY : 격자 좌표\n// 주의: KMA는 KST(UTC+9) 기준 base_date/base_time을 사용합니다.\n\nconst key = (env.get('CRONUSFARM_KMA_SERVICE_KEY') || '').toString().trim();\nconst nx = parseInt((env.get('CRONUSFARM_KMA_NX') || '0').toString(), 10) || 0;\nconst ny = parseInt((env.get('CRONUSFARM_KMA_NY') || '0').toString(), 10) || 0;\nif (!key || !nx || !ny) {\n  node.warn('KMA: SERVICE_KEY 또는 NX/NY 누락 → 수집 생략');\n  return null;\n}\n\nfunction pad2(n) { return (n < 10 ? '0' : '') + n; }\n\n// KST now\nconst nowUtc = new Date();\nconst nowKstMs = nowUtc.getTime() + (9 * 60 * 60 * 1000);\nconst nowKst = new Date(nowKstMs);\n\nlet y = nowKst.getUTCFullYear();\nlet mo = nowKst.getUTCMonth() + 1;\nlet d = nowKst.getUTCDate();\nlet hh = nowKst.getUTCHours();\nlet mm = nowKst.getUTCMinutes();\n\n// 발표 시각 여유: 매 시각 40분 이후에 해당 시간 데이터가 안정적으로 조회되는 경우가 많아\n// 40분 이전이면 이전 시간(정시)로 물립니다.\nif (mm < 40) {\n  hh -= 1;\n  if (hh < 0) {\n    hh = 23;\n    const prev = new Date(nowKstMs - 24 * 60 * 60 * 1000);\n    y = prev.getUTCFullYear();\n    mo = prev.getUTCMonth() + 1;\n    d = prev.getUTCDate();\n  }\n}\n\nconst base_date = `${y}${pad2(mo)}${pad2(d)}`;\nconst base_time = `${pad2(hh)}00`;\n\nconst qs = new URLSearchParams({\n  serviceKey: key,\n  numOfRows: '60',\n  pageNo: '1',\n  dataType: 'JSON',\n  base_date,\n  base_time,\n  nx: String(nx),\n  ny: String(ny)\n});\n\nmsg.method = 'GET';\nmsg.url = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?${qs.toString()}`;\nmsg.headers = { 'User-Agent': 'CronusFarm/NodeRED' };\nmsg.kma = { base_date, base_time, nx, ny };\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 410,
+    "y": 780,
+    "wires": [
+      [ "http_kma_get" ]
+    ]
+  },
+  {
+    "id": "http_kma_get",
+    "type": "http request",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "KMA GET",
+    "method": "use",
+    "ret": "txt",
+    "paytoqs": "ignore",
+    "url": "",
+    "tls": "",
+    "persist": false,
+    "proxy": "",
+    "insecureHTTPParser": false,
+    "authType": "",
+    "senderr": false,
+    "headers": [],
+    "x": 600,
+    "y": 780,
+    "wires": [
+      [ "fn_kma_to_influx" ]
+    ]
+  },
+  {
+    "id": "fn_kma_to_influx",
+    "type": "function",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "KMA→Influx Line",
+    "func": "// KMA 응답(JSON) → Influx write + MQTT 스냅샷(/ui Farm 환경)\n// 출력1: Influx(토큰 있을 때만) · 출력2: cronusfarm/kma/snapshot(retain)\n\nconst token = (env.get('CRONUSFARM_INFLUX_TOKEN') || '').toString().trim();\n\nfunction numOrNull(v) {\n  const n = Number(v);\n  return Number.isFinite(n) ? n : null;\n}\n\nif (typeof msg.payload === 'string') {\n  const raw = msg.payload;\n  try {\n    msg.payload = JSON.parse(raw);\n  } catch (e) {\n    node.warn('KMA: JSON 파싱 실패(응답 일부): ' + raw.slice(0, 200));\n    return null;\n  }\n}\n\nconst body = msg.payload;\nconst items = body?.response?.body?.items?.item;\nif (!Array.isArray(items)) {\n  node.warn('KMA: items 없음/형식 불일치');\n  return null;\n}\n\nconst m = {};\nfor (const it of items) {\n  const cat = (it?.category || '').toString();\n  const val = (it?.obsrValue ?? '').toString();\n  if (!cat) continue;\n  m[cat] = val;\n}\n\nconst temp = numOrNull(m.T1H);\nconst reh = numOrNull(m.REH);\nconst vec = numOrNull(m.VEC);\nconst wsd = numOrNull(m.WSD);\nconst pty = numOrNull(m.PTY);\n\nconst fields = [];\nif (temp !== null) fields.push(`kma_temp=${temp}`);\nif (reh !== null) fields.push(`kma_humidity=${reh}`);\nif (vec !== null) fields.push(`kma_wind_dir=${vec}`);\nif (wsd !== null) fields.push(`kma_wind_speed=${wsd}`);\nif (pty !== null) fields.push(`kma_pty=${pty}i`);\n\nconst now = Date.now();\nconst org = encodeURIComponent(((env.get('CRONUSFARM_INFLUX_ORG') || 'cronusfarm').toString()));\nconst bucket = encodeURIComponent(((env.get('CRONUSFARM_INFLUX_BUCKET') || 'CronusFarm').toString()));\nconst base = ((env.get('CRONUSFARM_INFLUX_URL') || 'http://127.0.0.1:8086/api/v2/write').toString()).replace(/\\/$/, '');\nconst nx = msg.kma?.nx;\nconst ny = msg.kma?.ny;\nconst tags = [`source=kma`];\nif (nx && ny) tags.push(`nx=${nx}`, `ny=${ny}`);\n\nconst snap = {\n  kma_temp: temp,\n  kma_humidity: reh,\n  kma_wind_dir: vec,\n  kma_wind_speed: wsd,\n  kma_pty: pty,\n  base_date: msg.kma?.base_date,\n  base_time: msg.kma?.base_time,\n  nx,\n  ny,\n  ts: now\n};\n\nconst uiMsg = {\n  topic: 'cronusfarm/kma/snapshot',\n  qos: 0,\n  retain: true,\n  payload: JSON.stringify(snap)\n};\n\nlet influxMsg = null;\nif (token && fields.length) {\n  influxMsg = {\n    method: 'POST',\n    url: `${base}?org=${org}&bucket=${bucket}&precision=ns`,\n    headers: { Authorization: `Token ${token}`, 'Content-Type': 'text/plain; charset=utf-8' },\n    payload: `tele,${tags.join(',')} ${fields.join(',')} ${now * 1e6}`\n  };\n}\n\nreturn [ influxMsg, uiMsg ];",
+    "outputs": 2,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [],
+    "x": 810,
+    "y": 780,
+    "wires": [
+      [
+        "f1a2b3c4d5e6f709"
+      ],
+      [
+        "mqtt_out_kma_snap"
+      ]
+    ]
+  },
+  {
+    "id": "mqtt_out_kma_snap",
+    "type": "mqtt out",
+    "z": "b1c5a1f1d7a2a3a1",
+    "name": "KMA 스냅샷 publish",
+    "topic": "",
+    "qos": "",
+    "retain": true,
+    "respTopic": "",
+    "contentType": "",
+    "userProps": "",
+    "correl": "",
+    "expiry": "",
+    "broker": "d6b7f6c1b2b3c4d5",
+    "x": 1010,
+    "y": 820,
+    "wires": []
   }
 ]
 

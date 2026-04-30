@@ -6,7 +6,8 @@ set -eu
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SKETCH="$ROOT/arduino/CronusFarmPanel"
 BUILD="$ROOT/scripts/pi-arduino-build.sh"
-export FQBN="${FQBN:-arduino:avr:uno}"
+# Trigorilla(Mega2560) 기본. R3 패널: FQBN=arduino:avr:uno
+export FQBN="${FQBN:-arduino:avr:mega:cpu=atmega2560}"
 if [[ ! -f "$BUILD" ]]; then
   echo "없음: $BUILD (CronusFarm 클론 경로 확인)" >&2
   exit 1

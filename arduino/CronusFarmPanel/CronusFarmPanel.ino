@@ -2,7 +2,7 @@
   CronusFarm — UNO R3 패널 전용 (RepRapDiscount Smart Controller 2004A)
 
   역할: LCD / 엔코더 / 클릭 / 부저 / SD / KILL / SD 감지
-  통신: I2C 슬레이브 (마스터는 UNO R4 WiFi), SDA=A4 SCL=A5
+  통신: UART(Serial1, Mega D19/D18) + USB Serial(시간 동기)
 
   EXP1 → (기존) UNO R3 / (변경) Trigorilla(Mega2560)
     - UNO R3:  BEEPER A0, BTN_ENC A1, LCD RS D2, LCD EN D3, LCD D4~D7 → D4~D7
@@ -69,25 +69,25 @@ static char gTimeLine[21] = "--:--:--            ";
 static bool gWelcomeShown = false;
 static uint32_t gBootAtMs = 0;
 static const uint32_t BOOT_MSG_MS = 10000;
+static uint32_t gLastLcdInitMs = 0;
 
 // ============================================================
 // Trigorilla 확장 출력(펌프 + RGB 상태 LED)
 // - 메인보드 R4가 I2C로 펌프 상태(비트마스크)를 내려보냅니다.
 // - HEATER0/HEATER1/HOTBED 제어핀을 R/G/B 상태 LED로 사용해 순차 점멸합니다.
 #if defined(ARDUINO_AVR_MEGA2560) || defined(ARDUINO_AVR_MEGA)
-static const int PIN_PUMP_A1 = 11; // SERVO0
-// SERVO1: Marlin RAMPS/Trigorilla 계열은 보통 D6. A2만 무반응이면 보드 실크/Marlin pins의 SERVO1_PIN을 확인.
-static const int PIN_PUMP_A2 = 6;  // SERVO1
-static const int PIN_PUMP_B1 = 5;  // SERVO2
-static const int PIN_PUMP_B2 = 4;  // SERVO3
+// 원격 제어 채널(요청 매핑)
+// - FAN: I2C(X-/X+/Y-/Y+) 실크 라벨에 해당하는 GPIO를 사용
+// - SERVO0~3: SERVO 헤더의 제어 GPIO(일반적으로 PWM 가능)
+static const int PIN_FAN_A1 = 3;   // I2C X-
+static const int PIN_FAN_A2 = 2;   // I2C X+
+static const int PIN_FAN_B1 = 14;  // I2C Y-
+static const int PIN_FAN_B2 = 15;  // I2C Y+
 
-// FAN 핀(임시 지정)
-// - FAN0/1/2의 실제 핀은 Trigorilla/Marlin 설정에 따라 다를 수 있어,
-//   우선 충돌 위험이 낮은 미사용 핀로 "자리"만 잡습니다.
-// - 실제 보드 핀 확정 후 여기만 바꾸면 됩니다.
-static const int PIN_FAN_A1 = 40; // FAN0 (임시)
-static const int PIN_FAN_B1 = 42; // FAN1 (임시)
-static const int PIN_FAN_B2 = 43; // FAN2 (임시)
+static const int PIN_SERVO0 = 11;  // SERVO0
+static const int PIN_SERVO1 = 6;   // SERVO1
+static const int PIN_SERVO2 = 5;   // SERVO2
+static const int PIN_SERVO3 = 4;   // SERVO3
 
 static const int PIN_LED_R = 10;   // HEATER0 제어핀
 static const int PIN_LED_G = 45;   // HEATER1 제어핀
@@ -96,24 +96,42 @@ static const int PIN_LED_G = 45;   // HEATER1 제어핀
 // (필요 시 다시 HOTBED(D8)로 되돌릴 수 있음)
 static const int PIN_LED_B = 9;    // FAN0 제어핀(5A 라인 가시성)
 
-static uint8_t gPumpMask = 0;
 static bool gSawMasterCmd = false;
-static uint8_t gFanMask = 0;
+// 원격 출력 상태(8개: FAN 4개 + SERVO 4개)
+static bool gRemoteOut[8] = { false, false, false, false, false, false, false, false };
 
-static void applyPumpMask(uint8_t mask) {
-  gPumpMask = (uint8_t)(mask & 0x0F);
+static void applyRemoteOut(uint8_t idx, bool on) {
+  if (idx > 7) return;
+  gRemoteOut[idx] = on;
   gSawMasterCmd = true;
-  digitalWrite(PIN_PUMP_A1, (gPumpMask & 0x01) ? HIGH : LOW);
-  digitalWrite(PIN_PUMP_A2, (gPumpMask & 0x02) ? HIGH : LOW);
-  digitalWrite(PIN_PUMP_B1, (gPumpMask & 0x04) ? HIGH : LOW);
-  digitalWrite(PIN_PUMP_B2, (gPumpMask & 0x08) ? HIGH : LOW);
+  switch (idx) {
+    case 0: digitalWrite(PIN_FAN_A1, on ? HIGH : LOW); break;
+    case 1: digitalWrite(PIN_FAN_A2, on ? HIGH : LOW); break;
+    case 2: digitalWrite(PIN_FAN_B1, on ? HIGH : LOW); break;
+    case 3: digitalWrite(PIN_FAN_B2, on ? HIGH : LOW); break;
+    case 4: digitalWrite(PIN_SERVO0, on ? HIGH : LOW); break;
+    case 5: digitalWrite(PIN_SERVO1, on ? HIGH : LOW); break;
+    case 6: digitalWrite(PIN_SERVO2, on ? HIGH : LOW); break;
+    case 7: digitalWrite(PIN_SERVO3, on ? HIGH : LOW); break;
+    default: break;
+  }
 }
 
+// 하위 호환(I2C/기존 UART "F,<mask>")용: FAN 3비트 마스크
 static void applyFanMask(uint8_t mask) {
-  gFanMask = (uint8_t)(mask & 0x07);
-  digitalWrite(PIN_FAN_A1, (gFanMask & 0x01) ? HIGH : LOW);
-  digitalWrite(PIN_FAN_B1, (gFanMask & 0x02) ? HIGH : LOW);
-  digitalWrite(PIN_FAN_B2, (gFanMask & 0x04) ? HIGH : LOW);
+  const uint8_t m = (uint8_t)(mask & 0x07);
+  applyRemoteOut(0, (m & 0x01) != 0);
+  applyRemoteOut(2, (m & 0x02) != 0);
+  applyRemoteOut(3, (m & 0x04) != 0);
+}
+
+// 하위 호환(I2C "PUMP mask")용: SERVO 4비트 마스크
+static void applyPumpMask(uint8_t mask) {
+  const uint8_t m = (uint8_t)(mask & 0x0F);
+  applyRemoteOut(4, (m & 0x01) != 0);
+  applyRemoteOut(5, (m & 0x02) != 0);
+  applyRemoteOut(6, (m & 0x04) != 0);
+  applyRemoteOut(7, (m & 0x08) != 0);
 }
 
 static void rgbBlinkTick() {
@@ -136,12 +154,21 @@ struct QueEvt {
 };
 static QueEvt gQ[8];
 static uint8_t gQLen = 0;
+static const uint32_t PANEL_LINK_BAUD = 19200;
+#define PANEL_LINK_SERIAL Serial1
 
 // I2C 점검: R4(requestFrom) 호출 여부/횟수
 static volatile uint32_t gI2cReqCount = 0;
 static volatile uint32_t gI2cLastReqMs = 0;
 
 static void qPush(uint8_t t, uint8_t p) {
+  // UART 링크는 실사용 경로이므로 큐 포화와 무관하게 항상 전송합니다.
+  PANEL_LINK_SERIAL.print("v=1;type=evt;t=");
+  PANEL_LINK_SERIAL.print((unsigned)t);
+  PANEL_LINK_SERIAL.print(";p=");
+  PANEL_LINK_SERIAL.println((unsigned)p);
+
+  // I2C 하위호환 큐는 여유가 있을 때만 적재합니다.
   if (gQLen >= 8) {
     return;
   }
@@ -208,9 +235,37 @@ static void lcdWriteText(uint8_t row, const char* s) {
 
 static void lcdShowBootMessage() {
   // "LCD판넬 부팅메세지"(정의)
+  // 요청 사양: 0/1행만 갱신, 2/3행은 유지
   lcd.clear();
+  delay(5);
   lcdWriteText(0, "CronusFarm Panel");
-  lcdWriteText(1, "I2C slave ready");
+  lcdWriteText(1, "UART ready");
+}
+
+static void lcdReinitIfNeeded(uint32_t nowMs, bool masterOwnsLcd) {
+  // 전원/노이즈로 LCD 컨트롤러만 리셋되면 "흰색 두 줄" 상태가 될 수 있어
+  // 일정 주기마다 최소 재초기화를 수행해 자동 복구를 시도합니다.
+  if (masterOwnsLcd) {
+    return;
+  }
+  // 마스터(R4)가 UART로 계속 라인을 보내는 동안엔 재초기화가 깜박임을 유발할 수 있어 스킵합니다.
+
+  // 초기화는 너무 자주 하면 화면이 깜박일 수 있으니 간격을 늘립니다.
+  if (nowMs - gLastLcdInitMs < 30000) {
+    return;
+  }
+  gLastLcdInitMs = nowMs;
+  lcd.begin(20, 4);
+  delay(5);
+  if (!gWelcomeShown) {
+    lcdShowBootMessage();
+  } else {
+    // 마스터가 곧 다시 덮어쓸 수 있으나, LCD 리셋 직후에는 현재 welcome 정보를 복구해 깜박임을 줄입니다.
+    lcdWriteText(0, "Welcome 2 CronusFarm");
+    lcdWriteText(1, gDateLine);
+    lcdWriteText(2, gTimeLine);
+    lcdWriteText(3, "");
+  }
 }
 
 static void lcdShowWelcomeMessage() {
@@ -258,6 +313,7 @@ static uint8_t gI2cRxBuf[32];
 // R4(마스터)가 LCD 갱신 명령을 보냈는지(그리고 최근인지) 확인하기 위한 플래그/시각
 static bool gSawLcdCmd = false;
 static uint32_t gLastLcdCmdMs = 0;
+static bool gUartMasterActive = false;
 
 static void onReceiveHandler(int /*numBytes*/) {
   uint8_t n = 0;
@@ -363,13 +419,126 @@ static void processI2cMasterRx() {
   }
 }
 
+static void processUartMasterRx() {
+  static char line[96];
+  static uint8_t len = 0;
+  while (PANEL_LINK_SERIAL.available() > 0) {
+    const char c = (char)PANEL_LINK_SERIAL.read();
+    if (c == '\r' || c == '\n') {
+      if (len == 0) continue;
+      line[len] = '\0';
+      len = 0;
+
+      if (strcmp(line, "C") == 0) {
+        gSawLcdCmd = true;
+        gLastLcdCmdMs = millis();
+        gUartMasterActive = true;
+        lcd.clear();
+        continue;
+      }
+      // R4 → Mega LCD 라인 명령 포맷: "L,<row>,<text>\n"
+      // 초기 동작(완화 파싱) 복원: 문자열 프레이밍이 약간 어긋나도 화면 갱신이 끊기지 않게 합니다.
+      if (line[0] == 'L' && line[1] == ',') {
+        char* p1 = strchr(line + 2, ',');
+        if (!p1) continue;
+        *p1 = '\0';
+        int row = atoi(line + 2);
+        if (row < 0) row = 0;
+        if (row > 3) row = 3;
+        gSawLcdCmd = true;
+        gLastLcdCmdMs = millis();
+        gUartMasterActive = true;
+        lcdWriteText((uint8_t)row, p1 + 1);
+        continue;
+      }
+      // R4 → Mega "반전(유사)" 표시: 커서 블링크로 강조
+      // 포맷: "H,<row>,<col>,<0|1>\n"
+      // - on=1: 해당 위치로 커서를 옮기고 blink on
+      // - on=0: blink off (커서도 숨김)
+      if (line[0] == 'H' && line[1] == ',') {
+        char* p1 = strchr(line + 2, ',');
+        if (!p1) continue;
+        *p1 = '\0';
+        char* p2 = strchr(p1 + 1, ',');
+        if (!p2) continue;
+        *p2 = '\0';
+        int row = atoi(line + 2);
+        int col = atoi(p1 + 1);
+        const int on = atoi(p2 + 1);
+        if (row < 0) row = 0;
+        if (row > 3) row = 3;
+        if (col < 0) col = 0;
+        if (col > 19) col = 19;
+        gSawLcdCmd = true;
+        gLastLcdCmdMs = millis();
+        gUartMasterActive = true;
+        if (on) {
+          lcd.setCursor((uint8_t)col, (uint8_t)row);
+          lcd.cursor();
+          lcd.blink();
+        } else {
+          lcd.noBlink();
+          lcd.noCursor();
+        }
+        continue;
+      }
+      // R4 → Mega 비프 명령 포맷: "B,<0|1>\n"
+      if (line[0] == 'B' && line[1] == ',') {
+        const int mode = atoi(line + 2);
+        if (mode == 0) beepShortLocal();
+        else beepLongLocal();
+        gSawLcdCmd = true;
+        gLastLcdCmdMs = millis();
+        gUartMasterActive = true;
+        continue;
+      }
+      // R4 → Mega 팬 마스크 포맷: "F,<0..7>\n"
+      if (line[0] == 'F' && line[1] == ',') {
+#if defined(ARDUINO_AVR_MEGA2560) || defined(ARDUINO_AVR_MEGA)
+        applyFanMask((uint8_t)(atoi(line + 2) & 0x07));
+#endif
+        gSawLcdCmd = true;
+        gLastLcdCmdMs = millis();
+        gUartMasterActive = true;
+        continue;
+      }
+      // R4 → Mega 원격 GPIO 포맷: "O,<idx>,<0|1>\n"
+      // - idx: 0..7 (FAN A1/A2/B1/B2, SERVO0~3)
+      if (line[0] == 'O' && line[1] == ',') {
+#if defined(ARDUINO_AVR_MEGA2560) || defined(ARDUINO_AVR_MEGA)
+        char* p1 = strchr(line + 2, ',');
+        if (!p1) continue;
+        *p1 = '\0';
+        const int idx = atoi(line + 2);
+        const int v = atoi(p1 + 1);
+        if (idx >= 0 && idx <= 7) {
+          applyRemoteOut((uint8_t)idx, v ? true : false);
+        }
+#endif
+        gSawLcdCmd = true;
+        gLastLcdCmdMs = millis();
+        gUartMasterActive = true;
+        continue;
+      }
+      continue;
+    }
+    if (len < (uint8_t)(sizeof(line) - 1)) {
+      line[len++] = c;
+    }
+  }
+}
+
 static int8_t gEncPrevAB = 0;
 static uint32_t gEncLastMs = 0;
 static int8_t gEncPrevA = -1;
 static int8_t gEncPrevB = -1;
 // 엔코더 민감도(누적 스텝 수). 값이 클수록 “더 많이 돌려야” 이벤트가 1번 발생합니다.
-// 현재 UI는 사실상 ON/OFF(2개 선택) 위주라, 과민하면 오조작이 쉬워 1/4회전 체감이 되도록 완화합니다.
+  // Mega(Trigorilla)에서는 7이면 체감상 거의 안 움직이는 경우가 있어 상대적으로 낮춤.
+#if defined(ARDUINO_AVR_MEGA2560) || defined(ARDUINO_AVR_MEGA)
+static const int8_t ENC_STEPS_PER_EVENT = 3;
+#else
 static const int8_t ENC_STEPS_PER_EVENT = 7;
+#endif
 static int8_t gEncAccum = 0;
 
 static void encoderPoll() {
@@ -474,16 +643,17 @@ static void sdDetectPoll() {
 
 void setup() {
 #if defined(ARDUINO_AVR_MEGA2560) || defined(ARDUINO_AVR_MEGA)
-  pinMode(PIN_PUMP_A1, OUTPUT);
-  pinMode(PIN_PUMP_A2, OUTPUT);
-  pinMode(PIN_PUMP_B1, OUTPUT);
-  pinMode(PIN_PUMP_B2, OUTPUT);
-  applyPumpMask(0);
-
   pinMode(PIN_FAN_A1, OUTPUT);
+  pinMode(PIN_FAN_A2, OUTPUT);
   pinMode(PIN_FAN_B1, OUTPUT);
   pinMode(PIN_FAN_B2, OUTPUT);
-  applyFanMask(0);
+  pinMode(PIN_SERVO0, OUTPUT);
+  pinMode(PIN_SERVO1, OUTPUT);
+  pinMode(PIN_SERVO2, OUTPUT);
+  pinMode(PIN_SERVO3, OUTPUT);
+  for (uint8_t i = 0; i < 8; i++) {
+    applyRemoteOut(i, false);
+  }
 
   pinMode(PIN_LED_R, OUTPUT);
   pinMode(PIN_LED_G, OUTPUT);
@@ -503,8 +673,11 @@ void setup() {
   pinMode(PIN_KILL, INPUT_PULLUP);
 
   Serial.begin(115200);
+  PANEL_LINK_SERIAL.begin(PANEL_LINK_BAUD);
 
   lcd.begin(20, 4);
+  delay(50);  // HD44780 전원 안정·초기화 여유
+  gLastLcdInitMs = millis();
   lcdShowBootMessage();
 
   SPI.begin();
@@ -518,6 +691,7 @@ void setup() {
 
   // Pi 부팅 시간 동안(정의된 "LCD판넬 부팅메세지")을 잠깐 유지합니다.
 
+  // UART 링크를 기본으로 사용합니다. I2C 슬레이브는 하위 호환을 위해 남겨둡니다.
   Wire.begin(PANEL_I2C_ADDR);
   Wire.onReceive(onReceiveHandler);
   Wire.onRequest(onRequestHandler);
@@ -526,6 +700,7 @@ void setup() {
 }
 
 void loop() {
+  processUartMasterRx();
   processI2cMasterRx();
   serialTimePoll();
   encoderPoll();
@@ -538,7 +713,13 @@ void loop() {
   // R4 LCD 갱신이 안 올 때만 “I2C 연결/펌프 마스크”를 확인할 수 있도록 하단 1줄만 표시합니다.
   static uint32_t lastUi = 0;
   const uint32_t now = millis();
-  const bool masterOwnsLcd = gSawLcdCmd && (now - gLastLcdCmdMs) < 2000;
+  // R4가 이벤트만 poll(requestFrom)하는 동안에도 로컬 환영 3줄이 덮어쓰면 안 됨
+  // L만 오다가 O/F/B만 연속으로 올 때도 로컬 LCD 간섭을 막기 위해 창을 넉넉히 잡습니다.
+  const bool masterCmdRecent = gSawLcdCmd && (now - gLastLcdCmdMs) < 5000;
+  const bool masterPollRecent =
+    (gI2cReqCount > 0u) && (gI2cLastReqMs != 0u) && ((now - gI2cLastReqMs) < 3000u);
+  const bool masterOwnsLcd = masterCmdRecent || masterPollRecent;
+  lcdReinitIfNeeded(now, masterOwnsLcd);
 
   // 부팅메세지(5초) 후 환영메세지로 전환(단, R4가 LCD를 잡기 시작하면 자동 전환 금지)
   if (!gWelcomeShown && !masterOwnsLcd && (now - gBootAtMs) >= BOOT_MSG_MS) {
@@ -546,12 +727,24 @@ void loop() {
   }
 
   // 환영메세지가 표시된 상태에서는 Pi 시간 수신 시 1/2행(날짜/시간)만 갱신
+  // 단, R4(UART)가 LCD를 제어하기 시작하면(=gUartMasterActive) 로컬 시간 갱신은 중단(잔상/깨짐 원인)
   if (gWelcomeShown && !masterOwnsLcd) {
     static uint32_t lastWelcomeUi = 0;
-    if (now - lastWelcomeUi >= 500) {
+    static char lastDate[21] = {0};
+    static char lastTime[21] = {0};
+    // 날짜/시간은 1초 단위로만 갱신(깜박임 감소)
+    if (now - lastWelcomeUi >= 1000) {
       lastWelcomeUi = now;
-      lcdWriteText(1, gDateLine);
-      lcdWriteText(2, gTimeLine);
+      if (strncmp(lastDate, gDateLine, 20) != 0) {
+        strncpy(lastDate, gDateLine, 20);
+        lastDate[20] = '\0';
+        lcdWriteText(1, gDateLine);
+      }
+      if (strncmp(lastTime, gTimeLine, 20) != 0) {
+        strncpy(lastTime, gTimeLine, 20);
+        lastTime[20] = '\0';
+        lcdWriteText(2, gTimeLine);
+      }
     }
   }
 
@@ -572,11 +765,12 @@ void loop() {
       lcd.print(b);
     } else {
       char b[21];
+      // 디버그 표기(기존 4비트): SERVO0~3 상태를 PUMPS 자리로 표시(호환 유지)
       snprintf(b, sizeof(b), "PUMPS:%c%c%c%c R%lu    ",
-               (gPumpMask & 0x01) ? '1' : '0',
-               (gPumpMask & 0x02) ? '1' : '0',
-               (gPumpMask & 0x04) ? '1' : '0',
-               (gPumpMask & 0x08) ? '1' : '0',
+               gRemoteOut[4] ? '1' : '0',
+               gRemoteOut[5] ? '1' : '0',
+               gRemoteOut[6] ? '1' : '0',
+               gRemoteOut[7] ? '1' : '0',
                (unsigned long)reqCnt);
       lcd.print(b);
     }

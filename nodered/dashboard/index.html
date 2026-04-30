@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<!--
+  CronusFarm Node-RED Dashboard custom shell.
+  - 목적: 산업형 바이오모니터링(터미널 그린 + 딥 포레스트 블랙) UI 프리뷰를 Node-RED 로드 전 표시
+  - 호환성: ng-app/ng-controller/ng-if 유지, socket.io.js/app.min.js/i18n.js 그대로 로드
+  - 동작: main.loaded === true가 되면 프리뷰 자동 숨김
+-->
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CronusFarm" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#040d07" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+
+    <!-- Node-RED Dashboard 기본 리소스(필수) -->
+    <link rel="manifest" href="manifest.json" crossorigin="use-credentials" />
+    <link rel="icon" sizes="192x192" href="icon192x192.png" />
+    <link rel="shortcut icon" type="image/png" href="icon64x64.png" />
+    <link rel="apple-touch-icon" href="icon120x120.png" />
+    <link rel="stylesheet" href="css/app.min.css" />
+    <link rel="stylesheet/less" href="css/app.min.less" />
+
+    <!-- 첨부 HTML 폰트(옵션) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;700;800&family=Noto+Sans+KR:wght@300;400;500&display=swap"
+      rel="stylesheet"
+    />
+    <title>CronusFarm</title>
+  </head>
+
+  <body
+    id="nr-dashboard"
+    ng-app="ui"
+    ng-controller="MainController as main"
+    ng-cloak
+    layout="column"
+    style="background: {{main.backgroundColor}}"
+    class="nr-dashboard-theme"
+    ng-swipe-right="onSwipeRight();"
+    ng-swipe-left="onSwipeLeft();"
+    ng-attr-ng-swipe-disable-mouse="{{main.allowSwipe !== 'mouse' ? '' : undefined}}"
+  >
+    <!-- 프리뷰(로딩 전): Node-RED가 로드되면 자동 숨김 -->
+    <div id="cf-preview" ng-if="!main.loaded && !main.nothing" aria-label="CronusFarm preview">
+      <style>
+        /* 첨부 HTML 디자인 컨셉(스코프 적용: #cf-preview 내부만) */
+        #cf-preview{
+          --g0:#040d07;--g1:#0a1a0f;--g2:#0f2415;--g3:#152e1a;
+          --accent:#2dff7a;--accent2:#00e5ff;--accent3:#ffb830;--warn:#ff6b35;--pu:#bb86fc;
+          --muted:#3a5c42;--text:#c8e6c9;--text2:#6b9c73;--text3:#3a5c42;
+          --border:rgba(45,255,122,.07);--border2:rgba(45,255,122,.16);
+          --card:rgba(10,26,15,.9);--glow:0 0 28px rgba(45,255,122,.07);
+          --fh:'Syne',sans-serif;--fm:'DM Mono',monospace;--fb:'Noto Sans KR',sans-serif;
+          position:fixed; inset:0; z-index:9999; background:var(--g0); color:var(--text); font-family:var(--fb);
+          overflow:auto;
+        }
+        #cf-preview *{box-sizing:border-box;margin:0;padding:0}
+        #cf-preview::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+          background-image:linear-gradient(rgba(45,255,122,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(45,255,122,.022) 1px,transparent 1px);
+          background-size:48px 48px;animation:gp 8s ease-in-out infinite}
+        #cf-preview::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+          background:radial-gradient(ellipse 55% 40% at 15% 15%,rgba(45,255,122,.04) 0%,transparent 70%),
+                     radial-gradient(ellipse 45% 55% at 85% 85%,rgba(0,229,255,.025) 0%,transparent 70%)}
+        @keyframes gp{0%,100%{opacity:.5}50%{opacity:1}}
+
+        /* TOPBAR */
+        #cf-preview .topbar{position:fixed;top:0;left:0;right:0;z-index:100;height:54px;
+          background:rgba(4,13,7,.92);backdrop-filter:blur(24px);
+          border-bottom:1px solid var(--border2);display:flex;align-items:center}
+        #cf-preview .logo-block{width:58px;height:54px;background:var(--accent);display:flex;align-items:center;justify-content:center;
+          clip-path:polygon(0 0,100% 0,82% 100%,0 100%);flex-shrink:0;font-size:20px}
+        #cf-preview .brand{padding:0 16px 0 12px;border-right:1px solid var(--border2);height:54px;display:flex;flex-direction:column;justify-content:center}
+        #cf-preview .brand-name{font-family:var(--fh);font-size:16px;font-weight:800;letter-spacing:.06em;color:var(--accent);text-transform:uppercase}
+        #cf-preview .brand-sub{font-family:var(--fm);font-size:9px;color:var(--text2);letter-spacing:.14em;margin-top:1px}
+        #cf-preview .statusbar{display:flex;align-items:center;gap:18px;padding:0 18px;flex:1;overflow:hidden}
+        #cf-preview .si{display:flex;align-items:center;gap:5px;flex-shrink:0}
+        #cf-preview .sdot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);animation:blink 2s ease-in-out infinite}
+        #cf-preview .sdot.w{background:var(--accent3);box-shadow:0 0 8px var(--accent3)}
+        #cf-preview .sdot.e{background:var(--warn);box-shadow:0 0 8px var(--warn)}
+        @keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+        #cf-preview .sl{font-family:var(--fm);font-size:9px;color:var(--text3);letter-spacing:.1em}
+        #cf-preview .sv{font-family:var(--fm);font-size:9px;color:var(--text);font-weight:500}
+        #cf-preview .clock{margin-left:auto;padding-right:18px;font-family:var(--fm);font-size:11px;color:var(--text2);letter-spacing:.04em;flex-shrink:0}
+        #cf-preview .clock span{color:var(--accent);font-weight:500}
+
+        /* SIDEBAR */
+        #cf-preview .sidebar{position:fixed;top:54px;left:0;bottom:0;z-index:90;width:60px;
+          background:rgba(4,13,7,.85);backdrop-filter:blur(16px);
+          border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:2px}
+        #cf-preview .nb{width:42px;height:42px;border-radius:7px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+          cursor:pointer;border:1px solid transparent;color:var(--text3);transition:all .2s;gap:3px;text-decoration:none;position:relative}
+        #cf-preview .nb:hover,#cf-preview .nb.on{background:rgba(45,255,122,.06);border-color:var(--border2);color:var(--accent)}
+        #cf-preview .nb.on::before{content:'';position:absolute;left:-1px;top:50%;transform:translateY(-50%);
+          width:3px;height:18px;background:var(--accent);border-radius:0 2px 2px 0;box-shadow:0 0 8px var(--accent)}
+        #cf-preview .nb-ic{font-size:16px;line-height:1}
+        #cf-preview .nb-lbl{font-family:var(--fm);font-size:7px;letter-spacing:.05em;line-height:1}
+        #cf-preview .ndiv{width:30px;height:1px;background:var(--border2);margin:5px 0}
+
+        /* MAIN */
+        #cf-preview .main{position:relative;z-index:1;margin-top:54px;margin-left:60px;min-height:calc(100vh - 54px);padding:18px}
+
+        /* SECTION / GRID / CARD */
+        #cf-preview .sec{display:flex;align-items:center;gap:10px;margin:18px 0 12px}
+        #cf-preview .secline{flex:1;height:1px;background:var(--border2)}
+        #cf-preview .sectl{font-family:var(--fh);font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--text2);white-space:nowrap}
+        #cf-preview .secbdg{font-family:var(--fm);font-size:8px;color:var(--text3);background:rgba(45,255,122,.04);
+          border:1px solid var(--border);padding:2px 6px;border-radius:2px;letter-spacing:.06em;white-space:nowrap}
+        #cf-preview .g{display:grid;gap:7px}
+        #cf-preview .g6{grid-template-columns:repeat(6,1fr)}
+        #cf-preview .g3{grid-template-columns:1fr 1fr 1fr}
+        #cf-preview .card{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:11px 13px;
+          backdrop-filter:blur(8px);transition:border-color .2s,box-shadow .2s;position:relative;overflow:hidden}
+        #cf-preview .card::before{content:'';position:absolute;inset:0;pointer-events:none;
+          background:linear-gradient(135deg,rgba(45,255,122,.025) 0%,transparent 55%)}
+        #cf-preview .card:hover{border-color:var(--border2);box-shadow:var(--glow)}
+        #cf-preview .clbl{font-family:var(--fm);font-size:9px;color:var(--text3);letter-spacing:.13em;text-transform:uppercase;
+          margin-bottom:6px;display:flex;align-items:center;justify-content:space-between}
+        #cf-preview .ctype{font-size:8px;background:rgba(45,255,122,.04);border:1px solid var(--border);
+          color:var(--text3);padding:1px 5px;border-radius:2px}
+        #cf-preview .val{font-family:var(--fm);font-size:24px;font-weight:500;line-height:1}
+        #cf-preview .vu{font-size:11px;color:var(--text2);margin-left:2px}
+        #cf-preview .ok{color:var(--accent)} #cf-preview .inf{color:var(--accent2)} #cf-preview .wn{color:var(--accent3)} #cf-preview .er{color:var(--warn)}
+        #cf-preview .sublbl{font-size:9px;color:var(--text3);margin-top:3px;font-family:var(--fm)}
+        #cf-preview .bar{height:3px;background:rgba(45,255,122,.07);border-radius:2px;margin-top:7px;overflow:hidden}
+        #cf-preview .bf{height:100%;border-radius:2px}
+        #cf-preview .bok{background:var(--accent);box-shadow:0 0 7px rgba(45,255,122,.35)}
+
+        /* 프리뷰 안내 */
+        #cf-preview .hint{margin-top:10px;font-family:var(--fm);font-size:10px;color:var(--text2);letter-spacing:.08em}
+
+        @media(max-width:900px){
+          #cf-preview .g6{grid-template-columns:repeat(3,1fr)}
+          #cf-preview .sidebar{width:44px}
+          #cf-preview .main{margin-left:44px}
+          #cf-preview .statusbar .si:nth-child(n+5){display:none}
+        }
+        @media(max-width:600px){
+          #cf-preview .g3,#cf-preview .g6{grid-template-columns:1fr 1fr}
+          #cf-preview .main{padding:12px}
+        }
+      </style>
+
+      <header class="topbar">
+        <div class="logo-block">🌿</div>
+        <div class="brand">
+          <div class="brand-name">CronusFarm</div>
+          <div class="brand-sub">ARTICHOKE SMART SYSTEM v2.1</div>
+        </div>
+        <div class="statusbar">
+          <div class="si"><div class="sdot" id="dot-sys"></div><div class="sl">SYSTEM</div><div class="sv" id="sv-sys">PREVIEW</div></div>
+          <div class="si"><div class="sdot" id="dot-nr"></div><div class="sl">NODE-RED</div><div class="sv">LOADING</div></div>
+          <div class="si"><div class="sdot" id="dot-db"></div><div class="sl">INFLUXDB</div><div class="sv">—</div></div>
+          <div class="si"><div class="sdot w" id="dot-ec"></div><div class="sl">EC</div><div class="sv" id="sv-ec">—</div></div>
+          <div class="si"><div class="sdot" id="dot-ph"></div><div class="sl">pH</div><div class="sv" id="sv-ph">—</div></div>
+          <div class="si"><div class="sdot" id="dot-tmp"></div><div class="sl">TEMP</div><div class="sv" id="sv-tmp">—</div></div>
+          <div class="si"><div class="sdot e" id="dot-alrt"></div><div class="sl">ALERT</div><div class="sv" id="sv-alrt">—</div></div>
+        </div>
+        <div class="clock" id="clock"></div>
+      </header>
+
+      <nav class="sidebar">
+        <div class="nb on" title="메인"><div class="nb-ic">⊞</div><div class="nb-lbl">MAIN</div></div>
+        <div class="nb" title="환경"><div class="nb-ic">◎</div><div class="nb-lbl">ENV</div></div>
+        <div class="nb" title="장치"><div class="nb-ic">⚙</div><div class="nb-lbl">DEV</div></div>
+        <div class="nb" title="작물·AI"><div class="nb-ic">◈</div><div class="nb-lbl">CROP</div></div>
+        <div class="nb" title="전력"><div class="nb-ic">⌁</div><div class="nb-lbl">PWR</div></div>
+        <div class="ndiv"></div>
+        <div class="nb" title="알림"><div class="nb-ic">△</div><div class="nb-lbl">ALRT</div></div>
+      </nav>
+
+      <main class="main">
+        <div class="sec"><div class="secline"></div><div class="sectl">실시간 환경</div><div class="secbdg">tele · preview</div><div class="secline"></div></div>
+        <div class="g g6">
+          <div class="card"><div class="clbl">내부 온도 <span class="ctype">stat</span></div><div class="val ok">—<span class="vu">℃</span></div><div class="bar"><div class="bf bok" style="width:35%"></div></div><div class="sublbl">기준 15~25℃</div></div>
+          <div class="card"><div class="clbl">내부 습도 <span class="ctype">stat</span></div><div class="val ok">—<span class="vu">%</span></div><div class="bar"><div class="bf bok" style="width:55%"></div></div><div class="sublbl">기준 50~75%</div></div>
+          <div class="card"><div class="clbl">pH <span class="ctype">gauge</span></div><div class="val ok">—</div><div class="bar"><div class="bf bok" style="width:60%"></div></div><div class="sublbl">기준 6.0~7.5</div></div>
+          <div class="card"><div class="clbl">EC <span class="ctype">gauge</span></div><div class="val wn">—<span class="vu">mS/cm</span></div><div class="bar"><div class="bf bok" style="width:30%"></div></div><div class="sublbl">기준 1.5~3.0</div></div>
+          <div class="card"><div class="clbl">CO₂ <span class="ctype">stat</span></div><div class="val ok">—<span class="vu">ppm</span></div><div class="bar"><div class="bf bok" style="width:45%"></div></div><div class="sublbl">최적 800~1200</div></div>
+          <div class="card"><div class="clbl">외부온도 KMA <span class="ctype">api</span></div><div class="val inf">—<span class="vu">℃</span></div><div class="bar"><div class="bf bok" style="width:20%"></div></div><div class="sublbl">기상청 10min</div></div>
+        </div>
+        <div class="hint">Node-RED Dashboard 로드가 완료되면 이 프리뷰는 자동으로 사라집니다.</div>
+      </main>
+
+      <script>
+        (function(){
+          function pad(n){return String(n).padStart(2,'0');}
+          function tick(){
+            var d=new Date();
+            var el=document.getElementById('clock');
+            if(!el) return;
+            el.innerHTML = '<span>'+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())+'</span>&nbsp; '+d.getFullYear()+'.'+pad(d.getMonth()+1)+'.'+pad(d.getDate());
+          }
+          tick(); setInterval(tick,1000);
+        })();
+      </script>
+    </div>
+
+    <!-- Node-RED Dashboard 본 UI -->
+    <md-content ng-if="main.loaded" ng-include="'partials/main.html'" layout="column" flex></md-content>
+
+    <!-- Nothing(기본 메시지) -->
+    <div ng-if="main.nothing" class="node-red-ui--notabs">
+      <table>
+        <tr><td><center><img src="icon120x120.png" /></center></td></tr>
+        <tr><td><center><h2>Welcome to the Node-RED Dashboard</h2></center></td></tr>
+        <tr><td><center>Please add some UI nodes to your flow and redeploy.</center></td></tr>
+      </table>
+    </div>
+
+    <!-- 필수 스크립트(그대로 유지) -->
+    <script src="socket.io/socket.io.js"></script>
+    <script src="js/app.min.js"></script>
+    <script src="i18n.js"></script>
+  </body>
+</html>
+

@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="theme-color" content="#0b0f12" />
+    <title>TriGorilla (Mega2560) + 2004A 패널 가이드</title>
+    <style>
+      :root{
+        --bg:#0b0f12; --card:#111821; --card2:#0f151d;
+        --text:#e6edf3; --muted:#9fb0c0; --line:rgba(255,255,255,.08);
+        --a:#2dff7a; --b:#00e5ff; --w:#ffb830; --r:#ff6b35;
+        --mono:ui-monospace,Consolas,Menlo,Monaco,monospace;
+        --sans:system-ui,-apple-system,"Noto Sans KR","Malgun Gothic",Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+      }
+      html,body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.55}
+      a{color:var(--b);text-decoration:none}
+      a:hover{text-decoration:underline}
+      .wrap{max-width:980px;margin:0 auto;padding:22px 16px 60px}
+      .top{display:flex;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:16px}
+      .k{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.06em}
+      h1{margin:0;font-size:20px;letter-spacing:.01em}
+      .sub{color:var(--muted);font-size:13px;margin-top:6px}
+      .pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);background:linear-gradient(180deg,var(--card),var(--card2));
+        border-radius:999px;padding:6px 10px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+      .pill b{color:var(--text);font-weight:600}
+      .grid{display:grid;grid-template-columns:1fr;gap:12px}
+      .card{border:1px solid var(--line);background:linear-gradient(180deg,var(--card),var(--card2));
+        border-radius:14px;padding:14px 14px}
+      h2{margin:0 0 10px;font-size:15px}
+      h3{margin:14px 0 6px;font-size:13px;color:var(--a)}
+      ul{margin:8px 0 0 18px;padding:0}
+      li{margin:4px 0}
+      code,pre{font-family:var(--mono)}
+      pre{background:#0a0f15;border:1px solid var(--line);border-radius:12px;padding:10px 12px;overflow:auto;font-size:12px}
+      table{width:100%;border-collapse:collapse;font-size:13px}
+      th,td{border-bottom:1px solid var(--line);padding:8px 8px;vertical-align:top}
+      th{color:var(--muted);font-weight:600;text-align:left;font-family:var(--mono);font-size:12px}
+      .warn{border-left:4px solid var(--w);padding:10px 12px;background:rgba(255,184,48,.06);border-radius:10px}
+      .danger{border-left:4px solid var(--r);padding:10px 12px;background:rgba(255,107,53,.07);border-radius:10px}
+      .muted{color:var(--muted)}
+      .hr{height:1px;background:var(--line);margin:14px 0}
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <div>
+          <div class="k">CronusFarm / Node-RED /ui 문서</div>
+          <h1>TriGorilla(Mega2560) + RepRapDiscount Smart Controller 2004A</h1>
+          <div class="sub">실크(라벨) 기준 커넥터/점퍼 표기 + Arduino Mega 핀 매핑 요약</div>
+        </div>
+        <div class="pill"><b>대상</b> TriGorilla V1.x(8-bit ATmega2560) 계열</div>
+      </div>
+
+      <div class="grid">
+        <section class="card">
+          <h2>1) TriGorilla 보드 종류와 특징(버전 주의)</h2>
+          <ul>
+            <li><b>V1.0 / V1.1</b>: 가장 흔함, 8비트 ATmega2560 기반. (Marlin 기준 보통 <code>BOARD_TRIGORILLA_14</code>)</li>
+            <li><b>V0.0.2 / V0.0.3</b>: 전원 단자 색상/서보 배치 일부 변경.</li>
+            <li><b>V3.0.x</b>: 32비트(HC32F460) 기반. 핀 할당이 완전히 달라서 본 문서의 “Mega 핀 매핑”을 그대로 쓰면 안 됨.</li>
+          </ul>
+          <div class="warn" style="margin-top:10px">
+            <b>주의</b> 버전이 확실하지 않으면, “보드 실크의 커넥터 라벨”을 기준으로 먼저 확인하세요.
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>2) 전원 입력 / 전환 점퍼</h2>
+          <h3>파란색 스크류 2핀(전원 입력)</h3>
+          <ul>
+            <li><b>5A+</b>: 보드 로직/모터드라이버/HEATER0·HEATER1·FAN 전원(필수)</li>
+            <li><b>11A+</b>: <b>+HOTBED- 전용</b> 고전류 입력(히팅베드 쓸 때만)</li>
+          </ul>
+          <h3>DC/USB 전환 3핀 점퍼</h3>
+          <ul>
+            <li><b>USB</b>: 업로드/점검용(USB 5V 로직 구동)</li>
+            <li><b>DC</b>: 실사용(외부 전원으로 구동)</li>
+          </ul>
+        </section>
+
+        <section class="card">
+          <h2>3) 고출력/팬 단자(MOSFET Outputs)</h2>
+          <h3>파란색 스크류(출력)</h3>
+          <table>
+            <thead><tr><th>단자</th><th>Arduino Mega 핀</th><th>설명</th></tr></thead>
+            <tbody>
+              <tr><td><b>+HEATER0-</b></td><td><code>D10</code></td><td>가장 강력한 출력(대용량 펌프/히터 등)</td></tr>
+              <tr><td><b>+HEATER1-</b></td><td><code>D7</code></td><td>보조 고출력</td></tr>
+              <tr><td><b>+HOTBED-</b></td><td><code>D8</code></td><td>11A 입력과 연동(고전류)</td></tr>
+            </tbody>
+          </table>
+          <h3>흰색 2핀(FAN)</h3>
+          <ul>
+            <li><b>+FAN0-</b>: <code>D9</code> (PWM 가능)</li>
+            <li><b>+FAN1- / FAN2-</b>: 상시 전원(Always ON)</li>
+          </ul>
+        </section>
+
+        <section class="card">
+          <h2>4) 모터/드라이버</h2>
+          <ul>
+            <li><b>하얀색 4핀 커넥터(표기)</b>: X, Y, Z, Z, E0, E1</li>
+            <li><b>40P*2 암컷 소켓</b>: X/Y/Z/E0/E1 드라이버 장착(A4988, TMC2208 등)</li>
+          </ul>
+        </section>
+
+        <section class="card">
+          <h2>5) 확장/점퍼(라벨 기준)</h2>
+          <ul>
+            <li><b>END STOPS (3핀, S/G/V)</b>: Z+, Z-, Y+, Y-, X+, X-</li>
+            <li><b>D42 / D43 (3핀)</b>: 신호 / GND / 5V</li>
+            <li><b>UART3 (4핀)</b>: GND / RX3 / TX3 / 5V</li>
+            <li><b>ISP (3×2핀)</b>: 1~6</li>
+            <li><b>IIC (6핀)</b>: 12V / GND / SCL / SDA / GND / 5V</li>
+            <li><b>T0~T3 (4×2핀)</b>: 온도 센서(써미스터)</li>
+            <li><b>EXP1/EXP2 (10핀 플랫)</b>: 2004A 패널 연결</li>
+          </ul>
+        </section>
+
+        <section class="card">
+          <h2>6) TriGorilla Board GPIO Mapping Table</h2>
+          <div class="sub">TriGorilla(Mega2560 호환) 보드에서 요청하신 실크(기능) 라벨과 Arduino(Mega/ATmega2560) GPIO 디지털 핀 번호 매핑입니다.</div>
+          <div class="hr"></div>
+          <table>
+            <thead>
+              <tr>
+                <th>보드 실크 인쇄(기능)</th>
+                <th>제어 GPIO 핀 번호</th>
+                <th>비고</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><b>I2C X-</b></td><td><code>D3</code></td><td class="muted">FAN A1 (요청 매핑)</td></tr>
+              <tr><td><b>I2C X+</b></td><td><code>D2</code></td><td class="muted">FAN A2 (요청 매핑)</td></tr>
+              <tr><td><b>I2C Y-</b></td><td><code>D14</code></td><td class="muted">FAN B1 (요청 매핑)</td></tr>
+              <tr><td><b>I2C Y+</b></td><td><code>D15</code></td><td class="muted">FAN B2 (요청 매핑)</td></tr>
+              <tr><td><b>I2C Z-</b></td><td><code>D18(Tx)</code></td><td class="muted">R4↔Mega UART 링크(송신)</td></tr>
+              <tr><td><b>I2C Z+</b></td><td><code>D19(Rx)</code></td><td class="muted">R4↔Mega UART 링크(수신)</td></tr>
+              <tr><td><b>SERVO0</b></td><td><code>D11</code></td><td class="muted">PWM 가능</td></tr>
+              <tr><td><b>SERVO1</b></td><td><code>D6</code></td><td class="muted">PWM 가능</td></tr>
+              <tr><td><b>SERVO2</b></td><td><code>D5</code></td><td class="muted">PWM 가능</td></tr>
+              <tr><td><b>SERVO3</b></td><td><code>D4</code></td><td class="muted">PWM 가능</td></tr>
+            </tbody>
+          </table>
+
+          <div class="hr"></div>
+          <h3>1. Thermistor (온도 센서) 핀 맵핑</h3>
+          <div class="muted">온도 센서는 전압 변화를 읽어야 하므로 아날로그 핀(Analog In)에 할당되어 있습니다.</div>
+          <table style="margin-top:10px">
+            <thead>
+              <tr>
+                <th>실크 표시</th>
+                <th>기능(일반적 용도)</th>
+                <th>아날로그 핀 번호</th>
+                <th>GPIO 핀 번호</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><b>T0</b></td><td>Hotend 1 (압출기 1 온도)</td><td><code>A13</code></td><td><code>D67</code></td></tr>
+              <tr><td><b>T1</b></td><td>Hotend 2 (압출기 2 온도)</td><td><code>A14</code></td><td><code>D68</code></td></tr>
+              <tr><td><b>T2</b></td><td>Heated Bed (베드 온도)</td><td><code>A15</code></td><td><code>D69</code></td></tr>
+              <tr><td><b>T3</b></td><td>Spare (여분 또는 대기 온도)</td><td><code>A12</code></td><td><code>D66</code></td></tr>
+            </tbody>
+          </table>
+
+          <div class="hr"></div>
+          <h3>2. D42, D43 핀의 기능</h3>
+          <div class="muted">
+            보드상에 독립적으로 인쇄된 <b>D42</b>, <b>D43</b>은 주로 확장성을 위해 배치된 범용 디지털 I/O(GPIO) 핀입니다.
+            TriGorilla 보드 설계상 이 핀들은 특정 기능이 고정되어 있지 않아 사용자 용도로 활용됩니다.
+          </div>
+          <ul>
+            <li><b>주요 활용</b>: 필라멘트 감지 센서(Filament Runout), 자동 베드 레벨링(ABL/BL-Touch), 사용자 정의 스위치/LED/릴레이 제어</li>
+            <li><b>특징</b>: 5V 로직. Arduino에서 <code>digitalWrite(42, HIGH)</code>, <code>digitalRead(43)</code>처럼 번호 그대로 사용 가능</li>
+          </ul>
+          <table style="margin-top:10px">
+            <thead>
+              <tr><th>구분</th><th>핀 번호</th><th>주요 용도</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><b>T0~T3</b></td><td><code>A13, A14, A15, A12</code></td><td>온도 측정(100K 서미스터 연결)</td></tr>
+              <tr><td><b>D42</b></td><td><code>Digital 42</code></td><td>필라멘트 센서 또는 범용 출력</td></tr>
+              <tr><td><b>D43</b></td><td><code>Digital 43</code></td><td>확장 센서 또는 범용 출력</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section class="card">
+          <h2>6) 2004A LCD 패널 핀 매핑(EXP1 & EXP2)</h2>
+          <div class="danger">
+            <b>주의</b> 화면이 안 켜질 때는 케이블/커넥터 방향을 180° 뒤집어 확인해야 하는 케이스가 있습니다.
+          </div>
+
+          <div class="hr"></div>
+          <h3>EXP1 (디스플레이 + 비퍼)</h3>
+          <table>
+            <thead><tr><th>EXP1 Pin</th><th>기능</th><th>Arduino Mega 핀</th><th>설명</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td>BEEPER</td><td><code>D37</code></td><td>비퍼(Buzzer)</td></tr>
+              <tr><td>2</td><td>BTN_ENC</td><td><code>D35</code></td><td>엔코더 클릭</td></tr>
+              <tr><td>3</td><td>LCD_RS</td><td><code>D16</code></td><td>LCD RS</td></tr>
+              <tr><td>4</td><td>LCD_EN</td><td><code>D17</code></td><td>LCD EN</td></tr>
+              <tr><td>5</td><td>LCD_D4</td><td><code>D23</code></td><td>LCD 데이터</td></tr>
+              <tr><td>6</td><td>LCD_D5</td><td><code>D25</code></td><td>LCD 데이터</td></tr>
+              <tr><td>7</td><td>LCD_D6</td><td><code>D27</code></td><td>LCD 데이터</td></tr>
+              <tr><td>8</td><td>LCD_D7</td><td><code>D29</code></td><td>LCD 데이터</td></tr>
+              <tr><td>9</td><td>GND</td><td>GND</td><td>접지</td></tr>
+              <tr><td>10</td><td>VCC</td><td>5V</td><td>전원</td></tr>
+            </tbody>
+          </table>
+
+          <div class="hr"></div>
+          <h3>EXP2 (SD 카드 + 엔코더)</h3>
+          <table>
+            <thead><tr><th>EXP2 Pin</th><th>기능</th><th>Arduino Mega 핀</th><th>설명</th></tr></thead>
+            <tbody>
+              <tr><td>1</td><td>MISO</td><td><code>D50</code></td><td>SD SPI 입력</td></tr>
+              <tr><td>2</td><td>SCK</td><td><code>D52</code></td><td>SD SPI 클럭</td></tr>
+              <tr><td>3</td><td>BTN_EN1</td><td><code>D31</code></td><td>엔코더 회전 1</td></tr>
+              <tr><td>4</td><td>SDSS</td><td><code>D53</code></td><td>SD CS</td></tr>
+              <tr><td>5</td><td>BTN_EN2</td><td><code>D33</code></td><td>엔코더 회전 2</td></tr>
+              <tr><td>6</td><td>MOSI</td><td><code>D51</code></td><td>SD SPI 출력</td></tr>
+              <tr><td>7</td><td>SD_DET</td><td><code>D49</code></td><td>SD 감지</td></tr>
+              <tr><td>8</td><td>RESET</td><td>RESET</td><td>시스템 리셋</td></tr>
+              <tr><td>9</td><td>NC</td><td>-</td><td>미사용</td></tr>
+              <tr><td>10</td><td>NC</td><td>-</td><td>미사용</td></tr>
+            </tbody>
+          </table>
+          <div class="muted" style="margin-top:10px">
+            문서 출처: 사용자 제공 DOCX 요약 + 보드 라벨 기준 정리(프로젝트용 통합본)
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>7) 전체 시리얼 포트 위치 요약(보드 라벨 기준)</h2>
+          <div class="sub muted" style="margin-bottom:10px">
+            TriGorilla(Mega2560 기반)는 하드웨어 시리얼이 4개(Serial0~3)이며, “어디에 물려 있는지”가 업로드/통신 안정성에 직접 영향이 있습니다.
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>시리얼</th>
+                <th>핀 번호</th>
+                <th>보드상 물리적 위치(라벨)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><b>Serial 0</b></td>
+                <td><code>D0(RX)</code>, <code>D1(TX)</code></td>
+                <td>USB 연결 포트(PC/Pi 업로드·통신용, 기본 업로드 포트)</td>
+              </tr>
+              <tr>
+                <td><b>Serial 1</b></td>
+                <td><code>D19(RX1)</code>, <code>D18(TX1)</code></td>
+                <td>END STOPS의 <b>Z-</b> 및 <b>Z+</b> 포트의 <b>Signal</b> 핀</td>
+              </tr>
+              <tr>
+                <td><b>Serial 2</b></td>
+                <td><code>D17(RX2)</code>, <code>D16(TX2)</code></td>
+                <td>EXP1 커넥터(LCD 통신과 공유됨)</td>
+              </tr>
+              <tr>
+                <td><b>Serial 3</b></td>
+                <td><code>D15(RX3)</code>, <code>D14(TX3)</code></td>
+                <td><b>UART3</b> 라고 적힌 별도의 4핀 커넥터</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="warn" style="margin-top:10px">
+            <b>권장</b> USB 업로드(Serial0)와 UART 통신이 충돌하지 않도록, UART는 <b>Serial1</b> 등 업로드 경로와 다른 하드웨어 시리얼을 쓰세요.
+          </div>
+          <div class="hr"></div>
+          <h3>CronusFarm 펌웨어 기준(현재): Serial1(D18/D19) 고정</h3>
+          <ul>
+            <li><b>Mega TX1</b> <code>D18</code> → <b>R4 RX</b> <code>D0</code> / <b>Mega RX1</b> <code>D19</code> ← <b>R4 TX</b> <code>D1</code> (교차), <b>GND</b> 공통</li>
+            <li>TriGorilla/RAMPS 계열에서는 위 핀이 END STOP의 <b>Z− / Z+</b> 쪽 <b>Signal(S)</b> 과 같은 배선인 경우가 많습니다. <b>UART3(D14/D15) 4핀 헤더는 FAN Y+/Y−와 같은 핀이라 R4 연결에 쓰지 마세요.</b></li>
+            <li><b>SCL/SDA(IIC) 미사용 이유</b>: 2026-04 기준 실환경에서 I2C는 케이블 길이/노이즈/부팅 타이밍 영향으로 패널이 로컬 환영 3줄에 머물고 엔코더 이벤트가 유실되는 사례가 반복되었습니다. UART(Serial1)는 배선·장애 재현성이 높아 원격 업로드 운영과 함께 표준으로 고정합니다.</li>
+            <li><b>FAN 4채널</b>(마스크 하위 4비트): X−/X+/Y−/Y+ ENDSTOP <code>S</code> → <code>D3,D2,D14,D15</code>. 팬이 3개면 그중 3비트만 사용하면 됩니다.</li>
+          </ul>
+        </section>
+
+        <section class="card">
+          <h2>8) Pi에서 Mega USB 업로드가 “됐다/안 됐다” 할 때(원인·대응)</h2>
+          <p class="muted" style="margin:0 0 10px">
+            아래는 실제로 관측된 증상(<code>dmesg</code>, <code>avrdude timeout</code>)과 CronusFarm에서 적용한 대응을 요약한 것입니다.
+          </p>
+          <div class="warn" style="margin-bottom:12px">
+            <b>문서 정책</b>: CronusFarm 패널–R4 링크는 <b>Serial1(D18/D19, Z-/Z+ Signal)</b>로 고정되어 있고, Mega 업로드는 USB(CP210×)→부트로더 경로입니다.
+            업로드 문제를 <b>UART 배선을 잠시 빼서</b> 우회한다는 식의 운영 대응은 본 프로젝트 문서에 적지 않습니다(동일 장비에서 재현 가능한 절차로 두지 않음).
+          </div>
+
+          <h3>원인 A — USB 링크 자체가 끊김/불안정(EMI·전원·케이블)</h3>
+          <ul>
+            <li><b>증상</b>: <code>dmesg</code>에 <code>cp210x ttyUSB0: failed set request ... -110</code>, <code>usb ... disabled by hub (EMI?)</code>, <code>disconnect</code> 같은 로그가 반복.</li>
+            <li><b>이유</b>: CP210x 브리지가 USB 제어 전송에 실패하면 업로드 중 통신이 끊긴다(소프트웨어만으로 100% 보장 어려움).</li>
+            <li><b>대응</b>: Pi에 직결·짧은 데이터 케이블·노이즈 분리·필요 시 <code>usbcore.autosuspend=-1</code>(커널 파라미터) 등 전원/배선 측 조치.</li>
+          </ul>
+
+          <h3>원인 B — 업로드 포트/명령 호출 실패(운영 실수)</h3>
+          <ul>
+            <li><b>증상</b>: Windows에서 SSH로 Pi에 명령을 보낼 때 <code>$PORT</code> 같은 변수가 로컬에서 먼저 비워져 <code>-p</code> 인자가 깨지는 경우가 있다.</li>
+            <li><b>대응</b>: Pi에서는 가능하면 포트를 <b>하드코딩</b>하거나, SSH 문자열에서 <code>$</code> 이스케이프를 확실히 한다. Mega는 <code>/dev/serial/by-id/...</code> 고정이 안정적이다.</li>
+          </ul>
+        </section>
+
+        <section class="card">
+          <h2>10) 개발흐름 표시 규격(운영 기준)</h2>
+          <h3>부팅화면 (패널 Mega 자체 출력, 4줄) — <code>arduino/CronusFarmPanel/CronusFarmPanel.ino</code></h3>
+          <ul>
+            <li>0행: <code>CronusFarm Panel</code> (테스트 모드면 <code>CronusFarm Panel TEST</code>)</li>
+            <li>1행: <code>UART ready</code></li>
+            <li>2행: 미출력/이전 내용 유지</li>
+            <li>3행: 미출력/이전 내용 유지</li>
+          </ul>
+          <h3>환영메세지 (패널 Mega 자체 출력, 4줄) — <code>arduino/CronusFarmPanel/CronusFarmPanel.ino</code></h3>
+          <ul>
+            <li>0행: <code>Welcome 2 CronusFarm</code></li>
+            <li>1행: <code>gDateLine</code> (Pi가 보내는 <code>DT:...</code>)</li>
+            <li>2행: <code>gTimeLine</code> (Pi가 보내는 <code>TM:...</code>)</li>
+            <li>3행: 빈 줄</li>
+          </ul>
+          <h3>각 Bed 화면 (UNO R4가 패널 LCD로 출력, 4줄) — <code>arduino/CronusFarm/CronusFarm.ino</code></h3>
+          <ul>
+            <li>환영 화면: 0행 <code>Welcome 3</code>, 1행 <code>CronusFarm</code>, 2행 날짜, 3행 시간(AM/PM)</li>
+            <li>Bed 브라우즈: 0행 <code>A Bed/B Bed/C Bed/D Bed</code>, 1행 <code>MODE:&lt;AUTO|MAN |MIX |N/A &gt;</code></li>
+            <li>2행: 채널 있으면 <code>STATE:&lt;ON |OFF|MIX&gt; &lt;켜진개수&gt;/&lt;전체개수&gt;</code>, D Bed는 <code>STATE: -- (reserved)</code></li>
+            <li>3행: <code>Bed&lt;현재&gt;/&lt;4&gt; Dial Nxt Push</code></li>
+          </ul>
+          <h3>Bed 채널 매핑(현재 코드 기준)</h3>
+          <ul>
+            <li>A Bed: LED A1, LED A2, PUMP A1, PUMP A2</li>
+            <li>B Bed: LED B1, PUMP B1, PUMP B2</li>
+            <li>C Bed: FAN A1, FAN B1, FAN B2</li>
+            <li>D Bed: 예비(채널 없음)</li>
+          </ul>
+        </section>
+
+        <section class="card">
+          <h2>9) R4–Mega TTL 연결에서 “5V 미연결”을 어떻게 확인하나</h2>
+          <ul>
+            <li><b>1) 실크/문서로 핀 순서 확인</b>: 커넥터에 <code>5V</code> 또는 <code>VCC</code> 표기가 있는 핀을 먼저 확인한다.</li>
+            <li><b>2) 멀티미터로 전압 확인(가장 확실)</b>: 보드가 USB 또는 외부전원으로 정상 구동 중일 때, 의심 핀과 인접 <code>GND</code> 사이 전압이 <b>약 +5V</b>면 그 핀은 전원 라인이다. (UART 신호선은 이렇게 뜨지 않는다.)</li>
+            <li><b>3) 배선 시각 확인</b>: <b>GND + TX/RX 신호만</b> 연결하고, 어떤 4핀이든 <b>5V 전원 슬롯은 비워 둔다</b>(CronusFarm Mega는 R4를 보통 Z± 스톱 Signal 경로로 물며, 예전처럼 UART3 4핀만이 아닐 수 있음).</li>
+            <li><b>왜 중요?</b>: UART는 보통 <b>3.3V/5V TTL 레벨</b>만 신호로 주고받으면 되고, Mega와 R4 사이에 <b>불필요한 5V 상호 공급</b>은 오히려 리스크가 된다.</li>
+          </ul>
+          <div class="warn">
+            교차 연결이 맞더라도, 헤더의 <b>어느 핀이 5V인지</b>만 헷갈리면 위 확인 절차로 확정하면 된다.
+          </div>
+        </section>
+      </div>
+    </div>
+  </body>
+</html>
+

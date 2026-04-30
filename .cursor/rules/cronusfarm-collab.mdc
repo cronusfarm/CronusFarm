@@ -8,3 +8,4 @@ alwaysApply: true
 - 소스 단일 기준은 **Git 원격 저장소**이다. 작업 전후로 `pull` / `push` 습관을 유지한다.
 - **`arduino/CronusFarm/secrets.h`** 는 커밋하지 않는다. 신규 환경에서는 `secrets.h.example` 을 복사해 `secrets.h` 를 만든다.
 - 맥·다른 PC에서 이어쓸 때 컨텍스트는 **`AGENTS.md`**, **`docs/git_workflow.md`**, **`docs/raspi_setup.md`**, **`README.md`** 순으로 확인한다.
+- 하드웨어/업로드: Mega(CronusFarm 패널) 업로드 실패 대응으로 **UART 배선 분리·점퍼 잠시 제거** 등을 문서·안내에 쓰지 않는다(CronusFarm은 패널 UART를 UART3로 고정, 업로드는 USB 경로).
