@@ -41,6 +41,7 @@ def set_prop(js: str, key: str, value_js: str) -> str:
 
 out = src
 out2 = set_prop(out, "httpAdminRoot", "'/farm'")
+out2 = set_prop(out2, "httpNodeRoot", "'/'")
 
 # dashboard1(node-red-dashboard) 설정: ui: { path: "ui" }
 # 1) ui 블록이 있으면 path를 ui로 강제
