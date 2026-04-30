@@ -68,6 +68,13 @@ Write-Host "=== Node-RED: 플로우 JSON 동기화 -> $remoteNodered ===" -Foreg
 & scp @SshOpts "$dashPath" "${PiUser}@${PiHost}:$remoteNodered/flows_cronusfarm_dashboard.json"
 & scp @SshOpts "$devFlowPath" "${PiUser}@${PiHost}:$remoteNodered/flows_cronusfarm_devflow_flow.json"
 
+$applySettingsSh = Join-Path $PSScriptRoot "pi-nodered-apply-settings-farm.sh"
+if (-not (Test-Path $applySettingsSh)) {
+  throw "pi-nodered-apply-settings-farm.sh 없음: $applySettingsSh"
+}
+& scp @SshOpts "$applySettingsSh" "${PiUser}@${PiHost}:$remoteScripts/pi-nodered-apply-settings-farm.sh"
+& ssh @SshOpts "${PiUser}@${PiHost}" "chmod +x '$remoteScripts/pi-nodered-apply-settings-farm.sh'"
+
 $applySh = Join-Path $PSScriptRoot "pi-nodered-apply-merged.sh"
 if (-not (Test-Path $applySh)) {
   throw "pi-nodered-apply-merged.sh 없음: $applySh"
@@ -83,6 +90,16 @@ if (-not $ApplyNodeRed) {
 
 Write-Host "=== Node-RED: 플로우 병합 후 API 배포 (기존 flows.json 백업) ===" -ForegroundColor Cyan
 Write-Host "주의: 실행 중인 Node-RED **전체 플로우**가 저장소 내용으로 교체됩니다." -ForegroundColor Yellow
+Write-Host "추가: Node-RED 경로 루트(/farm) 적용(settings.js 패치) + 서비스 재시작(가능 시)" -ForegroundColor Yellow
+
+& ssh @SshOpts "${PiUser}@${PiHost}" "bash '$remoteScripts/pi-nodered-apply-settings-farm.sh'"
+if ($LASTEXITCODE -ne 0) {
+  throw "settings.js 패치 실패(원격 종료 코드: $LASTEXITCODE)"
+}
+& ssh @SshOpts "${PiUser}@${PiHost}" "sudo -n systemctl restart nodered.service" 2>$null
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "경고: nodered 재시작 실패(무시하고 계속). sudo 권한이 없을 수 있습니다. Pi에서 수동 재시작하세요: sudo systemctl restart nodered.service" -ForegroundColor Yellow
+}
 
 function Merge-NrJsonArrays([string[]]$paths) {
   $cores = foreach ($p in $paths) {
