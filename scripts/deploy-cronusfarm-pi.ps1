@@ -129,6 +129,11 @@ if ((Test-Path $sqliteInit) -or (Test-Path $sqliteBridge) -or (Test-Path $sqlSch
     & scp @SshScpOpts "$piCheckKv" "${PiUser}@${PiHost}:$remoteScripts/pi-check-sqlite-kv.sh"
     & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "chmod +x '$remoteScripts/pi-check-sqlite-kv.sh'"
   }
+  $piAiSetup = Join-Path $PSScriptRoot "pi-ai-setup.sh"
+  if (Test-Path $piAiSetup) {
+    & scp @SshScpOpts "$piAiSetup" "${PiUser}@${PiHost}:$remoteScripts/pi-ai-setup.sh"
+    & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "chmod +x '$remoteScripts/pi-ai-setup.sh'"
+  }
   if ((Test-Path $sqliteBridge) -or (Test-Path $sqliteInit)) {
     # sudo/systemctl이 환경에 따라 멈추는 경우가 있어 timeout으로 보호
     & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "timeout 12s sudo systemctl restart cronusfarm-sqlite-bridge.service 2>/dev/null || true"
