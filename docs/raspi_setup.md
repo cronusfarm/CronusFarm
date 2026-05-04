@@ -150,3 +150,40 @@ bash ~/CronusFarm/scripts/pi-check-sqlite-kv.sh
 ```
 (`deploy-cronusfarm-pi.ps1` 로 올리면 스크립트가 같이 동기화됩니다. 없으면 저장소에서 `scripts/pi-check-sqlite-kv.sh` 를 복사해 실행.)
 
+### 10) Edge AI(준비): IP 카메라 + LLM(Ollama) + (추후) Hailo
+
+현재 단계(요구사항):
+- 카메라는 **기존 IP 카메라(RTSP)** 를 사용하고, 추후 **CSI Pi 카메라**로 전환 가능하도록 구성
+- Vision(탐지)은 추론 서비스가 담당하고, Node-RED는 **결과(JSON) 저장/알림/대시보드**만 담당
+- 오버레이 영상(박스 그려진 스트림)은 **대시보드에 직접 임베드하지 않고 “별도 링크”**로만 제공(UX/부하 최소화)
+
+#### 10-1) Ollama 설치(LLM 런타임)
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+sudo systemctl enable --now ollama
+ollama --version
+```
+
+모델(예: Gemma 2B) 다운로드:
+```bash
+ollama pull gemma:2b
+# 또는 모델명이 다를 때(환경에 따라): ollama pull gemma2:2b
+```
+
+#### 10-2) Node-RED 플로우(텔레그램 + SQLite + Ollama)
+- 권장 노드:
+  - `node-red-contrib-telegrambot`
+  - `node-red-node-sqlite`
+- 설치(일반적으로 `~/.node-red`에서):
+```bash
+cd ~/.node-red
+npm i node-red-contrib-telegrambot node-red-node-sqlite
+sudo systemctl restart nodered.service
+```
+
+#### 10-3) Hailo (추후 장착 시)
+- Hailo AI Kit 장착 후에는 Hailo 제공 런타임/예제(TAPPAS/Model Zoo 등)를 설치해야 합니다.
+- 프로젝트 권장 구조:
+  - (별도 서비스) **RTSP → Hailo 추론 → 결과 JSON(MQTT/HTTP)**
+  - (Node-RED) JSON 수집 → SQLite 저장 + 알림/요약(LLM) + 오버레이 링크 제공
+
