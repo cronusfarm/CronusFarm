@@ -1,0 +1,1108 @@
+{
+  "uid": "cronusfarm-operator-ui",
+  "title": "CronusFarm 운영 UI (Grafana 그래픽)",
+  "tags": [
+    "cronusfarm",
+    "operator",
+    "ui",
+    "influx"
+  ],
+  "timezone": "Asia/Seoul",
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "name": "bucket",
+        "type": "constant",
+        "label": "Bucket",
+        "query": "cronusfarm",
+        "current": {
+          "text": "cronusfarm",
+          "value": "cronusfarm"
+        },
+        "hide": 2
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "text",
+      "title": "",
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "### CronusFarm 운영 화면 (Grafana)\n\n- **데이터**: Node-RED MQTT 플로우가 Influx `tele` 로 적재한 필드를 그립니다.\n- **제어 UI**는 Node-RED Dashboard를 쓰고, **모니터링·화려한 그래프**는 이 대시보드에서 구성합니다.\n- 센서 필드명(`temp` 등)이 펌웨어/플로우와 다르면 해당 Stat 패널만 데이터 없음으로 나올 수 있습니다.\n"
+      },
+      "id": 1
+    },
+    {
+      "type": "row",
+      "title": "환경 스냅샷 (Stat)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 3
+      },
+      "collapsed": false,
+      "id": 2
+    },
+    {
+      "type": "stat",
+      "title": "내부 온도",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 4
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"temp\")\n  |> last()"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 18
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "id": 3
+    },
+    {
+      "type": "stat",
+      "title": "습도",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 4,
+        "y": 4
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"humidity\")\n  |> last()"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "super-light-blue",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 40
+              },
+              {
+                "color": "orange",
+                "value": 85
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "id": 4
+    },
+    {
+      "type": "stat",
+      "title": "pH",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 8,
+        "y": 4
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"ph\")\n  |> last()"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 5.5
+              },
+              {
+                "color": "green",
+                "value": 6.0
+              },
+              {
+                "color": "orange",
+                "value": 7.5
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "id": 5
+    },
+    {
+      "type": "stat",
+      "title": "EC",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 12,
+        "y": 4
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"ec\")\n  |> last()"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "µS/cm",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "dark-blue",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 500
+              },
+              {
+                "color": "orange",
+                "value": 2500
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "id": 6
+    },
+    {
+      "type": "stat",
+      "title": "CO₂",
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 16,
+        "y": 4
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"co2\")\n  |> last()"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ppm",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 800
+              },
+              {
+                "color": "red",
+                "value": 1500
+              }
+            ]
+          },
+          "color": {
+            "mode": "thresholds"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "id": 7
+    },
+    {
+      "type": "row",
+      "title": "가드 · 외기",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      },
+      "collapsed": false,
+      "id": 8
+    },
+    {
+      "type": "gauge",
+      "title": "가드 정상(1=OK)",
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 0,
+        "y": 10
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"guard_ok\")\n  |> last()"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "id": 9
+    },
+    {
+      "type": "gauge",
+      "title": "Max-on 트립",
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 6,
+        "y": 10
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"guard_mx\")\n  |> last()"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "id": 10
+    },
+    {
+      "type": "gauge",
+      "title": "Min-off 대기",
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 12,
+        "y": 10
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"guard_mf\")\n  |> last()"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "id": 11
+    },
+    {
+      "type": "gauge",
+      "title": "기상청 온도",
+      "gridPos": {
+        "h": 6,
+        "w": 6,
+        "x": 18,
+        "y": 10
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"kma_temp\")\n  |> last()"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 15
+              },
+              {
+                "color": "red",
+                "value": 32
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "id": 12
+    },
+    {
+      "type": "row",
+      "title": "채널 출력 (Bar gauge, 마지막 값)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 16
+      },
+      "collapsed": false,
+      "id": 13
+    },
+    {
+      "type": "bargauge",
+      "title": "LED / 펌프 ON 비율 (0–1)",
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"led_a1\")\n  |> last()"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"led_a2\")\n  |> last()"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"led_b1\")\n  |> last()"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"pump_a1\")\n  |> last()"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"pump_a2\")\n  |> last()"
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"pump_b1\")\n  |> last()"
+        },
+        {
+          "refId": "G",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"pump_b2\")\n  |> last()"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "semi-dark-red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0.5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "lcd",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "showUnfilled": true
+      },
+      "id": 14
+    },
+    {
+      "type": "row",
+      "title": "팬 · 예비 채널",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "collapsed": false,
+      "id": 15
+    },
+    {
+      "type": "bargauge",
+      "title": "Fan / C·D 펌프",
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 25
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"fan_a1\")\n  |> last()"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"fan_a2\")\n  |> last()"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"fan_b1\")\n  |> last()"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"fan_b2\")\n  |> last()"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"pump_c1\")\n  |> last()"
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"pump_c2\")\n  |> last()"
+        },
+        {
+          "refId": "G",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"pump_d1\")\n  |> last()"
+        },
+        {
+          "refId": "H",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"pump_d2\")\n  |> last()"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "min": 0,
+          "max": 1,
+          "unit": "none",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "semi-dark-red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 0.5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "displayMode": "lcd",
+        "orientation": "horizontal",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "showUnfilled": true
+      },
+      "id": 16
+    },
+    {
+      "type": "row",
+      "title": "시계열 추세",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 31
+      },
+      "collapsed": false,
+      "id": 17
+    },
+    {
+      "type": "timeseries",
+      "title": "환경 (temp·humidity·ph·ec)",
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"temp\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"humidity\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"ph\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"ec\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 25,
+            "gradientMode": "opacity",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "id": 18
+    },
+    {
+      "type": "timeseries",
+      "title": "가드 / 외기",
+      "gridPos": {
+        "h": 7,
+        "w": 24,
+        "x": 0,
+        "y": 40
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"guard_ok\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"guard_mx\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"guard_mf\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"kma_temp\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 25,
+            "gradientMode": "opacity",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "id": 19
+    },
+    {
+      "type": "timeseries",
+      "title": "LED·펌프·팬 (0–1)",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 47
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"led_a1\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"led_a2\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"led_b1\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        },
+        {
+          "refId": "D",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"pump_a1\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        },
+        {
+          "refId": "E",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"pump_a2\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        },
+        {
+          "refId": "F",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"pump_b1\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        },
+        {
+          "refId": "G",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"pump_b2\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        },
+        {
+          "refId": "H",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"fan_a1\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        },
+        {
+          "refId": "I",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"fan_b1\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        },
+        {
+          "refId": "J",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"fan_b2\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 25,
+            "gradientMode": "opacity",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "id": 20
+    }
+  ]
+}

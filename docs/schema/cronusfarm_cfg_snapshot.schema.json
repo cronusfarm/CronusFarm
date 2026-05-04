@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/cronusfarm/CronusFarm/docs/schema/cronusfarm_cfg_snapshot.schema.json",
+  "title": "CronusFarm cfg snapshot (draft)",
+  "description": "설정 탭·Node-RED·(선택) Arduino 간 동기화용 논리 설정 묶음. 펌웨어 실제 파라미터와 1:1이 아닐 수 있음.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "deviceId"],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "0.1.0-draft",
+      "description": "본 JSON 스키마 초안 버전"
+    },
+    "deviceId": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$",
+      "description": "예: cronusfarm-01"
+    },
+    "channelKeys": {
+      "type": "array",
+      "description": "선택: 유효 채널 키 전체 목록(펌웨어 CH_KEY). 미포함 시 channels 키만으로 검증",
+      "items": {
+        "type": "string",
+        "enum": [
+          "led_a1",
+          "led_a2",
+          "led_b1",
+          "pump_a1",
+          "pump_a2",
+          "pump_b1",
+          "pump_b2",
+          "fan_a1",
+          "fan_a2",
+          "fan_b1",
+          "fan_b2",
+          "pump_c1",
+          "pump_c2",
+          "pump_d1",
+          "pump_d2"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "channels": {
+      "type": "object",
+      "description": "채널별 논리 상태(초안). 추후 스케줄·규칙 참조 ID 추가 예정",
+      "additionalProperties": false,
+      "patternProperties": {
+        "^(led_a1|led_a2|led_b1|pump_a1|pump_a2|pump_b1|pump_b2|fan_a1|fan_a2|fan_b1|fan_b2|pump_c1|pump_c2|pump_d1|pump_d2)$": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "auto": { "type": "boolean", "description": "AUTO 모드 여부" },
+            "manualOn": { "type": "boolean", "description": "수동 시 목표 ON 여부(해석은 채널 종류에 따름)" },
+            "onSec": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "펌프류 ON 주기(초), 해당 시만"
+            },
+            "offSec": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "펌프류 OFF 주기(초), 해당 시만"
+            }
+          }
+        }
+      }
+    },
+    "ruleEngine": {
+      "type": "object",
+      "description": "AND/OR·온도 조건 등 — 미정. 플레이스홀더",
+      "additionalProperties": true
+    },
+    "meta": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "source": { "type": "string", "enum": ["dashboard", "api", "migration"] }
+      }
+    }
+  }
+}

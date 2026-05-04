@@ -1,0 +1,16 @@
+[Unit]
+Description=CronusFarm SQLite HTTP Bridge (Node-RED ingest)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=CRONUSFARM_SQLITE_PATH=/home/pi/.node-red/cronusfarm.sqlite
+Environment=CRONUSFARM_BRIDGE_HOST=127.0.0.1
+Environment=CRONUSFARM_BRIDGE_PORT=18766
+ExecStart=/usr/bin/python3 /home/pi/CronusFarm/scripts/cronusfarm_sqlite_bridge.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -123,3 +123,30 @@ Windows UNC `\\ida.mango-larch.ts.net\MyCode` 가 **저장소 루트**와 같아
 - 적용 후 Samba 재시작: `sudo systemctl restart smbd nmbd` (배포판에 따라 서비스 이름은 `smbd` 만일 수 있음).
 - UNC로는 예: `\\ida.mango-larch.ts.net\MyCode\arduino\CronusFarm\` 가 스케치 폴더입니다(`upcode.ps1` 기본 원격 경로와 동일 트리).
 
+### 9) SQLite 기록 브리지 (선택·권장)
+
+Node-RED가 MQTT `tele` / `cmd` / `status`를 수집해 SQLite에 넣으려면 **로컬 HTTP 브리지**를 띄웩니다.
+
+**먼저** 개발 PC에서 `.\scripts\deploy-cronusfarm-pi.ps1 -SkipArduino` 를 한 번 실행해 Pi의 `~/CronusFarm/scripts/` 에 `init_cronusfarm_sqlite.py`, `cronusfarm_sqlite_bridge.py`, `scripts/sql/cronusfarm_record_v1.sql`, `deploy/systemd/...` 가 올라가 있는지 확인합니다. (예전 Pi 폴더에는 이 파일들이 없을 수 있습니다.)
+
+```bash
+python3 ~/CronusFarm/scripts/init_cronusfarm_sqlite.py ~/.node-red/cronusfarm.sqlite
+sudo cp ~/CronusFarm/deploy/systemd/cronusfarm-sqlite-bridge.service /etc/systemd/system/
+# 홈만 바꿉니다. 저장소 폴더명은 대소문자 포함 **CronusFarm** 과 동일해야 합니다.
+sudo sed -i "s|/home/pi/|$HOME/|g" /etc/systemd/system/cronusfarm-sqlite-bridge.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now cronusfarm-sqlite-bridge
+curl -s http://127.0.0.1:18766/health
+```
+
+- 스키마·테이블: `docs/cronusfarm_sqlite_schema.md`
+- 브리지 없으면 Node-RED HTTP 노드가 실패할 수 있어, 테스트 시 `CRONUSFARM_SQLITE_DISABLE=1`(Node-RED 환경변수)로 끌 수 있습니다.
+- `systemctl`에 `ExecStart=.../cronusfarm/scripts`(소문자)로 나오면 경로 오류입니다. 아래로 고친 뒤 `daemon-reload` 하세요.  
+  `sudo sed -i 's|/cronusfarm/scripts|/CronusFarm/scripts|g' /etc/systemd/system/cronusfarm-sqlite-bridge.service`
+
+**쉬운 자가진단(KV·브리지·DB 한 번에)** — Pi에서:
+```bash
+bash ~/CronusFarm/scripts/pi-check-sqlite-kv.sh
+```
+(`deploy-cronusfarm-pi.ps1` 로 올리면 스크립트가 같이 동기화됩니다. 없으면 저장소에서 `scripts/pi-check-sqlite-kv.sh` 를 복사해 실행.)
+

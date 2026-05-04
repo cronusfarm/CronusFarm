@@ -1,6 +1,6 @@
 #!/bin/bash
 # Pi에서 실행: 병합된 Node-RED export JSON을 Admin API(/<adminRoot>/flows)로 반영 (기존 flows 백업)
-# - CronusFarm 기본: httpAdminRoot=/farm
+# - CronusFarm 기본: httpAdminRoot=/admin
 # 사용: ./pi-nodered-apply-merged.sh /path/to/merged-deploy.json
 
 set -eu
@@ -18,7 +18,7 @@ fi
 
 # 본문은 export 그대로의 JSON 배열이므로 Admin API(/<adminRoot>/flows)에 그대로 POST 합니다.
 # (httpAdminRoot가 바뀌면 여기 경로도 함께 바뀝니다.)
-ADMIN_ROOT="${CRONUSFARM_ADMIN_ROOT:-/farm}"
+ADMIN_ROOT="${CRONUSFARM_ADMIN_ROOT:-/admin}"
 URL="http://127.0.0.1:1880${ADMIN_ROOT}/flows"
 
 # 재시작 직후(포트 열리기 전) 잠깐 실패할 수 있어 재시도합니다.

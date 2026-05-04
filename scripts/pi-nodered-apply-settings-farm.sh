@@ -1,7 +1,7 @@
 #!/bin/bash
-# Pi에서 실행: Node-RED settings.js 경로 루트 설정(/farm)
-# - Editor/Admin: /farm
-# - Dashboard(UI): /farm/ui (settings.js 의 ui.path로만 이동)
+# Pi에서 실행: Node-RED settings.js 경로 루트 설정
+# - Editor/Admin: /admin
+# - Dashboard(UI): /ui
 # - FlexDash: /flexdash 유지 (httpNodeRoot를 건드리지 않음)
 # - HTTP API 프리픽스(/farm/cronusfarm/...)는 플로우의 http in url에서 직접 처리
 #
@@ -40,7 +40,7 @@ def set_prop(js: str, key: str, value_js: str) -> str:
     return js
 
 out = src
-out2 = set_prop(out, "httpAdminRoot", "'/farm'")
+out2 = set_prop(out, "httpAdminRoot", "'/admin'")
 out2 = set_prop(out2, "httpNodeRoot", "'/'")
 
 # dashboard1(node-red-dashboard) 설정: ui: { path: "ui" }
@@ -49,14 +49,14 @@ ui_block = re.search(r"(^\s*)ui\s*:\s*\{([\s\S]*?)\n\s*\}\s*,?", out2, re.M)
 if ui_block:
     block = ui_block.group(0)
     # path: '...' or "..."
-    block2 = re.sub(r"(\bpath\s*:\s*)(['\"]).*?\2", r"\1'farm/ui'", block)
+    block2 = re.sub(r"(\bpath\s*:\s*)(['\"]).*?\2", r"\1'ui'", block)
     if block2 == block:
         # path가 없으면 블록 시작 바로 뒤에 삽입
-        block2 = re.sub(r"(ui\s*:\s*\{\s*\n)", r"\1        path: 'farm/ui',\n", block, count=1)
+        block2 = re.sub(r"(ui\s*:\s*\{\s*\n)", r"\1        path: 'ui',\n", block, count=1)
     out2 = out2.replace(block, block2)
 else:
     # 2) ui 블록이 없으면, uiPort 근처에 삽입
-    ins = "\n    // CronusFarm: Dashboard(UI) 경로\n    ui: { path: 'farm/ui' },\n"
+    ins = "\n    // CronusFarm: Dashboard(UI) 경로\n    ui: { path: 'ui' },\n"
     m = re.search(r"(^\s*uiPort\s*:\s*.*?[,]\s*$)", out2, re.M)
     if m:
         out2 = out2[: m.end()] + ins + out2[m.end():]
@@ -74,7 +74,7 @@ def ensure_inserted(js: str, key: str, value_js: str) -> str:
         return js[: m.end()] + ins + js[m.end():]
     return re.sub(r"(module\.exports\s*=\s*\{\s*\n)", r"\1" + ins, js, count=1)
 
-out2 = ensure_inserted(out2, "httpAdminRoot", "'/farm'")
+out2 = ensure_inserted(out2, "httpAdminRoot", "'/admin'")
 
 if out2 != src:
     settings.write_text(out2, encoding="utf-8")

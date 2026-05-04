@@ -16,16 +16,58 @@
 
 #include <Wire.h>
 #include <SPI.h>
-#include <SD.h>
 #include <string.h>
 #include <LiquidCrystal.h>
 #include "panel_i2c_protocol.h"
+
+// UNO R4(renesas) 환경에서는 AVR의 SD 라이브러리(SD.h)가 기본 제공되지 않아
+// 패널 UI(LCD/엔코더/클릭/부저) 테스트를 위해 SD 기능을 비활성화합니다.
+#if !(defined(ARDUINO_ARCH_RENESAS) || defined(ARDUINO_UNOR4_WIFI) || defined(ARDUINO_UNOR4_MINIMA))
+#include <SD.h>
+#define CF_PANEL_HAS_SD 1
+#else
+#define CF_PANEL_HAS_SD 0
+#endif
+
+// R4(임시 직결)에서 Q1 고장/개조 상태에 따라 부저가 동작하지 않을 수 있어,
+// 기본값은 "부저 비활성화"로 둡니다. (하드웨어 수리/우회배선 후 1로 바꾸세요)
+#if defined(ARDUINO_ARCH_RENESAS) || defined(ARDUINO_UNOR4_WIFI) || defined(ARDUINO_UNOR4_MINIMA)
+#define CF_PANEL_HAS_BEEPER 0
+#else
+#define CF_PANEL_HAS_BEEPER 1
+#endif
+
+// 엔코더 방향: +1이면 기존, -1이면 CW/CCW 반전
+#if defined(ARDUINO_ARCH_RENESAS) || defined(ARDUINO_UNOR4_WIFI) || defined(ARDUINO_UNOR4_MINIMA)
+static const int8_t CF_ENC_DIR = -1;
+#else
+static const int8_t CF_ENC_DIR = +1;
+#endif
 
 // ============================================================
 // 핀 정의
 // - UNO R3(기존): 주석 상단의 EXP1/EXP2 매핑
 // - Trigorilla(Mega2560): Marlin pins_TRIGORILLA_14.h / Trigorilla 핀 PDF 기준(RepRapDiscount Smart Controller)
-#if defined(ARDUINO_AVR_MEGA2560) || defined(ARDUINO_AVR_MEGA)
+#if defined(ARDUINO_ARCH_RENESAS) || defined(ARDUINO_UNOR4_WIFI) || defined(ARDUINO_UNOR4_MINIMA)
+// UNO R4 WiFi(테스트용): Smart Controller(2004A) 패널을 R4에 임시 직결한 핀맵
+// - LCD: RS=D6, EN=D7, D4..D7 = D5,D4,D3,D2
+// - 입력: 클릭= D8, 부저= D9, 엔코더 A/B = A0/A1
+// - SD: CS=D10, MOSI=D11, MISO=D12, SCK=D13 (SD_DET/KILL은 미사용)
+static const int PIN_BEEPER = 9;
+static const int PIN_ENC_CLICK = 8;
+static const int PIN_LCD_RS = 6;
+static const int PIN_LCD_EN = 7;
+static const int PIN_LCD_D4 = 5;
+static const int PIN_LCD_D5 = 4;
+static const int PIN_LCD_D6 = 3;
+static const int PIN_LCD_D7 = 2;
+static const int PIN_ENC_A = A0;
+static const int PIN_ENC_B = A1;
+static const int PIN_SD_CS = 10;
+static const int PIN_SD_DET = -1; // 미사용
+static const int PIN_KILL = -1;   // 미사용
+
+#elif defined(ARDUINO_AVR_MEGA2560) || defined(ARDUINO_AVR_MEGA)
 // RepRapDiscount Smart Controller + RAMPS 계열(Marlin 기준): BTN_EN1=31, BTN_EN2=33, BTN_ENC=35, BEEPER=37
 // (이전에 BEEPER를 31로 두면 ENC_A(31)과 핀이 겹쳐 엔코더가 죽습니다.)
 static const int PIN_BEEPER = 37;      // BEEPER_PIN
@@ -199,6 +241,9 @@ static void onRequestHandler() {
 }
 
 static void beepShortLocal() {
+#if !CF_PANEL_HAS_BEEPER
+  return;
+#endif
 #if defined(ARDUINO_AVR_MEGA2560) || defined(ARDUINO_AVR_MEGA)
   // Trigorilla 계열 보드는 BEEPER가 트랜지스터/버퍼를 거치면서 Active-LOW로 동작하는 경우가 있어
   // LOW=ON, HIGH=OFF 로 토글합니다.
@@ -219,6 +264,9 @@ static void beepShortLocal() {
 }
 
 static void beepLongLocal() {
+#if !CF_PANEL_HAS_BEEPER
+  return;
+#endif
 #if defined(ARDUINO_AVR_MEGA2560) || defined(ARDUINO_AVR_MEGA)
   for (int i = 0; i < 400; i++) {
     digitalWrite(PIN_BEEPER, LOW);
@@ -579,7 +627,7 @@ static void encoderPoll() {
     0, -1, +1, 0
   };
   int8_t idx = (int8_t)((gEncPrevAB << 2) | ab);
-  int8_t d = delta[(uint8_t)idx];
+  int8_t d = (int8_t)(delta[(uint8_t)idx] * CF_ENC_DIR);
   gEncPrevAB = ab;
 
   // 일부 패널/케이블에서 EN1/EN2가 반대로 연결되거나 신호가 약하면 위 테이블이 0만 나오는 경우가 있어
@@ -593,9 +641,9 @@ static void encoderPoll() {
   if (d == 0 && (a != gEncPrevA || b != gEncPrevB)) {
     // 변화가 있었다면 방향을 추정: A가 바뀌었을 때의 B 상태로 결정(일반적인 2상 엔코더 규칙 기반)
     if (a != gEncPrevA) {
-      d = (b == a) ? +1 : -1;
+      d = (int8_t)(((b == a) ? +1 : -1) * CF_ENC_DIR);
     } else {
-      d = (a != b) ? +1 : -1;
+      d = (int8_t)(((a != b) ? +1 : -1) * CF_ENC_DIR);
     }
   }
   gEncPrevA = (int8_t)a;
@@ -643,6 +691,7 @@ static void clickPoll() {
 static bool gKillPrev = false;
 
 static void killPoll() {
+  if (PIN_KILL < 0) return;
   bool pressed = (digitalRead(PIN_KILL) == LOW);
   if (pressed && !gKillPrev) {
     qPush(PANEL_EVT_KILL, 1);
@@ -654,6 +703,7 @@ static bool gSdPrev = false;
 static bool gSdInited = false;
 
 static void sdDetectPoll() {
+  if (PIN_SD_DET < 0) return;
   bool present = (digitalRead(PIN_SD_DET) == LOW);
   if (!gSdInited) {
     gSdPrev = present;
@@ -695,8 +745,8 @@ void setup() {
   pinMode(PIN_ENC_CLICK, INPUT_PULLUP);
   pinMode(PIN_ENC_A, INPUT_PULLUP);
   pinMode(PIN_ENC_B, INPUT_PULLUP);
-  pinMode(PIN_SD_DET, INPUT_PULLUP);
-  pinMode(PIN_KILL, INPUT_PULLUP);
+  if (PIN_SD_DET >= 0) pinMode(PIN_SD_DET, INPUT_PULLUP);
+  if (PIN_KILL >= 0) pinMode(PIN_KILL, INPUT_PULLUP);
 
   Serial.begin(115200);
   PANEL_LINK_SERIAL.begin(PANEL_LINK_BAUD);
@@ -714,6 +764,7 @@ void setup() {
   lcdShowBootMessage();
 
   SPI.begin();
+#if CF_PANEL_HAS_SD
   if (SD.begin(PIN_SD_CS)) {
     lcd.setCursor(0, 2);
     lcd.print("SD: OK           ");
@@ -721,6 +772,10 @@ void setup() {
     lcd.setCursor(0, 2);
     lcd.print("SD: (no/fail)    ");
   }
+#else
+  lcd.setCursor(0, 2);
+  lcd.print("SD: (disabled)   ");
+#endif
 
   // Pi 부팅 시간 동안(정의된 "LCD판넬 부팅메세지")을 잠깐 유지합니다.
 

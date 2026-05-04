@@ -1,0 +1,19 @@
+# 설정 탭 전면 재설계 — 다음 단계 준비 메모
+
+이 파일은 UI·플로우 확장 전 MQTT 토픽·DB 스키마를 확정할 때 참고용이다.
+
+스키마 초안 문서: docs/cronusfarm_settings_schema.md · docs/schema/cronusfarm_cfg_snapshot.schema.json
+
+## 포함 예정(요구사항 요약)
+- 채널별 자동/수동 슬라이드, 수동 전환 시 타임스탬프 DB 저장
+- 시간 스케줄 ON/OFF vs 주기(ON/OFF 초) 편집, Fan 온도 조건
+- 스케줄·주기·온도 규칙을 AND/OR 로 조합 (단독 가능)
+
+## 구현 전 확정할 것
+1. MQTT: 채널별 모드·스케줄·규칙을 어떤 토픽/페이로드 형식으로 주고받을지 (cmd 확장 vs 전용 설정 토픽)
+2. DB: 타임스탬프·스케줄 JSON 저장소 (Influx만으로 충분한지, SQLite/Postgres 필요 여부)
+3. Node-RED: 설정 UI 그룹(ui_grp_cfg_*) 재구성, 파싱 함수(fn_parse / 새 fn_cfg) 분리
+
+## 현재 저장소에서 건드리지 않은 것
+- 기존 tele/cmd 플로우 로직 유지
+- 본 로드맵은 배포 JSON에 포함되지 않음 (문서 전용)

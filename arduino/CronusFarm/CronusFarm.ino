@@ -1,4 +1,6 @@
 /*
+  2026.5.3 펌프 하드 가드(연속 ON·쿨다운·최소 OFF)·tele `G:` — docs/cronusfarm_settings_schema.md
+  2026.5.2 tele 버퍼/MQTT TX CRONUS_TELE_PAYLOAD_MAX(2048) 정렬 — 잘림 방지
   2026.4.26 수정
   CronusFarm - UNO R4 WiFi (메인 MQTT·릴레이·I2C 마스터)
   패널(RepRap 2004A)은 UNO R3 `CronusFarmPanel` 스케치 — 별도 업로드
@@ -17,7 +19,7 @@
   - cmd:  아래 2가지 형식을 모두 지원
     1) 단일 문자 명령(Serial 코드 호환): "M", "m", "A", "a", "B", "b", "C", "c", "N30", "F90"
     2) key=value 토큰(공백 구분): "auto=1 b1=0 b2=1 led=1 on=30 off=90"
-  - tele: "S:... | A:... | T:... | W:ssid=... ip=a.b.c.d" (채널 상태 + WiFi 정보)
+  - tele: "S:... | A:... | T:... | W:... | G:..." (채널·WiFi·펌프 가드 — docs/cronusfarm_settings_schema.md)
 
   핀(UNO R4 WiFi 메인 — 패널은 별도 UNO R3 I2C 슬레이브)
   - I2C 마스터: SDA A4, SCL A5 → R3 패널(슬레이브 0x38)
@@ -37,12 +39,22 @@
 #include <ArduinoMqttClient.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include "Arduino_LED_Matrix.h"
 #include "panel_protocol.h"
 // `secrets.h.example`을 복사해서 `secrets.h`를 만든 뒤 값을 채우세요.
 #include "secrets.h"
 
 static const uint32_t BAUD = 115200;
+
+/** tele 한 줄(S|A|T|W) 최대 길이. `ArduinoMqttClient::setTxPayloadSize`와 반드시 동일 값 유지.
+ *  값이 작으면 MQTT publish 시 끝이 잘려 Node-RED tele(raw)·tele(요약)이 중간에 끊김. */
+#define CRONUS_TELE_PAYLOAD_MAX 2048
+
+/** 펌프 하드 가드 — 연속 ON 상한·쿨다운·최소 OFF (docs/cronusfarm_settings_schema.md). 값은 문서·코드 동기화. */
+static const uint32_t PUMP_GUARD_MAX_ON_MS = 1800ul * 1000ul;   // T_max_on : 30분
+static const uint32_t PUMP_GUARD_COOLDOWN_MS = 60ul * 1000ul;    // T_cool   : 60초
+static const uint32_t PUMP_GUARD_MIN_OFF_MS = 10ul * 1000ul;   // T_min_off: 10초
 
 // ============================================================
 // 핀 정의 — UNO R4 WiFi 메인 (릴레이/트랜지스터 경유, GPIO 직결 금지)
@@ -54,10 +66,14 @@ static const int PUMP_A2 = 5;
 static const int LED_B1 = 6;
 static const int PUMP_B1 = 7;
 static const int PUMP_B2 = 8;
-static const int PUMP_C1 = 9;
-static const int PUMP_C2 = 10;
-static const int PUMP_D1 = 11;
-static const int PUMP_D2 = 12;
+static const int FAN_A1 = 9;
+static const int FAN_A2 = 10;
+static const int FAN_B1 = 11;
+static const int FAN_B2 = 12;
+static const int PUMP_C1 = A0;
+static const int PUMP_C2 = A1;
+static const int PUMP_D1 = A2;
+static const int PUMP_D2 = A3;
 
 // UART 패널(Mega) 표시 — Tx/Rx 링크 실패 시 false, 로직·MQTT는 계속 동작
 static bool gPanelReady = false;
@@ -136,28 +152,25 @@ enum Channel : uint8_t {
   CH_PUMP_A2 = 4,
   CH_PUMP_B1 = 5,
   CH_PUMP_B2 = 6,
-  CH_PUMP_C1 = 7,
-  CH_PUMP_C2 = 8,
-  CH_PUMP_D1 = 9,
-  CH_PUMP_D2 = 10,
-  CH_FAN_A1 = 11,
-  CH_FAN_A2 = 12,
-  CH_FAN_B1 = 13,
-  CH_FAN_B2 = 14,
-  CH_SERVO0 = 15,
-  CH_SERVO1 = 16,
-  CH_SERVO2 = 17,
-  CH_SERVO3 = 18,
-  CH_COUNT = 19
+  CH_FAN_A1 = 7,
+  CH_FAN_A2 = 8,
+  CH_FAN_B1 = 9,
+  CH_FAN_B2 = 10,
+  CH_PUMP_C1 = 11,
+  CH_PUMP_C2 = 12,
+  CH_PUMP_D1 = 13,
+  CH_PUMP_D2 = 14,
+  CH_COUNT = 15
 };
 
 static inline bool chIsRemote(uint8_t ch) {
-  // TriGorilla(Mega) GPIO로 제어되는 채널들(FAN/SERVO)
-  return (ch >= CH_FAN_A1 && ch < CH_COUNT);
+  (void)ch;
+  // V0.7(15채널)에서는 전부 R4 로컬 GPIO로 직접 제어합니다.
+  return false;
 }
 
 // 다이얼로 UI를 순환할 채널 순서(항상 고정)
-// 사용자가 요청한 CH1~CH19 순서 그대로 고정합니다.
+// V0.7(15채널) 순서 고정
 static const uint8_t UI_CH_ORDER[CH_COUNT] = {
   CH_LED_A1,   // CH1
   CH_LED_A2,   // CH2
@@ -166,18 +179,14 @@ static const uint8_t UI_CH_ORDER[CH_COUNT] = {
   CH_PUMP_A2,  // CH5
   CH_PUMP_B1,  // CH6
   CH_PUMP_B2,  // CH7
-  CH_PUMP_C1,  // CH8
-  CH_PUMP_C2,  // CH9
-  CH_PUMP_D1,  // CH10
-  CH_PUMP_D2,  // CH11
-  CH_FAN_A1,   // CH12
-  CH_FAN_A2,   // CH13
-  CH_FAN_B1,   // CH14
-  CH_FAN_B2,   // CH15
-  CH_SERVO0,   // CH16
-  CH_SERVO1,   // CH17
-  CH_SERVO2,   // CH18
-  CH_SERVO3,   // CH19
+  CH_FAN_A1,   // CH8
+  CH_FAN_A2,   // CH9
+  CH_FAN_B1,   // CH10
+  CH_FAN_B2,   // CH11
+  CH_PUMP_C1,  // CH12
+  CH_PUMP_C2,  // CH13
+  CH_PUMP_D1,  // CH14
+  CH_PUMP_D2,  // CH15
 };
 
 static int8_t uiOrderPos(uint8_t ch) {
@@ -211,18 +220,14 @@ static const int CH_PIN[CH_COUNT] = {
   PUMP_A2,  // CH_PUMP_A2
   PUMP_B1,  // CH_PUMP_B1
   PUMP_B2,  // CH_PUMP_B2
+  FAN_A1,   // CH_FAN_A1
+  FAN_A2,   // CH_FAN_A2
+  FAN_B1,   // CH_FAN_B1
+  FAN_B2,   // CH_FAN_B2
   PUMP_C1,  // CH_PUMP_C1
   PUMP_C2,  // CH_PUMP_C2
   PUMP_D1,  // CH_PUMP_D1
   PUMP_D2,  // CH_PUMP_D2
-  -1,       // CH_FAN_A1 (TG)
-  -1,       // CH_FAN_A2 (TG)
-  -1,       // CH_FAN_B1 (TG)
-  -1,       // CH_FAN_B2 (TG)
-  -1,       // CH_SERVO0 (TG)
-  -1,       // CH_SERVO1 (TG)
-  -1,       // CH_SERVO2 (TG)
-  -1,       // CH_SERVO3 (TG)
 };
 
 static const char* const CH_KEY[CH_COUNT] = {
@@ -233,26 +238,21 @@ static const char* const CH_KEY[CH_COUNT] = {
   "pump_a2",
   "pump_b1",
   "pump_b2",
-  "pump_c1",
-  "pump_c2",
-  "pump_d1",
-  "pump_d2",
   "fan_a1",
   "fan_a2",
   "fan_b1",
   "fan_b2",
-  "servo0",
-  "servo1",
-  "servo2",
-  "servo3",
+  "pump_c1",
+  "pump_c2",
+  "pump_d1",
+  "pump_d2",
 };
 
 static const char* const CH_LABEL_KO[CH_COUNT] = {
   "LED A1",  "LED A2",  "LED B1",
   "PUMP A1", "PUMP A2", "PUMP B1", "PUMP B2",
-  "PUMP C1", "PUMP C2", "PUMP D1", "PUMP D2",
   "FAN A1",  "FAN A2",  "FAN B1",  "FAN B2",
-  "SERVO0",  "SERVO1",  "SERVO2",  "SERVO3",
+  "PUMP C1", "PUMP C2", "PUMP D1", "PUMP D2",
 };
 
 // 채널별 AUTO(1)/수동(0)
@@ -260,10 +260,9 @@ static bool chAuto[CH_COUNT] = {
   false, false, false, // LED A1/A2/B1
   true, true,          // PUMP A1/A2
   true, true,          // PUMP B1/B2
-  true, true,          // PUMP C1/C2
-  true, true,          // PUMP D1/D2
   false, false, false, false, // FAN A1/A2/B1/B2
-  false, false, false, false  // SERVO0~3
+  true, true,          // PUMP C1/C2
+  true, true           // PUMP D1/D2
 };
 
 static const char* chPinLabel(uint8_t ch) {
@@ -275,18 +274,14 @@ static const char* chPinLabel(uint8_t ch) {
     case CH_PUMP_A2: return "D5";
     case CH_PUMP_B1: return "D7";
     case CH_PUMP_B2: return "D8";
-    case CH_PUMP_C1: return "D9";
-    case CH_PUMP_C2: return "D10";
-    case CH_PUMP_D1: return "D11";
-    case CH_PUMP_D2: return "D12";
-    case CH_FAN_A1: return "TG-D3";
-    case CH_FAN_A2: return "TG-D2";
-    case CH_FAN_B1: return "TG-D14";
-    case CH_FAN_B2: return "TG-D15";
-    case CH_SERVO0: return "TG-SERVO0";
-    case CH_SERVO1: return "TG-SERVO1";
-    case CH_SERVO2: return "TG-SERVO2";
-    case CH_SERVO3: return "TG-SERVO3";
+    case CH_FAN_A1: return "D9";
+    case CH_FAN_A2: return "D10";
+    case CH_FAN_B1: return "D11";
+    case CH_FAN_B2: return "D12";
+    case CH_PUMP_C1: return "A0";
+    case CH_PUMP_C2: return "A1";
+    case CH_PUMP_D1: return "A2";
+    case CH_PUMP_D2: return "A3";
     default: return "?";
   }
 }
@@ -296,42 +291,37 @@ static bool chManual[CH_COUNT] = {
   false, false, false,
   false, false, false, false,
   false, false, false, false,
-  false, false, false, false,
   false, false, false, false
 };
 // MQTT(cmd)와 패널(UI) 동시 제어 시, 패널에서 막 바꾼 상태가 즉시 덮어써져 OFF로 “튀는” 현상 방지용
 static uint32_t gUiLocalOverrideAtMs[CH_COUNT] = {
-  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 };
 static const uint32_t UI_LOCAL_OVERRIDE_HOLD_MS = 3000;
 static uint32_t chOnMs[CH_COUNT]  = {
   0, 0, 0,                 // LED
   30000, 30000,            // PUMP A
   30000, 30000,            // PUMP B
-  30000, 30000,            // PUMP C
-  30000, 30000,            // PUMP D
   0, 0, 0, 0,              // FAN
-  0, 0, 0, 0               // SERVO
+  30000, 30000,            // PUMP C
+  30000, 30000             // PUMP D
 };
 static uint32_t chOffMs[CH_COUNT] = {
   0, 0, 0,                 // LED
   90000, 90000,            // PUMP A
   90000, 90000,            // PUMP B
-  90000, 90000,            // PUMP C
-  90000, 90000,            // PUMP D
   0, 0, 0, 0,              // FAN
-  0, 0, 0, 0               // SERVO
+  90000, 90000,            // PUMP C
+  90000, 90000             // PUMP D
 };
 static uint32_t chPrevMs[CH_COUNT] = {
   0,0,0,
-  0,0,0,0,
   0,0,0,0,
   0,0,0,0,
   0,0,0,0
 };
 static bool chState[CH_COUNT] = {
   false, false, false,
-  false, false, false, false,
   false, false, false, false,
   false, false, false, false,
   false, false, false, false
@@ -837,6 +827,9 @@ static const uint32_t TELEMETRY_INTERVAL_MS = 1000;
 
 static WiFiClient net;
 static MqttClient mqtt(net);
+/** MQTT connect 실패 후 재시도 최소 간격(루프에서 connect 폭주·스택 부담 완화) */
+static const uint32_t MQTT_RECONNECT_INTERVAL_MS = 5000;
+static uint32_t gNextMqttAttemptMs = 0;
 
 static char topicCmd[96];
 static char topicTele[96];
@@ -858,6 +851,247 @@ static const int EEPROM_ADDR_DYN_SSID = 37;
 static const int EEPROM_ADDR_DYN_PASS_LEN = 69;
 static const int EEPROM_ADDR_DYN_PASS = 70;
 static const uint8_t EEPROM_MAX_PASS_LEN = 64;
+
+// ============================================================
+// 출력 상태 복원(정책)
+// - PUMP는 리셋/재부팅 시 항상 OFF
+// - LED/FAN(및 기타 비-PUMP 채널)은 마지막 상태를 복원
+// - 이후 스케줄/자동제어 로직이 계속 ON/OFF 수행
+//
+// 저장 포맷(EEPROM)
+// - [160] magic(0xE1)
+// - [161] ver(0x01)
+// - [162] mask0 (ch 0..7)
+// - [163] mask1 (ch 8..15)
+// - [164] mask2 (ch 16..18 하위 3bit)
+static const uint8_t EEPROM_OUT_MAGIC = 0xE1;
+static const uint8_t EEPROM_OUT_VER = 0x01;
+static const int EEPROM_ADDR_OUT_MAGIC = 160;
+static const int EEPROM_ADDR_OUT_VER = 161;
+static const int EEPROM_ADDR_OUT_MASK0 = 162;
+static const int EEPROM_ADDR_OUT_MASK1 = 163;
+static const int EEPROM_ADDR_OUT_MASK2 = 164;
+
+static uint8_t gPersistLast0 = 0x00;
+static uint8_t gPersistLast1 = 0x00;
+static uint8_t gPersistLast2 = 0x00;
+static uint32_t gPersistLastWriteMs = 0;
+
+static inline bool isPumpCh(uint8_t ch) {
+  return (ch == CH_PUMP_A1 || ch == CH_PUMP_A2 ||
+          ch == CH_PUMP_B1 || ch == CH_PUMP_B2 ||
+          ch == CH_PUMP_C1 || ch == CH_PUMP_C2 ||
+          ch == CH_PUMP_D1 || ch == CH_PUMP_D2);
+}
+
+// ---------- 펌프 하드 가드 (연속 ON / 쿨다운 / 최소 OFF) — docs/cronusfarm_settings_schema.md §2.x
+static const uint8_t PUMP_GUARD_CH[8] = {
+  CH_PUMP_A1, CH_PUMP_A2, CH_PUMP_B1, CH_PUMP_B2,
+  CH_PUMP_C1, CH_PUMP_C2, CH_PUMP_D1, CH_PUMP_D2,
+};
+static uint32_t pumpGuardConsecMs[8];
+static uint32_t pumpGuardLastMs[8];
+static uint32_t pumpMxUntilMs[8];      // 0 = 비활성, !=0 이면 이 시각까지 mx(쿨다운)
+static uint32_t pumpMinOffUntilMs[8];  // 0 = 비활성, mf 대기
+
+static const uint8_t EEPROM_GUARD_MAGIC = 0xC3;
+static const uint8_t EEPROM_GUARD_VER = 0x01;
+static const int EEPROM_GUARD_MAGIC_ADDR = 200;
+static const int EEPROM_GUARD_VER_ADDR = 201;
+static const int EEPROM_GUARD_COOL_BASE = 202;   // 8×uint16 LE
+static const int EEPROM_GUARD_MINOFF_BASE = 218; // 8×uint16 LE
+
+static uint32_t pumpGuardLastEepromMs = 0;
+static bool pumpWasPinHigh[8];
+
+static uint16_t eepromReadU16(int addr) {
+  return (uint16_t)((uint16_t)EEPROM.read(addr) | ((uint16_t)EEPROM.read(addr + 1) << 8));
+}
+static void eepromWriteU16(int addr, uint16_t v) {
+  EEPROM.write(addr, (uint8_t)(v & 0xFF));
+  EEPROM.write(addr + 1, (uint8_t)((v >> 8) & 0xFF));
+}
+
+static void pumpGuardLoadFromEeprom() {
+  if (EEPROM.read(EEPROM_GUARD_MAGIC_ADDR) != EEPROM_GUARD_MAGIC) return;
+  if (EEPROM.read(EEPROM_GUARD_VER_ADDR) != EEPROM_GUARD_VER) return;
+  const uint32_t nowMs = millis();
+  for (uint8_t k = 0; k < 8; k++) {
+    uint16_t cr = eepromReadU16(EEPROM_GUARD_COOL_BASE + (int)k * 2);
+    uint16_t mr = eepromReadU16(EEPROM_GUARD_MINOFF_BASE + (int)k * 2);
+    if (cr > 0) {
+      pumpMxUntilMs[k] = nowMs + (uint32_t)cr * 1000ul;
+    }
+    if (mr > 0) {
+      pumpMinOffUntilMs[k] = nowMs + (uint32_t)mr * 1000ul;
+    }
+  }
+  pumpGuardLastEepromMs = nowMs;
+}
+
+static void pumpGuardPersistToEeprom(uint32_t nowMs) {
+  EEPROM.write(EEPROM_GUARD_MAGIC_ADDR, EEPROM_GUARD_MAGIC);
+  EEPROM.write(EEPROM_GUARD_VER_ADDR, EEPROM_GUARD_VER);
+  for (uint8_t k = 0; k < 8; k++) {
+    uint16_t cr = 0;
+    if (pumpMxUntilMs[k] != 0 && (int32_t)(pumpMxUntilMs[k] - nowMs) > 0) {
+      uint32_t rs = (pumpMxUntilMs[k] - nowMs + 999UL) / 1000UL;
+      if (rs > 65535UL) rs = 65535UL;
+      cr = (uint16_t)rs;
+    }
+    uint16_t mr = 0;
+    if (pumpMinOffUntilMs[k] != 0 && (int32_t)(pumpMinOffUntilMs[k] - nowMs) > 0) {
+      uint32_t rs = (pumpMinOffUntilMs[k] - nowMs + 999UL) / 1000UL;
+      if (rs > 65535UL) rs = 65535UL;
+      mr = (uint16_t)rs;
+    }
+    eepromWriteU16(EEPROM_GUARD_COOL_BASE + (int)k * 2, cr);
+    eepromWriteU16(EEPROM_GUARD_MINOFF_BASE + (int)k * 2, mr);
+  }
+  pumpGuardLastEepromMs = nowMs;
+}
+
+/** 매 루프: 연속 ON 누적·상한 트립·mx/mf 출력 클램프 */
+static void pumpGuardLoop(uint32_t nowMs) {
+  for (uint8_t k = 0; k < 8; k++) {
+    uint8_t ch = PUMP_GUARD_CH[k];
+    if (chIsRemote(ch)) continue;
+
+    if (pumpMxUntilMs[k] != 0 && (int32_t)(nowMs - pumpMxUntilMs[k]) >= 0) {
+      pumpMxUntilMs[k] = 0;
+    }
+    if (pumpMinOffUntilMs[k] != 0 && (int32_t)(nowMs - pumpMinOffUntilMs[k]) >= 0) {
+      pumpMinOffUntilMs[k] = 0;
+    }
+
+    uint32_t dt = 0;
+    if (pumpGuardLastMs[k] != 0) {
+      dt = nowMs - pumpGuardLastMs[k];
+    }
+    pumpGuardLastMs[k] = nowMs;
+    if (dt > 60000UL) dt = 1000UL;
+
+    const bool pinHigh = (CH_PIN[ch] >= 0) && (digitalRead((uint8_t)CH_PIN[ch]) == HIGH);
+    if (pumpWasPinHigh[k] && !pinHigh) {
+      pumpMinOffUntilMs[k] = nowMs + PUMP_GUARD_MIN_OFF_MS;
+    }
+    pumpWasPinHigh[k] = pinHigh;
+
+    if (pinHigh) {
+      pumpGuardConsecMs[k] += dt;
+      if (pumpGuardConsecMs[k] >= PUMP_GUARD_MAX_ON_MS) {
+        pumpGuardConsecMs[k] = 0;
+        pumpMxUntilMs[k] = nowMs + PUMP_GUARD_COOLDOWN_MS;
+        pumpMinOffUntilMs[k] = nowMs + PUMP_GUARD_MIN_OFF_MS;
+        digitalWrite((uint8_t)CH_PIN[ch], LOW);
+        chState[ch] = false;
+        chManual[ch] = false;
+        chPrevMs[ch] = nowMs;
+        Serial.print(F("PUMP_GUARD max-on "));
+        Serial.println(CH_KEY[ch]);
+        pumpGuardPersistToEeprom(nowMs);
+      }
+    } else {
+      pumpGuardConsecMs[k] = 0;
+    }
+
+    const bool wantOn = chState[ch];
+    if (wantOn) {
+      const bool mxBlock = (pumpMxUntilMs[k] != 0 && (int32_t)(pumpMxUntilMs[k] - nowMs) > 0);
+      const bool mfBlock = (pumpMinOffUntilMs[k] != 0 && (int32_t)(pumpMinOffUntilMs[k] - nowMs) > 0);
+      if (mxBlock || mfBlock) {
+        digitalWrite((uint8_t)CH_PIN[ch], LOW);
+        chState[ch] = false;
+        chManual[ch] = false;
+        chPrevMs[ch] = nowMs;
+      }
+    }
+  }
+
+  if (pumpGuardLastEepromMs == 0) {
+    pumpGuardLastEepromMs = nowMs;
+  } else if ((int32_t)(nowMs - pumpGuardLastEepromMs) >= 120000) {
+    pumpGuardPersistToEeprom(nowMs);
+  }
+}
+
+static void persistCompute(uint8_t* o0, uint8_t* o1, uint8_t* o2) {
+  uint8_t m0 = 0, m1 = 0, m2 = 0;
+  for (uint8_t ch = 0; ch < CH_COUNT; ch++) {
+    if (isPumpCh(ch)) continue; // 펌프는 복원/저장 대상에서 제외
+    const bool on = chState[ch];
+    if (!on) continue;
+    if (ch < 8) m0 |= (uint8_t)(1u << ch);
+    else if (ch < 16) m1 |= (uint8_t)(1u << (ch - 8));
+    else m2 |= (uint8_t)(1u << (ch - 16));
+  }
+  *o0 = m0;
+  *o1 = m1;
+  *o2 = (uint8_t)(m2 & 0x07u);
+}
+
+static void persistLoadToState() {
+  // 1) 기본 안전 상태: 펌프는 항상 OFF
+  for (uint8_t ch = 0; ch < CH_COUNT; ch++) {
+    if (!isPumpCh(ch)) continue;
+    chState[ch] = false;
+    chManual[ch] = false;
+    if (!chIsRemote(ch)) {
+      digitalWrite(CH_PIN[ch], LOW);
+    }
+  }
+
+  // 2) 복원 마스크 로드(없으면 전부 OFF 유지)
+  if (EEPROM.read(EEPROM_ADDR_OUT_MAGIC) != EEPROM_OUT_MAGIC) return;
+  if (EEPROM.read(EEPROM_ADDR_OUT_VER) != EEPROM_OUT_VER) return;
+
+  const uint8_t m0 = EEPROM.read(EEPROM_ADDR_OUT_MASK0);
+  const uint8_t m1 = EEPROM.read(EEPROM_ADDR_OUT_MASK1);
+  const uint8_t m2 = (uint8_t)(EEPROM.read(EEPROM_ADDR_OUT_MASK2) & 0x07u);
+
+  gPersistLast0 = m0;
+  gPersistLast1 = m1;
+  gPersistLast2 = m2;
+
+  for (uint8_t ch = 0; ch < CH_COUNT; ch++) {
+    if (isPumpCh(ch)) continue;
+    bool on = false;
+    if (ch < 8) on = (m0 & (1u << ch)) != 0;
+    else if (ch < 16) on = (m1 & (1u << (ch - 8))) != 0;
+    else on = (m2 & (1u << (ch - 16))) != 0;
+
+    // LED/FAN은 기본이 수동 채널이라 chManual도 같이 맞춰 UI/tele가 일관되게 유지되도록 합니다.
+    if (!chAuto[ch]) {
+      chManual[ch] = on;
+    }
+    chState[ch] = on;
+    if (!chIsRemote(ch)) {
+      digitalWrite(CH_PIN[ch], on ? HIGH : LOW);
+    }
+  }
+}
+
+static void persistMaybeWrite(uint32_t nowMs) {
+  // 너무 잦은 EEPROM write 방지
+  // - 정책: 1시간 간격이면 충분(EEPROM 수명/불필요한 쓰기 감소)
+  // - 마지막 기록 이후 1시간 이내에는 재기록하지 않습니다.
+  if ((int32_t)(nowMs - gPersistLastWriteMs) < (int32_t)3600000) return;
+
+  uint8_t m0, m1, m2;
+  persistCompute(&m0, &m1, &m2);
+  if (m0 == gPersistLast0 && m1 == gPersistLast1 && m2 == gPersistLast2) return;
+
+  EEPROM.write(EEPROM_ADDR_OUT_MAGIC, EEPROM_OUT_MAGIC);
+  EEPROM.write(EEPROM_ADDR_OUT_VER, EEPROM_OUT_VER);
+  EEPROM.write(EEPROM_ADDR_OUT_MASK0, m0);
+  EEPROM.write(EEPROM_ADDR_OUT_MASK1, m1);
+  EEPROM.write(EEPROM_ADDR_OUT_MASK2, m2);
+
+  gPersistLast0 = m0;
+  gPersistLast1 = m1;
+  gPersistLast2 = m2;
+  gPersistLastWriteMs = nowMs;
+}
 
 // 내장 12x8 LED 매트릭스 — WiFi/MQTT 상태 표시
 static ArduinoLEDMatrix gMatrix;
@@ -965,15 +1199,66 @@ static void allOff() {
   panelSetFansMask(gRemoteFanMask);
 }
 
+/** tele 버퍼에 안전 추가: 잘림 시 off를 cap-1로 고정(vsnprintf 반환값만 더하면 off>cap → rem 언더플로로 이후 전부 깨짐). */
+static size_t tele_append_v(char* buf, size_t cap, size_t off, const char* fmt, ...) {
+  if (cap == 0) return 0;
+  if (off >= cap) return cap - 1;
+  size_t rem = cap - off;
+  if (rem <= 1) {
+    buf[cap - 1] = '\0';
+    return cap - 1;
+  }
+  va_list ap;
+  va_start(ap, fmt);
+  int n = vsnprintf(buf + off, rem, fmt, ap);
+  va_end(ap);
+  if (n < 0) return off;
+  if ((size_t)n >= rem) {
+    buf[cap - 1] = '\0';
+    return cap - 1;
+  }
+  return off + (size_t)n;
+}
+
+/** tele `G:` 구간 — 비정상 펌프만 나열, 전부 정상이면 `G:ok` */
+static size_t pumpGuardAppendTele(char* buf, size_t cap, size_t off, uint32_t nowMs) {
+  bool anyAbnormal = false;
+  char tmp[640];
+  tmp[0] = '\0';
+  size_t cl = 0;
+  for (uint8_t k = 0; k < 8; k++) {
+    const bool mxOn = (pumpMxUntilMs[k] != 0 && (int32_t)(pumpMxUntilMs[k] - nowMs) > 0);
+    const bool mfOn =
+      !mxOn && (pumpMinOffUntilMs[k] != 0 && (int32_t)(pumpMinOffUntilMs[k] - nowMs) > 0);
+    if (mxOn) {
+      uint32_t rem = (pumpMxUntilMs[k] - nowMs + 999UL) / 1000UL;
+      int n = snprintf(tmp + cl, sizeof(tmp) - cl, "%s%s=mx/%lu", (cl > 0) ? " " : "",
+                       CH_KEY[PUMP_GUARD_CH[k]], (unsigned long)rem);
+      if (n > 0 && (size_t)n < sizeof(tmp) - cl) cl += (size_t)n;
+      anyAbnormal = true;
+    } else if (mfOn) {
+      uint32_t rem = (pumpMinOffUntilMs[k] - nowMs + 999UL) / 1000UL;
+      int n = snprintf(tmp + cl, sizeof(tmp) - cl, "%s%s=mf/%lu", (cl > 0) ? " " : "",
+                       CH_KEY[PUMP_GUARD_CH[k]], (unsigned long)rem);
+      if (n > 0 && (size_t)n < sizeof(tmp) - cl) cl += (size_t)n;
+      anyAbnormal = true;
+    }
+  }
+  if (!anyAbnormal) {
+    return tele_append_v(buf, cap, off, " | G:ok");
+  }
+  return tele_append_v(buf, cap, off, " | G:%s", tmp);
+}
+
 static void publishTelemetry() {
   if (!mqtt.connected()) return;
-  // S/A/T + WiFi(ssid 최대 길이) 여유
-  char payload[384];
+  // 스택 부담 없음: tele 조립용 정적 버퍼 (크기는 CRONUS_TELE_PAYLOAD_MAX)
+  static char payload[CRONUS_TELE_PAYLOAD_MAX];
 
   // tele: 채널 상태 + 채널별 AUTO + (펌프류) on/off
   // 예) S:led_a1=0 ... | A:led_a1=0 ... | T:pump_a1=30/90 ...
   size_t off = 0;
-  off += snprintf(payload + off, sizeof(payload) - off, "S:");
+  off = tele_append_v(payload, sizeof(payload), off, "S:");
   for (uint8_t i = 0; i < CH_COUNT; i++) {
     int v = 0;
     if (chIsRemote(i)) {
@@ -981,15 +1266,15 @@ static void publishTelemetry() {
     } else {
       v = (digitalRead(CH_PIN[i]) == HIGH) ? 1 : 0;
     }
-    off += snprintf(payload + off, sizeof(payload) - off, "%s=%d%s", CH_KEY[i], v, (i + 1 < CH_COUNT) ? " " : "");
-    if (off >= sizeof(payload)) break;
+    off = tele_append_v(payload, sizeof(payload), off, "%s=%d%s", CH_KEY[i], v, (i + 1 < CH_COUNT) ? " " : "");
+    if (off >= sizeof(payload) - 1) break;
   }
-  off += snprintf(payload + off, sizeof(payload) - off, " | A:");
+  off = tele_append_v(payload, sizeof(payload), off, " | A:");
   for (uint8_t i = 0; i < CH_COUNT; i++) {
-    off += snprintf(payload + off, sizeof(payload) - off, "%s=%d%s", CH_KEY[i], chAuto[i] ? 1 : 0, (i + 1 < CH_COUNT) ? " " : "");
-    if (off >= sizeof(payload)) break;
+    off = tele_append_v(payload, sizeof(payload), off, "%s=%d%s", CH_KEY[i], chAuto[i] ? 1 : 0, (i + 1 < CH_COUNT) ? " " : "");
+    if (off >= sizeof(payload) - 1) break;
   }
-  off += snprintf(payload + off, sizeof(payload) - off, " | T:");
+  off = tele_append_v(payload, sizeof(payload), off, " | T:");
   bool firstT = true;
   for (uint8_t i = 0; i < CH_COUNT; i++) {
     const bool isPump =
@@ -997,25 +1282,27 @@ static void publishTelemetry() {
        i == CH_PUMP_B1 || i == CH_PUMP_B2 ||
        i == CH_PUMP_C1 || i == CH_PUMP_C2 ||
        i == CH_PUMP_D1 || i == CH_PUMP_D2);
-    const bool isFan = (i == CH_FAN_A1 || i == CH_FAN_A2 || i == CH_FAN_B1 || i == CH_FAN_B2);
     if (!isPump) continue;
     long onSec = (long)(chOnMs[i] / 1000);
     long offSec = (long)(chOffMs[i] / 1000);
-    off += snprintf(payload + off, sizeof(payload) - off, "%s%s=%ld/%ld", firstT ? "" : " ", CH_KEY[i], onSec, offSec);
+    off = tele_append_v(payload, sizeof(payload), off, "%s%s=%ld/%ld", firstT ? "" : " ", CH_KEY[i], onSec, offSec);
     firstT = false;
-    if (off >= sizeof(payload)) break;
+    if (off >= sizeof(payload) - 1) break;
   }
-  // tele에 아두이노 WiFi SSID·IP 포함(Node-RED tele raw / 구독자 확인용). WL_CONNECTED일 때만 유효.
-  if (off < sizeof(payload)) {
-    off += snprintf(payload + off, sizeof(payload) - off, " | W:");
+  // tele에 아두이노 WiFi SSID·IP 포함(Node-RED tele raw / 구독자 확인용).
+  if (off < sizeof(payload) - 1) {
+    off = tele_append_v(payload, sizeof(payload), off, " | W:");
     if (WiFi.status() == WL_CONNECTED) {
       String ss = WiFi.SSID();
       IPAddress lip = WiFi.localIP();
-      off += snprintf(payload + off, sizeof(payload) - off, "ssid=%s ip=%u.%u.%u.%u", ss.c_str(),
-                      (unsigned)lip[0], (unsigned)lip[1], (unsigned)lip[2], (unsigned)lip[3]);
+      off = tele_append_v(payload, sizeof(payload), off, "ssid=%s ip=%u.%u.%u.%u", ss.c_str(),
+                          (unsigned)lip[0], (unsigned)lip[1], (unsigned)lip[2], (unsigned)lip[3]);
     } else {
-      off += snprintf(payload + off, sizeof(payload) - off, "ssid= ip=0.0.0.0");
+      off = tele_append_v(payload, sizeof(payload), off, "ssid= ip=0.0.0.0");
     }
+  }
+  if (off < sizeof(payload) - 1) {
+    off = pumpGuardAppendTele(payload, sizeof(payload), off, millis());
   }
   mqtt.beginMessage(topicTele);
   mqtt.print(payload);
@@ -1252,10 +1539,16 @@ static void connectWiFi() {
 
 static void connectMqtt() {
   if (mqtt.connected()) return;
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  const uint32_t now = millis();
+  if (gNextMqttAttemptMs != 0 && (int32_t)(now - gNextMqttAttemptMs) < 0) {
+    return;
+  }
 
   // ArduinoMqttClient 기본 TX 버퍼는 보드별로 작음(예: 256B). tele에 S|A|T|W를 붙이면
-  // 크기 초과 시 끝(| W:ssid=... ip=...)이 잘려 Node-RED tele raw에 안 보임.
-  mqtt.setTxPayloadSize(512);
+  // 크기 초과 시 끝이 잘려 Node-RED tele raw/요약에 안 보임. publishTelemetry() 버퍼와 동일하게.
+  mqtt.setTxPayloadSize(CRONUS_TELE_PAYLOAD_MAX);
 
   mqtt.setId(DEVICE_ID);
   if (strlen(MQTT_USER) > 0) {
@@ -1271,8 +1564,10 @@ static void connectMqtt() {
   if (!mqtt.connect(MQTT_HOST, MQTT_PORT)) {
     Serial.print(F("MQTT 연결 실패: "));
     Serial.println(mqtt.connectError());
+    gNextMqttAttemptMs = now + MQTT_RECONNECT_INTERVAL_MS;
     return;
   }
+  gNextMqttAttemptMs = 0;
 
   mqtt.subscribe(topicCmd, 1);
   mqtt.subscribe(topicPiWifi, 1);
@@ -1409,6 +1704,12 @@ void setup() {
     }
   }
   allOff();
+  // 부팅 직후 적용 순서(정책)
+  // 1) allOff()로 전체 OFF
+  // 2) persistLoadToState()로 "펌프는 OFF 유지, 그 외는 마지막 상태 복원"
+  // 3) 이후 loop의 AUTO/스케줄 로직이 상태를 계속 갱신
+  persistLoadToState();
+  pumpGuardLoadFromEeprom();
 
   Serial.begin(BAUD);
   delay(200);
@@ -1505,6 +1806,11 @@ void loop() {
       }
     }
   }
+
+  pumpGuardLoop(now);
+
+  // 출력 상태 저장(정책): 펌프는 제외, 나머지 채널은 마지막 상태를 R4 EEPROM에 기록
+  persistMaybeWrite(now);
 
   if (now - lastTelemetryMs >= TELEMETRY_INTERVAL_MS) {
     lastTelemetryMs = now;

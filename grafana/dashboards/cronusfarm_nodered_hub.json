@@ -1,0 +1,26 @@
+{
+  "uid": "cronusfarm-nodered-hub",
+  "title": "CronusFarm — 역할 안내 (Node-RED vs Grafana)",
+  "tags": ["cronusfarm", "nodered", "guide"],
+  "timezone": "Asia/Seoul",
+  "refresh": "1d",
+  "schemaVersion": 39,
+  "version": 2,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": { "list": [] },
+  "panels": [
+    {
+      "type": "text",
+      "title": "어디서 무엇을 하나요?",
+      "gridPos": { "h": 14, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "## 목표에 맞는 구분\n\n| 역할 | 도구 |\n|------|------|\n| **화려한 그래픽·큰 숫자·추세 그래프·운영 모니터링 UI** | **Grafana** — 대시보드 **「CronusFarm 운영 UI (Grafana 그래픽)」** (`cronusfarm-operator-ui`) |\n| MQTT 수신, 명령 발행, 타이머, 간단한 버튼·슬라이더 제어 | **Node-RED** (+ node-red-dashboard) |\n| 시계열 저장 | **InfluxDB** (Node-RED `tele` 적재 → Grafana가 동일 데이터 조회) |\n\n- 이 화면(허브)에 **Node-RED UI를 끼워 넣을 필요는 없습니다.** Influx에 올라온 필드면 Grafana에서 Stat·게이지·시계열·바게이지로 꾸밀 수 있습니다.\n- **「운영 UI」**에 센서 Stat이 비면: Influx Line Protocol에 쓰는 **필드 이름**이 `temp` / `ph` 등과 맞는지 Node-RED 쪽을 확인하세요.\n- 저장소에서 대시보드 JSON을 고치려면: `scripts/gen_grafana_operator_ui.py` 실행 후 `grafana/dashboards/cronusfarm_operator_ui.json` 이 재생성됩니다.\n"
+      },
+      "id": 1
+    }
+  ]
+}
