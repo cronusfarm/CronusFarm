@@ -1,0 +1,14 @@
+# Pi: LightDM/labwc 기동 후 VT7이 SPI(fb1)로 다시 붙는 경우 재보정
+# 설치: sudo cp ... /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now vt-framebuffer-map-late.service
+[Unit]
+Description=Re-map VT7 to HDMI (fb0) after display manager (SPI TFT conflict fix)
+After=display-manager.service
+PartOf=graphical.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c 'sleep 4; /usr/bin/con2fbmap 7 0 && /usr/bin/con2fbmap 1 1'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=graphical.target

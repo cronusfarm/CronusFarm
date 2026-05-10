@@ -1,0 +1,15 @@
+# Pi: SPI TFT(fb1) ↔ VT1, HDMI/KMS(fb0) ↔ VT7 (LightDM/labwc)
+# 설치: sudo cp ... /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now vt-framebuffer-map.service
+[Unit]
+Description=Map VT1 to SPI TFT (fb1), VT7 to HDMI/KMS (fb0)
+DefaultDependencies=yes
+After=multi-user.target
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c '/usr/bin/con2fbmap 7 0 && /usr/bin/con2fbmap 1 1'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -14,7 +14,7 @@
 | 개발 PC | **Thalia(Windows)** 또는 **Artemis(macOS)** 에서 저장소 편집·저장 |
 | Pi 동기화 | **`upcode.ps1`** (또는 deploy) — 로컬 스케치 → Pi로 복사 후 Pi에서 빌드 |
 | 아두이노 | Pi에서 **USB**로 업로드(스크립트가 수행) |
-| Node-RED | `nodered/*.json` 동일하게 **Pi에 반영**(deploy JSON 복사 또는 `-ApplyNodeRed`) |
+| Node-RED | 우선 로컬: `merge_nodered_deploy.py` 후 **`scripts/run-nodered-local-ui.ps1`** 로 `merged-deploy.json` Import·Deploy (`docs/nodered_dashboard_workflow.md`). Pi 반영은 확정된 뒤 deploy·`-ApplyNodeRed`. |
 | GitHub | 저장·커밋 후 푸시. **푸시 전 원격 스냅샷 태그**가 필요하면 `.\scripts\git-push-with-backup.ps1` (자세히는 `docs/git_workflow.md`) |
 
 ### 빠른 시작(개발 PC → 라즈베리파이에서 업로드 실행)
@@ -47,8 +47,9 @@ Serial(USB)로 Node-RED를 붙이면 `/dev/ttyACM0` 점유로 업로드가 막�
 - 기본 DEVICE_ID는 `cronusfarm-01` 입니다(Arduino의 `secrets.h`와 일치시켜야 함).
 
 #### Node-RED 대시보드(추천)
-- `nodered/flows_cronusfarm_dashboard.json` 를 Import 하면 됩니다.
-- 개발·배포 순서도는 **`nodered/flows_cronusfarm_devflow_flow.json`** 플로우(에디터 탭 `CronusFarm 개발흐름`)의 `ui_template`이 대시보드 탭 **`CronusFarm 개발흐름`** 에 그립니다. `deploy-cronusfarm-pi.ps1` 병합에 포함됩니다(맥에서 탭이 없으면 세 JSON 전체 deploy 또는 Import).
+- UI 개발 기본 경로는 **`python scripts/merge_nodered_deploy.py --use-split`** 뒤 **`.\scripts\run-nodered-local-ui.ps1`** → 편집기에서 **`nodered/merged-deploy.json`** Import·Deploy(자세히 `docs/nodered_dashboard_workflow.md`).
+- 단일 대시보드만 빠르게 볼 때는 `nodered/flows_cronusfarm_dashboard.json` 를 Import 해도 됩니다.
+- 개발·배포 순서도는 **`nodered/flows_cronusfarm_devflow_flow.json`** 플로우(에디터 탭 `CronusFarm 개발환경`)의 `ui_template`이 대시보드 탭 **`CronusFarm 개발환경`** 에 그립니다. `deploy-cronusfarm-pi.ps1` 병합에 포함됩니다(맥에서 탭이 없으면 세 JSON 전체 deploy 또는 Import).
 - 포함 기능
   - Pi 상태: 부팅(uptime), WiFi SSID, IP, Node-RED/Mosquitto 서비스 상태
   - Arduino 상태: status/tele 수신 시각 기반 연결 상태(LED), tele(raw) 표시

@@ -4,11 +4,11 @@ param(
   [string] $PiHostWan = "ida.mango-larch.ts.net",
   [string] $PiUser = "dooly",
   [string] $RemoteSketchDir = "/home/dooly/CronusFarm/arduino/CronusFarmPanel",
-  # Pi에서 R4는 보통 ttyACM*, 고릴라(CP210×)는 ttyUSB* — 함께 연결 시 패널은 ttyUSB 우선
-  [string] $Port = "/dev/ttyUSB0",
-  # Trigorilla/고릴라(Mega2560): arduino:avr:mega:cpu=atmega2560
-  # RepRap R3 패널만 쓰는 경우: -Fqbn "arduino:avr:uno"
-  [string] $Fqbn = "arduino:avr:mega:cpu=atmega2560",
+  # R3(UNO) 패널은 보통 ttyACM* 로 잡힙니다(환경에 따라 ACM0/ACM1 등).
+  # - 함께 연결된 보드가 있으면 포트가 바뀔 수 있으니, 필요하면 -AutoPort 를 사용하세요.
+  [string] $Port = "/dev/ttyACM0",
+  # UNO R3(ATmega328P)
+  [string] $Fqbn = "arduino:avr:uno",
   [switch] $AutoPort,
   [switch] $StopNodeRedDuringUpload
 )

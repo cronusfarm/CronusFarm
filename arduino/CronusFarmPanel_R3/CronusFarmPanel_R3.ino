@@ -1,4 +1,3 @@
-
 #include <LiquidCrystal.h>
 
 static LiquidCrystal lcd(6, 7, 5, 4, 3, 2);

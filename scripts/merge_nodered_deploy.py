@@ -51,13 +51,15 @@ def main() -> None:
 
 
 
+    # 같은 id가 여러 파일에 있으면 나중 파일이 이깁니다.
+    # devflow에 대시보드 노드 복제본이 많아 dashboard를 반드시 마지막에 두어야 편집본이 반영됩니다.
     paths = [
 
         root / "nodered" / "flows_cronusfarm_mqtt.json",
 
-        root / "nodered" / "flows_cronusfarm_dashboard.json",
-
         root / "nodered" / "flows_cronusfarm_devflow_flow.json",
+
+        root / "nodered" / "flows_cronusfarm_dashboard.json",
 
     ]
 
@@ -65,14 +67,28 @@ def main() -> None:
 
     def write_split() -> int:
 
-        out: list[object] = []
+        # 분할 소스들이 부분적으로 겹칠 수 있어(id 재사용),
+        # id 기준으로 de-dup 하되, 뒤에 온 파일이 우선합니다.
+        # (mqtt → devflow → dashboard 순으로 로드, 중복 id는 마지막 노드로 대체)
+        by_id: dict[str, dict] = {}
+        order: list[str] = []
+        out_other: list[object] = []
 
         for p in paths:
+            nodes = json.loads(p.read_text(encoding="utf-8-sig"))
+            if not isinstance(nodes, list):
+                raise SystemExit(f"JSON 최상위는 배열이어야 함: {p}")
+            for n in nodes:
+                if isinstance(n, dict) and isinstance(n.get("id"), str) and n["id"]:
+                    nid = n["id"]
+                    if nid not in by_id:
+                        order.append(nid)
+                    by_id[nid] = n
+                else:
+                    out_other.append(n)
 
-            out.extend(json.loads(p.read_text(encoding="utf-8-sig")))
-
+        out: list[object] = [by_id[nid] for nid in order] + out_other
         out_path.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
-
         return len(out)
 
 

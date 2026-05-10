@@ -8,6 +8,9 @@
 
   [string] $PiUser = "dooly",
 
+  # 로컬 스케치 폴더(지정 안 하면 기본: arduino/CronusFarm)
+  [string] $LocalSketchDir = "",
+
   [string] $RemoteSketchDir = "/home/dooly/CronusFarm/arduino/CronusFarm",
 
   [string] $Port = "/dev/ttyACM0",
@@ -36,7 +39,7 @@ function Assert-Command($name) {
 
   if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {
 
-    throw "필수 명령을 찾지 못했습니다: $name (Windows에 OpenSSH 클라이언트가 설치되어 있는지 확인하세요)"
+  throw "Required command not found: $name (Install Windows OpenSSH client)"
 
   }
 
@@ -53,7 +56,10 @@ $PiHost = Get-CronusPiHost -PiHost $PiHost -PiHostLan $PiHostLan -PiHostWan $PiH
 
 $SshOpts = @("-o", "ConnectTimeout=30", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new")
 
-$localSketchDir = Join-Path $PSScriptRoot "..\\arduino\\CronusFarm"
+$localSketchDir = $LocalSketchDir
+if ([string]::IsNullOrWhiteSpace($localSketchDir)) {
+  $localSketchDir = Join-Path $PSScriptRoot "..\\arduino\\CronusFarm"
+}
 
 $localSketchDir = (Resolve-Path $localSketchDir).Path
 
@@ -61,7 +67,7 @@ $localSketchDir = (Resolve-Path $localSketchDir).Path
 
 if (-not (Test-Path $localSketchDir)) {
 
-  throw "로컬 스케치 폴더가 없습니다: $localSketchDir"
+  throw "Local sketch dir not found: $localSketchDir"
 
 }
 
@@ -71,23 +77,19 @@ if (-not (Test-Path $localSketchDir)) {
 
 $RemoteSketchUnix = ($RemoteSketchDir -replace '\\', '/').TrimEnd('/')
 
-if ($RemoteSketchUnix -notmatch '/arduino/CronusFarm$') {
-
-  throw "RemoteSketchDir는 .../arduino/CronusFarm 로 끝나야 합니다: $RemoteSketchDir"
-
+if ($RemoteSketchUnix -notmatch '^(.*)/arduino/[^/]+$') {
+  throw "RemoteSketchDir must be .../arduino/<SketchName>: $RemoteSketchDir"
 }
-
-$RemoteFarmRoot = $RemoteSketchUnix -replace '/arduino/CronusFarm$', ''
+# /home/dooly/CronusFarm/arduino/<SketchName> -> /home/dooly/CronusFarm
+$RemoteFarmRoot = $Matches[1]
 
 $RemoteScriptsDir = "$RemoteFarmRoot/scripts"
 
 
 
-Write-Host "로컬 스케치 폴더: $localSketchDir"
-
-Write-Host "원격 스케치 폴더: $RemoteSketchUnix"
-
-Write-Host "원격 스크립트 폴더: $RemoteScriptsDir"
+Write-Host "Local sketch dir : $localSketchDir"
+Write-Host "Remote sketch dir: $RemoteSketchUnix"
+Write-Host "Remote scripts   : $RemoteScriptsDir"
 
 
 
@@ -119,7 +121,7 @@ if ($StopNodeRedDuringUpload) {
 
   if ($LASTEXITCODE -ne 0) {
 
-    Write-Host "경고: nodered 중지 실패(무시하고 계속). sudo 권한이 없을 수 있습니다." -ForegroundColor Yellow
+    Write-Host "WARN: failed to stop nodered (continue). sudo may be missing." -ForegroundColor Yellow
 
   }
 
@@ -146,6 +148,6 @@ if ($StopNodeRedDuringUpload) {
 
 
 
-Write-Host "완료: 원격 준비(core/lib) + compile + upload"
+Write-Host "OK: remote prep(core/lib) + compile + upload"
 
 

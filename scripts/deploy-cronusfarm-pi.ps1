@@ -1,4 +1,4 @@
-﻿param(
+param(
   [string] $PiHost = "",
   [string] $PiHostLan = "",
   [string] $PiHostWan = "ida.mango-larch.ts.net",
@@ -65,27 +65,39 @@ if (-not (Test-Path $mqttPath) -or -not (Test-Path $dashPath) -or -not (Test-Pat
 }
 
 if (-not $SkipArduino) {
-  Write-Host "=== Arduino: upcode (복사 -> Pi에서 compile/upload) ===" -ForegroundColor Cyan
+  Write-Host "=== Arduino: upcode (copy -> Pi compile/upload) ===" -ForegroundColor Cyan
   $up = @{ PiHost = $PiHost; PiUser = $PiUser }
   if ($AutoPort) { $up.AutoPort = $true }
   if ($StopNodeRedDuringArduinoUpload) { $up.StopNodeRedDuringUpload = $true }
+  # 1) R4 메인 스케치
   & (Join-Path $PSScriptRoot "upcode.ps1") @up
+
+  # 2) R3 패널 스케치도 함께 업로드(연결되어 있을 때만). 포트는 AutoPort로 탐지.
+  Write-Host "=== Arduino: upcode (R3 panel, if connected) ===" -ForegroundColor Cyan
+  $upR3 = @{ PiHost = $PiHost; PiUser = $PiUser; Fqbn = "arduino:avr:uno"; LocalSketchDir = (Join-Path $PSScriptRoot "..\\arduino\\CronusFarmPanel"); RemoteSketchDir = "$RemoteCronusRoot/arduino/CronusFarmPanel" }
+  if ($AutoPort) { $upR3.AutoPort = $true }
+  if ($StopNodeRedDuringArduinoUpload) { $upR3.StopNodeRedDuringUpload = $true }
+  try {
+    & (Join-Path $PSScriptRoot "upcode.ps1") @upR3
+  } catch {
+    Write-Host "WARN: R3 panel upload failed (not connected / no port). You can run upcode for R3 only." -ForegroundColor Yellow
+  }
 } else {
-  Write-Host "=== Arduino 업로드 생략 (-SkipArduino) ===" -ForegroundColor Yellow
+  Write-Host "=== Arduino upload skipped (-SkipArduino) ===" -ForegroundColor Yellow
 }
 
 $remoteNodered = "$RemoteCronusRoot/nodered"
 $remoteScripts = "$RemoteCronusRoot/scripts"
 & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteNodered' '$remoteScripts'"
 
-Write-Host "=== Node-RED: 플로우 JSON 동기화 -> $remoteNodered ===" -ForegroundColor Cyan
+Write-Host "=== Node-RED: sync flow JSON -> $remoteNodered ===" -ForegroundColor Cyan
 & scp @SshScpOpts "$mqttPath" "${PiUser}@${PiHost}:$remoteNodered/flows_cronusfarm_mqtt.json"
 & scp @SshScpOpts "$dashPath" "${PiUser}@${PiHost}:$remoteNodered/flows_cronusfarm_dashboard.json"
 & scp @SshScpOpts "$devFlowPath" "${PiUser}@${PiHost}:$remoteNodered/flows_cronusfarm_devflow_flow.json"
 $exportPath = Join-Path $nrDir "CronusFarm_NodeRED_flow.json"
 if (Test-Path $exportPath) {
   & scp @SshScpOpts "$exportPath" "${PiUser}@${PiHost}:$remoteNodered/CronusFarm_NodeRED_flow.json"
-  Write-Host "동기화: CronusFarm_NodeRED_flow.json (내보내기 백업)" -ForegroundColor DarkGray
+  Write-Host "Synced: CronusFarm_NodeRED_flow.json (export backup)" -ForegroundColor DarkGray
 }
 
 $applySettingsSh = Join-Path $PSScriptRoot "pi-nodered-apply-settings-farm.sh"
@@ -102,14 +114,21 @@ if (-not (Test-Path $applySh)) {
 & scp @SshScpOpts "$applySh" "${PiUser}@${PiHost}:$remoteScripts/pi-nodered-apply-merged.sh"
 & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "chmod +x '$remoteScripts/pi-nodered-apply-merged.sh'"
 
+# Windows에서 git/autocrlf 등으로 .sh가 CRLF로 올라가면 Pi에서 "$'\r'" 오류가 납니다.
+# 복사 직후 원격에서 LF로 정리합니다(실패해도 계속).
+& ssh @SshRemoteOpts "${PiUser}@${PiHost}" "sed -i 's/\r$//' $remoteScripts/*.sh 2>/dev/null || true"
+
 # SQLite 브리지·DDL(systemd §9) — Pi에서 직접 실행할 스크립트가 저장소와 동일하게 올라가도록 함
-$repoRoot = Split-Path $PSScriptRoot -Parent
+# 일부 실행 환경에서 $PSScriptRoot 가 null인 케이스를 방어합니다.
+$scriptPath = $MyInvocation.MyCommand.Path
+$scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $scriptPath }
+$repoRoot = Split-Path $scriptDir -Parent
 $sqlSchema = Join-Path $PSScriptRoot "sql\cronusfarm_record_v1.sql"
 $sqliteInit = Join-Path $PSScriptRoot "init_cronusfarm_sqlite.py"
 $sqliteBridge = Join-Path $PSScriptRoot "cronusfarm_sqlite_bridge.py"
 $systemdBridge = Join-Path $repoRoot "deploy\systemd\cronusfarm-sqlite-bridge.service"
 if ((Test-Path $sqliteInit) -or (Test-Path $sqliteBridge) -or (Test-Path $sqlSchema) -or (Test-Path $systemdBridge)) {
-  Write-Host "=== SQLite 브리지·스키마 동기화 -> $RemoteCronusRoot ===" -ForegroundColor Cyan
+  Write-Host "=== SQLite: sync bridge/schema -> $RemoteCronusRoot ===" -ForegroundColor Cyan
   $remoteDeploySystemd = "$RemoteCronusRoot/deploy/systemd"
   & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteScripts/sql' '$remoteDeploySystemd'"
   if (Test-Path $sqliteInit) {
@@ -140,11 +159,28 @@ if ((Test-Path $sqliteInit) -or (Test-Path $sqliteBridge) -or (Test-Path $sqlSch
   }
 }
 
+# 텔레그램 플로우용 systemd EnvironmentFile(비밀값은 Pi의 /etc/cronusfarm/nodered-telegram.env 만)
+$tgInstall = Join-Path $PSScriptRoot "pi-install-nodered-telegram-env.sh"
+$tgDropIn = Join-Path $repoRoot "deploy\systemd\nodered.service.d\10-cronusfarm-telegram.conf"
+$tgEnvEx = Join-Path $repoRoot "deploy\env\nodered-telegram.env.example"
+if ((Test-Path $tgInstall) -and (Test-Path $tgDropIn) -and (Test-Path $tgEnvEx)) {
+  Write-Host "=== Telegram: systemd drop-in/env example -> $RemoteCronusRoot ===" -ForegroundColor Cyan
+  $remoteNrDrop = "$RemoteCronusRoot/deploy/systemd/nodered.service.d"
+  $remoteDeployEnv = "$RemoteCronusRoot/deploy/env"
+  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteNrDrop' '$remoteDeployEnv'"
+  & scp @SshScpOpts "$tgDropIn" "${PiUser}@${PiHost}:$remoteNrDrop/10-cronusfarm-telegram.conf"
+  & scp @SshScpOpts "$tgEnvEx" "${PiUser}@${PiHost}:$remoteDeployEnv/nodered-telegram.env.example"
+  & scp @SshScpOpts "$tgInstall" "${PiUser}@${PiHost}:$remoteScripts/pi-install-nodered-telegram-env.sh"
+  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "chmod +x '$remoteScripts/pi-install-nodered-telegram-env.sh'"
+  # CRLF -> LF (Windows copy) before executing on Pi
+  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "sed -i 's/\r$//' '$remoteScripts/pi-install-nodered-telegram-env.sh' 2>/dev/null || true"
+}
+
 $grafanaDashDir = Join-Path $repoRoot "grafana\dashboards"
 if (Test-Path $grafanaDashDir) {
   $gfJson = @(Get-ChildItem -Path $grafanaDashDir -Filter "*.json" -File -ErrorAction SilentlyContinue)
   if ($gfJson.Count -gt 0) {
-    Write-Host "=== Grafana: 대시보드 JSON -> /var/lib/grafana/dashboards (sudo) ===" -ForegroundColor Cyan
+    Write-Host "=== Grafana: dashboards JSON -> /var/lib/grafana/dashboards (sudo) ===" -ForegroundColor Cyan
     foreach ($gf in $gfJson) {
       & scp @SshScpOpts "$($gf.FullName)" "${PiUser}@${PiHost}:/tmp/$($gf.Name)"
     }
@@ -156,38 +192,43 @@ if (Test-Path $grafanaDashDir) {
     $remoteGfCmd = ($copyParts -join " && ") + " && sudo chown grafana:grafana /var/lib/grafana/dashboards/*.json 2>/dev/null; sudo systemctl reload grafana-server 2>/dev/null || sudo systemctl restart grafana-server 2>/dev/null || true"
     & ssh @SshRemoteOpts "${PiUser}@${PiHost}" $remoteGfCmd
     if ($LASTEXITCODE -ne 0) {
-      Write-Host "경고: Grafana 대시보드 복사/리로드 실패(sudo·경로 확인). Pi에서 수동: sudo cp /tmp/*.json /var/lib/grafana/dashboards/" -ForegroundColor Yellow
+      Write-Host "WARN: Grafana copy/reload failed (sudo/path). Manual: sudo cp /tmp/*.json /var/lib/grafana/dashboards/" -ForegroundColor Yellow
     }
   }
 }
 
 $gfDropIn = Join-Path $repoRoot "deploy\grafana\systemd\grafana-server.service.d\99-cronusfarm-panels.conf"
 if (Test-Path $gfDropIn) {
-  Write-Host "=== Grafana: Text 패널 iframe 허용(systemd drop-in) ===" -ForegroundColor Cyan
+  Write-Host "=== Grafana: allow Text panel iframe(systemd drop-in) ===" -ForegroundColor Cyan
   & scp @SshScpOpts "$gfDropIn" "${PiUser}@${PiHost}:/tmp/99-cronusfarm-panels.conf"
   $gfSysCmd = "sudo mkdir -p /etc/systemd/system/grafana-server.service.d && sudo cp /tmp/99-cronusfarm-panels.conf /etc/systemd/system/grafana-server.service.d/ && sudo systemctl daemon-reload && (sudo systemctl restart grafana-server 2>/dev/null || sudo systemctl restart grafana 2>/dev/null || true)"
   & ssh @SshRemoteOpts "${PiUser}@${PiHost}" $gfSysCmd
   if ($LASTEXITCODE -ne 0) {
-    Write-Host "경고: Grafana systemd drop-in 적용 실패. Pi에서 수동으로 GF_PANELS_DISABLE_SANITIZE_HTML 설정을 확인하세요." -ForegroundColor Yellow
+    Write-Host "WARN: Grafana systemd drop-in failed. Check GF_PANELS_DISABLE_SANITIZE_HTML on Pi." -ForegroundColor Yellow
   }
 }
 
 if (-not $ApplyNodeRed) {
-  Write-Host "완료: Pi에 nodered/*.json 및 적용 스크립트 저장됨." -ForegroundColor Green
-  Write-Host "Node-RED에 자동 반영: .\scripts\deploy-cronusfarm-pi.ps1 -ApplyNodeRed" -ForegroundColor Green
+  Write-Host "OK: saved nodered/*.json and apply scripts on Pi." -ForegroundColor Green
+  Write-Host "Auto apply: .\\scripts\\deploy-cronusfarm-pi.ps1 -ApplyNodeRed" -ForegroundColor Green
   exit 0
 }
 
-Write-Host "=== Node-RED: 플로우 병합 후 API 배포 (기존 flows.json 백업) ===" -ForegroundColor Cyan
+Write-Host "=== Node-RED: merge then POST via Admin API (backup flows.json) ===" -ForegroundColor Cyan
 if ($UseSplitFlows) {
-  Write-Host "병합 소스: 분할 3파일만 (편집기 배치는 CronusFarm_NodeRED_flow.json 과 다를 수 있음)" -ForegroundColor Yellow
+  Write-Host "Merge source: split 3 files only (editor layout may differ from CronusFarm_NodeRED_flow.json)" -ForegroundColor Yellow
 } elseif (Test-Path $exportPath) {
-  Write-Host "병합 소스: CronusFarm_NodeRED_flow.json (내보내기·노드 위치 유지) — 기본 동작" -ForegroundColor Cyan
+  Write-Host "Merge source: CronusFarm_NodeRED_flow.json (keep export node layout) — default" -ForegroundColor Cyan
 } else {
-  Write-Host "병합 소스: 분할 3파일 (내보내기 JSON 없음)" -ForegroundColor Yellow
+  Write-Host "Merge source: split 3 files (no export JSON)" -ForegroundColor Yellow
 }
-Write-Host "주의: 실행 중인 Node-RED **전체 플로우**가 저장소 내용으로 교체됩니다." -ForegroundColor Yellow
-Write-Host "추가: Node-RED 경로 루트(/farm) 적용(settings.js 패치) + 서비스 재시작(가능 시)" -ForegroundColor Yellow
+Write-Host "NOTE: running Node-RED flow will be fully replaced by repo JSON." -ForegroundColor Yellow
+Write-Host "Also: patch settings.js paths(/farm) + restart service(if possible)" -ForegroundColor Yellow
+
+& ssh @SshRemoteOpts "${PiUser}@${PiHost}" "if [[ -x '$remoteScripts/pi-install-nodered-telegram-env.sh' ]]; then sed -i 's/\r$//' '$remoteScripts/pi-install-nodered-telegram-env.sh' 2>/dev/null || true; bash '$remoteScripts/pi-install-nodered-telegram-env.sh'; else echo 'skip: pi-install-nodered-telegram-env.sh missing'; fi"
+if ($LASTEXITCODE -ne 0) {
+  Write-Host "WARN: telegram env systemd apply failed (sudo/path). On Pi: bash ~/CronusFarm/scripts/pi-install-nodered-telegram-env.sh" -ForegroundColor Yellow
+}
 
 & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "bash '$remoteScripts/pi-nodered-apply-settings-farm.sh'"
 if ($LASTEXITCODE -ne 0) {
@@ -195,7 +236,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "sudo -n systemctl restart nodered.service" 2>$null
 if ($LASTEXITCODE -ne 0) {
-  Write-Host "경고: nodered 재시작 실패(무시하고 계속). sudo 권한이 없을 수 있습니다. Pi에서 수동 재시작하세요: sudo systemctl restart nodered.service" -ForegroundColor Yellow
+  Write-Host "WARN: nodered restart failed (continue). On Pi: sudo systemctl restart nodered.service" -ForegroundColor Yellow
 }
 
 # 로컬에서 merge_nodered_deploy.py 실행 → 분할 dashboard → 내보내기 동기화 후 merged-deploy.json 생성
@@ -229,7 +270,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 if ($SkipArduino) {
-  Write-Host "완료: Node-RED 플로우 배포 (Arduino 업로드는 생략됨)" -ForegroundColor Green
+  Write-Host "OK: Node-RED flow deployed (Arduino skipped)" -ForegroundColor Green
 } else {
-  Write-Host "완료: Arduino(upcode) + Node-RED 플로우 배포" -ForegroundColor Green
+  Write-Host "OK: Arduino(upcode) + Node-RED flow deployed" -ForegroundColor Green
 }

@@ -100,6 +100,16 @@ Serial(USB) 대신 MQTT 노드를 사용하면 업로드와 포트 점유 충돌
 
 ### 7) 원클릭 배포(Windows → Pi: Arduino + Node-RED)
 저장소 `scripts/deploy-cronusfarm-pi.ps1` 는 순서대로 **upcode(스케치 복사·컴파일·업로드)** → **`nodered/*.json` 을 Pi의 `~/CronusFarm/nodered/` 로 복사** → 선택 시 **`merged-deploy.json` 을 `POST http://127.0.0.1:1880/flows` 로 반영**합니다.
+
+추가로, 더 짧게 쓰려면 파이썬 래퍼를 사용할 수 있습니다:
+
+```powershell
+python .\scripts\deploy_all.py --apply-nodered --use-split-flows
+```
+
+- Arduino 업로드만 생략: `python .\scripts\deploy_all.py --apply-nodered --use-split-flows --skip-arduino`
+- Node-RED 적용 생략(Arduino만): `python .\scripts\deploy_all.py`
+- Arduino 포트 자동탐지를 끄고 싶을 때(비권장): `python .\scripts\deploy_all.py --apply-nodered --use-split-flows --no-auto-port`
 - JSON만 동기화: `deploy-cronusfarm-pi.ps1`
 - Node-RED까지 자동 적용: `deploy-cronusfarm-pi.ps1 -ApplyNodeRed` (실행 중인 NR의 **전체 플로우가 교체**되므로, 다른 탭이 있으면 백업 파일 `~/.node-red/flows.cronusfarm-backup.*.json` 을 확인하세요.)
 
@@ -180,6 +190,32 @@ cd ~/.node-red
 npm i node-red-contrib-telegrambot node-red-node-sqlite
 sudo systemctl restart nodered.service
 ```
+
+**텔레그램 전송 테스트(HTTP, 토큰은 플로우에 넣지 않음)**  
+저장소 플로우에 `GET /farm/cronusfarm/telegram-ping` 가 있으면, Pi에서 Node-RED 서비스 환경변수만 넣고 브라우저·curl 로 확인할 수 있습니다.
+
+```bash
+# 예: systemd drop-in 또는 서비스 유닛 Environment=
+# CRONUSFARM_TELEGRAM_BOT_TOKEN=...
+# CRONUSFARM_TELEGRAM_CHAT_ID=...
+curl -sS "http://127.0.0.1:1880/farm/cronusfarm/telegram-ping?text=테스트"
+```
+
+환경변수가 비어 있으면 HTTP 500 과 JSON 오류 본문을 반환합니다.
+
+**systemd로 환경변수 넣기(권장)**  
+배포 시 `deploy-cronusfarm-pi.ps1 -ApplyNodeRed` 가 `pi-install-nodered-telegram-env.sh` 를 호출해 drop-in을 깔고, 없을 때만 `/etc/cronusfarm/nodered-telegram.env` 를 만듭니다. 토큰·chat_id 는 Pi에서만 편집합니다: `sudo nano /etc/cronusfarm/nodered-telegram.env` 후 `sudo systemctl restart nodered.service`.
+
+**봇 자동 응답(환영·키워드 안내)**  
+`getUpdates` 짧은 폴링(약 8초)으로 `/start`·`/help` 는 환영 안내만 보내고, **그 외 텍스트는 바로 키워드 매칭 답변**을 보냅니다(대화 단계 상태를 저장하지 않아 배포·재시작 후에도 동작이 단순합니다). 토큰만 있으면 되며 **웹훅을 걸면 폴링이 비게 될 수 있어** 자동응답 시에는 웹훅을 쓰지 않는 편이 안전합니다.
+
+**nginx 404 인 경우(로컬 curl 도 `<center>nginx</center>` HTML 이면 동일)**  
+`1880` 이 **nginx** 이고 `/farm/` 이 Node-RED 업스트림으로 안 넘어가서입니다.
+
+1. Node-RED HTTP 의 **실제 포트** 확인: `ss -tlnp | grep -iE 'node|188'`, `grep uiPort ~/.node-red/settings.js`
+2. 해당 포트로 직접 호출해 동작 여부 확인: `curl -sS "http://127.0.0.1:<NR포트>/farm/cronusfarm/telegram-ping"`
+3. nginx `server` 블록에 **`location ^~ /farm/`** → `proxy_pass http://127.0.0.1:<NR포트>;` 추가. 예시는 저장소 `scripts/pi-nginx-farm-location.snippet.conf` 참고.
+4. `sudo nginx -t && sudo systemctl reload nginx` 후 다시 `1880` 으로 테스트.
 
 #### 10-3) Hailo (추후 장착 시)
 - Hailo AI Kit 장착 후에는 Hailo 제공 런타임/예제(TAPPAS/Model Zoo 등)를 설치해야 합니다.

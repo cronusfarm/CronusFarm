@@ -1,18 +1,14 @@
 #pragma once
-// R4 WiFi(마스터) ↔ R3(슬레이브) RepRap 패널 — Wire 프로토콜 (양쪽 스케치에서 동일 값 유지)
+// R4 WiFi(마스터) ↔ R3(슬레이브) RepRap 2004A 패널 — Wire(I2C) 프로토콜
+// - 양쪽 스케치에서 동일 값 유지
 
-// 7-bit I2C 주소 (충돌 시 한 곳만 변경)
+// 7-bit I2C 주소
 #define PANEL_I2C_ADDR 0x38
 
 // 마스터 → 슬레이브 (beginTransmission 페이로드)
 #define PANEL_CMD_CLEAR 0x01    // 인자 없음
 #define PANEL_CMD_SET_LINE 0x02 // row(0~3), len(0~20), len바이트 텍스트
 #define PANEL_CMD_BEEP 0x03     // mode: 0=짧음, 1=김
-// Trigorilla(패널+확장보드) 제어
-// - param0: 펌프 비트마스크 (bit0=A1, bit1=A2, bit2=B1, bit3=B2)
-#define PANEL_CMD_SET_PUMPS 0x10
-// - param0: 팬 비트마스크 (bit0=FAN_A1, bit1=FAN_B1, bit2=FAN_B2)
-#define PANEL_CMD_SET_FANS 0x11
 
 // 슬레이브 → 마스터 (requestFrom 응답): [이벤트 개수 n][t0][p0][t1][p1]...
 #define PANEL_EVT_ENC_CW 1

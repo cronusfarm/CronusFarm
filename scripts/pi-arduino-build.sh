@@ -21,6 +21,17 @@ pick_port() {
     return 0
   fi
 
+  # 1) 가장 확실한 방법: arduino-cli board list에서 FQBN으로 매칭 (ACM0/ACM1 뒤바뀜 방지)
+  # 예: "/dev/ttyACM1  serial  ...  arduino:renesas_uno:unor4wifi ..."
+  if command -v arduino-cli >/dev/null 2>&1; then
+    local p
+    p="$(arduino-cli board list 2>/dev/null | grep -F "$FQBN" | head -n 1 | sed -E 's/[[:space:]].*$//' || true)"
+    if [[ -n "$p" ]]; then
+      echo "$p"
+      return 0
+    fi
+  fi
+
   # 안정 경로 우선: /dev/serial/by-id/*
   if [[ -d /dev/serial/by-id ]]; then
     if [[ "$FQBN" == *"avr"* ]]; then

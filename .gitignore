@@ -20,3 +20,17 @@ node_modules/
 *.log
 *.tmp
 *.bak
+
+# 에이전트/로컬 임시(JSON·노드레드 스냅샷 등 — 저장소 백업 대상 아님)
+.tmp_*
+.tmp_known_hosts
+._.tmp_known_hosts
+.nodered-local/
+
+# Python
+__pycache__/
+*.pyc
+
+# macOS 리소스 포크
+._*
+

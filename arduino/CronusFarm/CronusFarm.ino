@@ -1,4 +1,5 @@
 /*
+  2026.05.06 20:15:00
   2026.5.3 펌프 하드 가드(연속 ON·쿨다운·최소 OFF)·tele `G:` — docs/cronusfarm_settings_schema.md
   2026.5.2 tele 버퍼/MQTT TX CRONUS_TELE_PAYLOAD_MAX(2048) 정렬 — 잘림 방지
   2026.4.26 수정
@@ -40,8 +41,10 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <Wire.h>
 #include "Arduino_LED_Matrix.h"
-#include "panel_protocol.h"
+// R4(마스터) ↔ R3(슬레이브) 패널(I2C) 프로토콜
+#include "panel_i2c_protocol.h"
 // `secrets.h.example`을 복사해서 `secrets.h`를 만든 뒤 값을 채우세요.
 #include "secrets.h"
 
@@ -75,7 +78,7 @@ static const int PUMP_C2 = A1;
 static const int PUMP_D1 = A2;
 static const int PUMP_D2 = A3;
 
-// UART 패널(Mega) 표시 — Tx/Rx 링크 실패 시 false, 로직·MQTT는 계속 동작
+// 패널(UNO R3) 상태 — I2C 링크/환영/브라우즈 화면 상태 추적
 static bool gPanelReady = false;
 static bool gLcdWelcomed = false;
 static uint32_t gLcdWelcomeAtMs = 0;
@@ -92,14 +95,48 @@ static bool gPanelUiDirty = true;          // EDIT 화면용: dirty일 때만 4�
 static uint32_t gLastEditDrawMs = 0;
 static const uint32_t PANEL_EDIT_REFRESH_MS = 400;
 static bool gUiStartFromWelcomePending = false; // 환영 화면에서 입력 시 CH1부터 시작(1회)
-static const uint32_t PANEL_UART_BAUD = 19200;
+
+// 패널 LCD 라인 캐시(중복 전송 감소)
+static bool gPanelLineInit[4] = { false, false, false, false };
+static char gPanelLineCache[4][21];
+
+// 패널 링크: R4↔R3 UART(권장: I2C 풀업/레벨 문제 회피 + 업로드 충돌 회피)
+// - R4: Serial1 (핀 0=RX, 1=TX)
+// - R3: SoftwareSerial (예: RX=10, TX=11) — HW Serial(0/1)은 USB 업로드 전용 유지
+#define CF_PANEL_LINK_UART 1
+#define CF_PANEL_LINK_I2C 0
+
+#if CF_PANEL_LINK_I2C
+static uint32_t gLastPanelI2cPingMs = 0;
+// I2C 진단(tele 디버그용)
+static uint8_t gPanelI2cLastEndTxRc = 255;
+static int gPanelI2cLastReqGot = -1;
+static uint32_t gPanelI2cLastRxMs = 0;
+static bool panelI2cPing(uint32_t nowMs) {
+  // 너무 자주 두드리면 버스가 지저분해질 수 있어 간격을 둡니다.
+  if (gLastPanelI2cPingMs != 0 && (nowMs - gLastPanelI2cPingMs) < 300) {
+    return false;
+  }
+  gLastPanelI2cPingMs = nowMs;
+
+  Wire.beginTransmission(PANEL_I2C_ADDR);
+  Wire.write((uint8_t)PANEL_CMD_CLEAR);
+  const uint8_t rc = (uint8_t)Wire.endTransmission();
+  gPanelI2cLastEndTxRc = rc;
+  // endTransmission() == 0 이면 ACK(슬레이브 응답)로 판단
+  return (rc == 0);
+}
+#endif
+
+// UART 관련 전송 제어
+#if CF_PANEL_LINK_UART
+// SoftwareSerial(R3) 안정성을 위해 보수적으로 낮춤
+static const uint32_t CF_PANEL_UART_BAUD = 19200;
 #define CF_PANEL_UART Serial1
 static char gPanelRxLine[96];
 static uint8_t gPanelRxLen = 0;
-static bool gPanelLineInit[4] = { false, false, false, false };
-static char gPanelLineCache[4][21];
 static uint32_t gPanelLastTxUs = 0;
-
+static uint32_t gPanelKeepaliveMs = 0;
 static void panelUartTxPace() {
   // UART 스트림이 섞여 라인 경계가 흔들리는 문제를 완화하기 위한 전송 간격 제한
   const uint32_t minGapUs = 6000; // 6ms
@@ -112,6 +149,8 @@ static void panelUartTxPace() {
   }
   gPanelLastTxUs = (uint32_t)micros();
 }
+#endif
+
 
 static void panelClear();
 static void panelPrintLine(uint8_t row, const char* text);
@@ -121,10 +160,6 @@ static void panelSetBlink(uint8_t row, uint8_t col, bool on);
 static void panelPollEvents(uint32_t nowMs);
 static void lcdWelcomeIfOk(uint32_t nowMs, bool wifiOk, bool mqttOk);
 static void lcdBrowseDraw(uint32_t nowMs);
-
-static void panelSetFansMask(uint8_t fanMask);
-static uint8_t gRemoteFanMask = 0;
-static void panelSetRemoteGpio(uint8_t idx, bool on);
 
 // ============================================================
 // LCD + 엔코더 UI는 채널 정의/배열 이후에 선언(선언 순서 의존성 방지)
@@ -162,12 +197,6 @@ enum Channel : uint8_t {
   CH_PUMP_D2 = 14,
   CH_COUNT = 15
 };
-
-static inline bool chIsRemote(uint8_t ch) {
-  (void)ch;
-  // V0.7(15채널)에서는 전부 R4 로컬 GPIO로 직접 제어합니다.
-  return false;
-}
 
 // 다이얼로 UI를 순환할 채널 순서(항상 고정)
 // V0.7(15채널) 순서 고정
@@ -211,7 +240,7 @@ static inline bool isInWelcomeWindow() {
 
 static void forceStartFromCh1();
 
-// 로컬 GPIO 제어 채널만 핀을 가집니다. TriGorilla(FAN/SERVO) 채널은 UART로 전달(원격)이라 -1로 둡니다.
+// 로컬 GPIO 제어 채널 핀 매핑 (V0.7: 전부 R4 로컬 제어)
 static const int CH_PIN[CH_COUNT] = {
   LED_A1,   // CH_LED_A1
   LED_A2,   // CH_LED_A2
@@ -332,21 +361,28 @@ static void forceStartFromCh1() {
   // 무조건 CH1부터 브라우즈 화면을 시작합니다.
   gUiMode = UI_BROWSE;
   gUiCh = UI_CH_ORDER[0];
-  gUiPickOn = chIsRemote(gUiCh) ? chState[gUiCh]
-                                : (digitalRead((uint8_t)CH_PIN[gUiCh]) == HIGH);
+  gUiPickOn = (digitalRead((uint8_t)CH_PIN[gUiCh]) == HIGH);
   gPanelBrowseDirty = true;
   gLastBrowseDrawMs = 0;
   gPanelBrowseShown = false;
   gUiStartFromWelcomePending = true;
 }
 
-// ---------- UART 패널(Mega) — 마스터 측 ----------
+// ---------- 패널 링크 (현장: R4↔R3 UART 권장) ----------
 static void panelClear() {
   if (!gPanelReady) {
     return;
   }
+#if CF_PANEL_LINK_I2C
+  Wire.beginTransmission(PANEL_I2C_ADDR);
+  Wire.write((uint8_t)PANEL_CMD_CLEAR);
+  (void)Wire.endTransmission();
+#elif CF_PANEL_LINK_UART
   panelUartTxPace();
   CF_PANEL_UART.println("C");
+#else
+  // no-op
+#endif
   for (uint8_t r = 0; r < 4; r++) {
     gPanelLineInit[r] = false;
   }
@@ -359,18 +395,31 @@ static void panelSetLine20(uint8_t row, const char line20[21]) {
   if (row > 3) {
     return;
   }
+#if CF_PANEL_LINK_I2C
+  Wire.beginTransmission(PANEL_I2C_ADDR);
+  Wire.write((uint8_t)PANEL_CMD_SET_LINE);
+  Wire.write((uint8_t)row);
+  Wire.write((uint8_t)20);
+  for (uint8_t i = 0; i < 20; i++) {
+    const char c = line20[i] ? line20[i] : ' ';
+    Wire.write((uint8_t)c);
+  }
+  (void)Wire.endTransmission();
+#elif CF_PANEL_LINK_UART
   panelUartTxPace();
   CF_PANEL_UART.print("L,");
   CF_PANEL_UART.print((unsigned)row);
   CF_PANEL_UART.print(",");
-  for (uint8_t i = 0; i < 20 && line20[i] != '\0'; i++) {
-    const char c = line20[i];
-    if (c == '\r' || c == '\n' || c == ',') {
-      continue;
-    }
+  // R3는 20자 고정으로 해석(나머지는 공백)
+  for (uint8_t i = 0; i < 20; i++) {
+    char c = line20[i] ? line20[i] : ' ';
+    if (c == '\r' || c == '\n') c = ' ';
     CF_PANEL_UART.print(c);
   }
   CF_PANEL_UART.println();
+#else
+  // no-op
+#endif
   strncpy(gPanelLineCache[row], line20, 20);
   gPanelLineCache[row][20] = '\0';
   gPanelLineInit[row] = true;
@@ -411,69 +460,101 @@ static void panelBeepShort() {
   if (!gPanelReady) {
     return;
   }
+#if CF_PANEL_LINK_I2C
+  Wire.beginTransmission(PANEL_I2C_ADDR);
+  Wire.write((uint8_t)PANEL_CMD_BEEP);
+  Wire.write((uint8_t)0);
+  (void)Wire.endTransmission();
+#elif CF_PANEL_LINK_UART
   panelUartTxPace();
   CF_PANEL_UART.println("B,0");
+#else
+  // no-op
+#endif
 }
 
 static void panelBeepLong() {
   if (!gPanelReady) {
     return;
   }
+#if CF_PANEL_LINK_I2C
+  Wire.beginTransmission(PANEL_I2C_ADDR);
+  Wire.write((uint8_t)PANEL_CMD_BEEP);
+  Wire.write((uint8_t)1);
+  (void)Wire.endTransmission();
+#elif CF_PANEL_LINK_UART
   panelUartTxPace();
   CF_PANEL_UART.println("B,1");
-}
-
-static void panelSetFansMask(uint8_t fanMask) {
-  if (!gPanelReady) {
-    return;
-  }
-  panelUartTxPace();
-  CF_PANEL_UART.print("F,");
-  CF_PANEL_UART.println((unsigned)(fanMask & 0x07));
-}
-
-static void panelSetRemoteGpio(uint8_t idx, bool on) {
-  // TriGorilla(Mega) 측 원격 GPIO 제어
-  // 프로토콜(추가): "O,<idx>,<0|1>\n"
-  // - idx: 0..7 (CH_FAN_A1부터 순서대로)
-  if (!gPanelReady) {
-    return;
-  }
-  if (idx > 7) {
-    return;
-  }
-  panelUartTxPace();
-  CF_PANEL_UART.print("O,");
-  CF_PANEL_UART.print((unsigned)idx);
-  CF_PANEL_UART.print(",");
-  CF_PANEL_UART.println(on ? "1" : "0");
+#else
+  // no-op
+#endif
 }
 
 static void allOff();
 static void publishTelemetry();
 
 static void panelPollEvents(uint32_t nowMs) {
+#if CF_PANEL_LINK_I2C
+  // I2C 이벤트 처리 로직 (현재 사용 중)
+  // R3(slave) 큐에서 이벤트를 가져옵니다: [n][t0][p0]...
+  const uint8_t want = 1 + (2 * 7);
+  const int got = Wire.requestFrom((int)PANEL_I2C_ADDR, (int)want);
+  gPanelI2cLastReqGot = got;
+  if (got <= 0) {
+    return;
+  }
+  if (Wire.available() <= 0) {
+    return;
+  }
+  // 이벤트가 0개(n==0)여도, I2C 응답이 왔다는 것 자체로 패널 링크는 살아있다고 판단합니다.
+  gPanelReady = true;
+  gPanelI2cLastRxMs = nowMs;
+  const uint8_t n = (uint8_t)Wire.read();
+  const uint8_t useN = (n > 7) ? 7 : n;
+  for (uint8_t i = 0; i < useN; i++) {
+    if (Wire.available() < 2) break;
+    const uint8_t t = (uint8_t)Wire.read();
+    const uint8_t p = (uint8_t)Wire.read();
+    switch (t) {
+      case PANEL_EVT_ENC_CW:
+        encoderDelta(+1);
+        break;
+      case PANEL_EVT_ENC_CCW:
+        encoderDelta(-1);
+        break;
+      case PANEL_EVT_CLICK:
+        panelHandleClick(nowMs);
+        break;
+      case PANEL_EVT_KILL:
+        if (p) {
+          allOff();
+          publishTelemetry();
+        }
+        break;
+      default:
+        break;
+    }
+  }
+#elif CF_PANEL_LINK_UART
   while (CF_PANEL_UART.available() > 0) {
     const char c = (char)CF_PANEL_UART.read();
-    if (c == '\r' || c == '\n') {
-      if (gPanelRxLen == 0) {
-        continue;
-      }
+    if (c == '\r') continue;
+    if (c == '\n') {
+      if (gPanelRxLen == 0) continue;
       gPanelRxLine[gPanelRxLen] = '\0';
       gPanelRxLen = 0;
       gPanelReady = true;
 
+      // R3 → R4 이벤트: "E,<t>,<p>"
       int t = -1;
       int p = 0;
-      if (sscanf(gPanelRxLine, "v=1;type=evt;t=%d;p=%d", &t, &p) == 2) {
+      if (sscanf(gPanelRxLine, "E,%d,%d", &t, &p) == 2) {
         switch ((uint8_t)t) {
           case PANEL_EVT_ENC_CW:
-            // 패널(Mega) 펌웨어가 CW/CCW 이벤트를 스왑해서 보내는 배선/보드 케이스가 있어
-            // 여기서는 물리 CW가 "증가"로 동작하도록 해석을 반대로 둡니다.
-            encoderDelta(-1);
+            encoderDelta(+1);
             break;
           case PANEL_EVT_ENC_CCW:
-            encoderDelta(+1);
+            encoderDelta(-1);
             break;
           case PANEL_EVT_CLICK:
             panelHandleClick(nowMs);
@@ -494,6 +575,9 @@ static void panelPollEvents(uint32_t nowMs) {
       gPanelRxLine[gPanelRxLen++] = c;
     }
   }
+#else
+  // no-op
+#endif
 }
 
 static const char* dowShortEn(DayOfWeek d) {
@@ -575,8 +659,7 @@ static void lcdBrowseDraw(uint32_t nowMs) {
   }
 
   const uint8_t ch = gUiCh;
-  const bool on =
-    chIsRemote(ch) ? chState[ch] : (digitalRead((uint8_t)CH_PIN[ch]) == HIGH);
+  const bool on = (digitalRead((uint8_t)CH_PIN[ch]) == HIGH);
   const bool isAuto = chAuto[ch];
 
   char line0[21];
@@ -664,15 +747,8 @@ static void uiApplySelection(uint8_t ch, bool on) {
   chAuto[ch] = false;
   chManual[ch] = on;
   gUiLocalOverrideAtMs[ch] = millis();
-  if (chIsRemote(ch)) {
-    // TriGorilla 채널은 원격 GPIO로 전달
-    const uint8_t ridx = (uint8_t)(ch - CH_FAN_A1); // 0..7
-    panelSetRemoteGpio(ridx, on);
-    chState[ch] = on;
-  } else {
-    digitalWrite(CH_PIN[ch], on ? HIGH : LOW);
-    chState[ch] = on;
-  }
+  digitalWrite(CH_PIN[ch], on ? HIGH : LOW);
+  chState[ch] = on;
 }
 
 static void lcdRenderUi(uint32_t nowMs, bool wifiOk, bool mqttOk) {
@@ -751,8 +827,7 @@ static void encoderDelta(int8_t d) {
     }
     // 브라우즈 이동은 encoder 부호 그대로 UI 순서를 진행합니다.
     gUiCh = uiNextCh(gUiCh, d);
-    gUiPickOn = chIsRemote(gUiCh) ? chState[gUiCh]
-                                : (digitalRead((uint8_t)CH_PIN[gUiCh]) == HIGH);
+    gUiPickOn = (digitalRead((uint8_t)CH_PIN[gUiCh]) == HIGH);
     // 채널이 바뀌면 항상 다시 그리기(환영 5초 안에서는 lcdBrowseDraw가 스킵되지만,
     // 5초 후 첫 갱신 시 최종 채널이 반영되도록 dirty 유지)
     if (prevCh != gUiCh) {
@@ -789,8 +864,7 @@ static void panelHandleClick(uint32_t nowMs) {
       return;
     }
     gUiMode = UI_EDIT;
-    gUiPickOn = chIsRemote(gUiCh) ? chState[gUiCh]
-                                  : (digitalRead((uint8_t)CH_PIN[gUiCh]) == HIGH);
+    gUiPickOn = (digitalRead((uint8_t)CH_PIN[gUiCh]) == HIGH);
     gUiEditOrigOn = gUiPickOn;
     beepShort();
     gPanelUiDirty = true;
@@ -806,8 +880,14 @@ static void panelHandleClick(uint32_t nowMs) {
 }
 
 static void panelSetBlink(uint8_t row, uint8_t col, bool on) {
-  // Mega LCD에서 커서 블링크를 사용해 "반전" 유사 효과를 냅니다.
-  // 프로토콜(추가): "H,<row>,<col>,<0|1>\n"
+  // 레거시 UART 패널에서 커서 블링크로 "반전" 유사 효과를 냈던 자리입니다.
+  // R3(I2C) 패널 구성에서는 미사용(호출돼도 no-op).
+#if CF_PANEL_LINK_I2C
+  (void)row;
+  (void)col;
+  (void)on;
+  return;
+#else
   if (!gPanelReady) {
     return;
   }
@@ -820,6 +900,7 @@ static void panelSetBlink(uint8_t row, uint8_t col, bool on) {
   CF_PANEL_UART.print((unsigned)col);
   CF_PANEL_UART.print(",");
   CF_PANEL_UART.println(on ? "1" : "0");
+#endif
 }
 
 static uint32_t lastTelemetryMs = 0;
@@ -955,8 +1036,6 @@ static void pumpGuardPersistToEeprom(uint32_t nowMs) {
 static void pumpGuardLoop(uint32_t nowMs) {
   for (uint8_t k = 0; k < 8; k++) {
     uint8_t ch = PUMP_GUARD_CH[k];
-    if (chIsRemote(ch)) continue;
-
     if (pumpMxUntilMs[k] != 0 && (int32_t)(nowMs - pumpMxUntilMs[k]) >= 0) {
       pumpMxUntilMs[k] = 0;
     }
@@ -1036,9 +1115,7 @@ static void persistLoadToState() {
     if (!isPumpCh(ch)) continue;
     chState[ch] = false;
     chManual[ch] = false;
-    if (!chIsRemote(ch)) {
-      digitalWrite(CH_PIN[ch], LOW);
-    }
+    digitalWrite(CH_PIN[ch], LOW);
   }
 
   // 2) 복원 마스크 로드(없으면 전부 OFF 유지)
@@ -1065,9 +1142,7 @@ static void persistLoadToState() {
       chManual[ch] = on;
     }
     chState[ch] = on;
-    if (!chIsRemote(ch)) {
-      digitalWrite(CH_PIN[ch], on ? HIGH : LOW);
-    }
+    digitalWrite(CH_PIN[ch], on ? HIGH : LOW);
   }
 }
 
@@ -1186,17 +1261,9 @@ static void matrixShowFromPins() {
 
 static void allOff() {
   for (uint8_t i = 0; i < CH_COUNT; i++) {
-    if (chIsRemote(i)) {
-      const uint8_t ridx = (uint8_t)(i - CH_FAN_A1);
-      panelSetRemoteGpio(ridx, false);
-      chState[i] = false;
-    } else {
-      digitalWrite(CH_PIN[i], LOW);
-      chState[i] = false;
-    }
+    digitalWrite(CH_PIN[i], LOW);
+    chState[i] = false;
   }
-  gRemoteFanMask = 0;
-  panelSetFansMask(gRemoteFanMask);
 }
 
 /** tele 버퍼에 안전 추가: 잘림 시 off를 cap-1로 고정(vsnprintf 반환값만 더하면 off>cap → rem 언더플로로 이후 전부 깨짐). */
@@ -1260,12 +1327,7 @@ static void publishTelemetry() {
   size_t off = 0;
   off = tele_append_v(payload, sizeof(payload), off, "S:");
   for (uint8_t i = 0; i < CH_COUNT; i++) {
-    int v = 0;
-    if (chIsRemote(i)) {
-      v = chState[i] ? 1 : 0;
-    } else {
-      v = (digitalRead(CH_PIN[i]) == HIGH) ? 1 : 0;
-    }
+    int v = (digitalRead(CH_PIN[i]) == HIGH) ? 1 : 0;
     off = tele_append_v(payload, sizeof(payload), off, "%s=%d%s", CH_KEY[i], v, (i + 1 < CH_COUNT) ? " " : "");
     if (off >= sizeof(payload) - 1) break;
   }
@@ -1301,6 +1363,7 @@ static void publishTelemetry() {
       off = tele_append_v(payload, sizeof(payload), off, "ssid= ip=0.0.0.0");
     }
   }
+  // 패널(I2C) 링크 진단: 배선/주소 문제로 LCD가 갱신 안 될 때 원인 파악용
   if (off < sizeof(payload) - 1) {
     off = pumpGuardAppendTele(payload, sizeof(payload), off, millis());
   }
@@ -1561,6 +1624,11 @@ static void connectMqtt() {
   Serial.println(MQTT_PORT);
 
   // 무한 재시도하면 setup/loop가 막혀 매트릭스가 갱신되지 않음 → loop에서 재시도
+  // 브로커 비정상 단절 시에도 status retain이 offline으로 바뀌도록 LWT 등록
+  mqtt.beginWill(topicStatus, true, 1);
+  mqtt.print("offline");
+  mqtt.endWill();
+
   if (!mqtt.connect(MQTT_HOST, MQTT_PORT)) {
     Serial.print(F("MQTT 연결 실패: "));
     Serial.println(mqtt.connectError());
@@ -1714,11 +1782,16 @@ void setup() {
   Serial.begin(BAUD);
   delay(200);
 
-  CF_PANEL_UART.begin(PANEL_UART_BAUD);
+#if CF_PANEL_LINK_I2C
+  Wire.begin();
+  gPanelReady = false;
+#elif CF_PANEL_LINK_UART
+  CF_PANEL_UART.begin(CF_PANEL_UART_BAUD);
   delay(2);
-  gPanelReady = true;
-  panelPrintLine(0, "CronusFarm");
-  panelPrintLine(1, "부팅중...");
+  gPanelReady = true; // UART 링크는 즉시 사용 가능(이벤트/명령 수신으로 유지)
+#else
+  gPanelReady = false;
+#endif
 
   gMatrix.begin();
   // begin 직후 한 번 그리기(MQTT 대기로 setup이 안 끝나도 이후 WiFi 성공 시 다시 갱신)
@@ -1749,6 +1822,37 @@ void loop() {
   pollMqtt();
 
   uint32_t now = millis();
+
+#if CF_PANEL_LINK_UART
+  // UART 링크가 끊겼는지 즉시 눈으로 확인하기 위한 keepalive
+  // - R3가 Welcome 화면으로 돌아가면(=R4 명령 미수신) UART/전원/레벨 이슈 가능성이 큽니다.
+  if ((int32_t)(now - gPanelKeepaliveMs) >= 1000) {
+    gPanelKeepaliveMs = now;
+    panelPrintLine(0, "CronusFarm (UART)");
+    panelPrintLine(1, "Link keepalive...");
+    char l2[21];
+    snprintf(l2, sizeof(l2), "ms=%lu", (unsigned long)now);
+    panelPrintLine(2, l2);
+    panelPrintLine(3, "Dial:Next Push:Edit");
+  }
+#endif
+#if CF_PANEL_LINK_I2C
+  // I2C 슬레이브(R3)가 살아있으면, 이벤트가 0개여도 LCD를 R4가 소유하도록 전환합니다.
+  // (그렇지 않으면 R3의 부팅/환영 화면이 계속 남아 있어 “멈춘 것처럼” 보입니다.)
+  if (!gPanelReady) {
+    if (panelI2cPing(now)) {
+      gPanelReady = true;
+      for (uint8_t r = 0; r < 4; r++) gPanelLineInit[r] = false;
+      // 즉시 한 번 그려서 배선/통신 여부를 눈으로 확인
+      const bool wifiOk = (WiFi.status() == WL_CONNECTED);
+      const bool mqttOk = mqtt.connected();
+      panelPrintLine(0, "CronusFarm");
+      panelPrintLine(1, wifiOk ? "WiFi OK" : "WiFi --");
+      panelPrintLine(2, mqttOk ? "MQTT OK" : "MQTT --");
+      panelPrintLine(3, "Dial/Push Ready");
+    }
+  }
+#endif
   // UART 이벤트가 들어오면 panelPollEvents에서 gPanelReady=true로 유지됩니다.
   // 링크 순간 끊김이 있어도 화면/로직이 멈추지 않도록 여기서는 강제로 false로 내리지 않습니다.
   panelPollEvents(now);
@@ -1765,32 +1869,19 @@ void loop() {
     const bool isFan = (i == CH_FAN_A1 || i == CH_FAN_A2 || i == CH_FAN_B1 || i == CH_FAN_B2);
 
     if (!chAuto[i]) {
-      if (chIsRemote(i)) {
-        const bool on = chManual[i];
-        const uint8_t ridx = (uint8_t)(i - CH_FAN_A1);
-        panelSetRemoteGpio(ridx, on);
-        chState[i] = on;
-      } else {
-        digitalWrite(CH_PIN[i], chManual[i] ? HIGH : LOW);
-        chState[i] = chManual[i];
-      }
+      digitalWrite(CH_PIN[i], chManual[i] ? HIGH : LOW);
+      chState[i] = chManual[i];
       continue;
     }
 
     if (!isPump && !isFan) {
-      if (!chIsRemote(i)) {
-        digitalWrite(CH_PIN[i], LOW);
-      }
+      digitalWrite(CH_PIN[i], LOW);
       chState[i] = false;
       continue;
     }
 
     // FAN은 AUTO를 아직 사용하지 않습니다(예상치 못한 분사/환기 방지)
     if (isFan) {
-      if (chIsRemote(i)) {
-        const uint8_t ridx = (uint8_t)(i - CH_FAN_A1);
-        panelSetRemoteGpio(ridx, false);
-      }
       chState[i] = false;
       continue;
     }
@@ -1801,9 +1892,7 @@ void loop() {
     if (nowMs - chPrevMs[i] >= interval) {
       chPrevMs[i] = nowMs;
       chState[i] = !chState[i];
-      if (!chIsRemote(i)) {
-        digitalWrite(CH_PIN[i], chState[i] ? HIGH : LOW);
-      }
+      digitalWrite(CH_PIN[i], chState[i] ? HIGH : LOW);
     }
   }
 

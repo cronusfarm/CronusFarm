@@ -1,7 +1,7 @@
-﻿# Pi SSH 호스트 선택
+# Pi SSH 호스트 선택
 # - PiHost 가 비어 있으면: PiHostLan 이 비어 있으면 LAN 탐색 없이 PiHostWan(기본 Tailscale)만 사용.
 # - PiHostLan 에 IP/호스트를 넣으면: 해당 주소로 SSH:22 응답 시 LAN 우선, 아니면 PiHostWan.
-# - PiHost·PiHostLan 둘 다 비었을 때: WAN(22) 응답 실패 시 — 2026-05-05 까지만 ida LAN 폴백 192.168.1.22 시도
+# - PiHost·PiHostLan 둘 다 비었을 때: WAN(22) 응답 실패 시 ida LAN 폴백 192.168.1.22 시도(ida 고정 LAN, 변경 시 아래 값·-PiHostLan 조정)
 function Test-CronusSshPort {
   param(
     [string]$ComputerName,
@@ -37,26 +37,23 @@ function Get-CronusPiHost {
   if ($trimLan.Length -eq 0) {
     $wanOk = Test-CronusSshPort -ComputerName $PiHostWan
     if ($wanOk) {
-      Write-Host "[Pi] WAN SSH 사용: ${PiUser}@${PiHostWan}" -ForegroundColor DarkCyan
+      Write-Host "[Pi] WAN SSH: ${PiUser}@${PiHostWan}" -ForegroundColor DarkCyan
       return $PiHostWan
     }
-    $fallbackDeadline = Get-Date "2026-05-05T23:59:59"
     $fallbackLan = "192.168.1.22"
-    if ((Get-Date) -le $fallbackDeadline) {
-      $lanOk = Test-CronusSshPort -ComputerName $fallbackLan
-      if ($lanOk) {
-        Write-Host "[Pi] WAN(22) 미응답 — LAN 폴백(만료 2026-05-05): ${PiUser}@${fallbackLan}" -ForegroundColor DarkYellow
-        return $fallbackLan
-      }
+    $lanOk = Test-CronusSshPort -ComputerName $fallbackLan
+    if ($lanOk) {
+      Write-Host "[Pi] WAN(22) no response -> LAN fallback: ${PiUser}@${fallbackLan}" -ForegroundColor DarkYellow
+      return $fallbackLan
     }
-    Write-Host "[Pi] WAN 기본 사용(연결은 스크립트에서 확인): ${PiUser}@${PiHostWan}" -ForegroundColor DarkCyan
+    Write-Host "[Pi] WAN default(use script to verify): ${PiUser}@${PiHostWan}" -ForegroundColor DarkCyan
     return $PiHostWan
   }
   $lanOk = Test-CronusSshPort -ComputerName $trimLan
   if ($lanOk) {
-    Write-Host "[Pi] LAN SSH 사용: ${PiUser}@${trimLan}" -ForegroundColor DarkCyan
+    Write-Host "[Pi] LAN SSH: ${PiUser}@${trimLan}" -ForegroundColor DarkCyan
     return $trimLan
   }
-  Write-Host "[Pi] LAN(22) 미응답, WAN 사용: ${PiUser}@${PiHostWan}" -ForegroundColor DarkYellow
+  Write-Host "[Pi] LAN(22) no response, use WAN: ${PiUser}@${PiHostWan}" -ForegroundColor DarkYellow
   return $PiHostWan
 }
