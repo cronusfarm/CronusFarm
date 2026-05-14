@@ -1,7 +1,9 @@
-# Pi SSH 호스트 선택
-# - PiHost 가 비어 있으면: PiHostLan 이 비어 있으면 LAN 탐색 없이 PiHostWan(기본 Tailscale)만 사용.
-# - PiHostLan 에 IP/호스트를 넣으면: 해당 주소로 SSH:22 응답 시 LAN 우선, 아니면 PiHostWan.
-# - PiHost·PiHostLan 둘 다 비었을 때: WAN(22) 응답 실패 시 ida LAN 폴백 192.168.1.22 시도(ida 고정 LAN, 변경 시 아래 값·-PiHostLan 조정)
+# Pi SSH 호스트 선택 (운영 Pi = ida)
+# - LAN: 192.168.0.222 (PiHost 비었을 때 22번 응답하면 우선)
+# - Tailscale: ida.mango-larch.ts.net (LAN 없을 때)
+# - PiHost 가 ida / ida.local 이면 DNS 오해석 방지 — LAN(222)→Tailscale 순으로 고름
+# - PiHost 에 IP·FQDN 직접 주면 그대로 사용
+# - PiHostLan 지정 시: 해당 IP에 22 응답하면 사용, 아니면 WAN
 function Test-CronusSshPort {
   param(
     [string]$ComputerName,
@@ -31,22 +33,35 @@ function Get-CronusPiHost {
     [string]$PiUser = "dooly"
   )
   if ($null -ne $PiHost -and $PiHost.Trim().Length -gt 0) {
-    return $PiHost.Trim()
+    $raw = $PiHost.Trim()
+    if ($raw -match '^(?i)ida(\.local)?$') {
+      $lanIda = "192.168.0.222"
+      if (Test-CronusSshPort -ComputerName $lanIda) {
+        Write-Host "[Pi] ida→LAN: ${PiUser}@${lanIda}" -ForegroundColor DarkCyan
+        return $lanIda
+      }
+      if (Test-CronusSshPort -ComputerName $PiHostWan) {
+        Write-Host "[Pi] ida→Tailscale: ${PiUser}@${PiHostWan}" -ForegroundColor DarkCyan
+        return $PiHostWan
+      }
+      Write-Host "[Pi] ida: SSH(22) 없음, Tailscale 호스트 반환: ${PiUser}@${PiHostWan}" -ForegroundColor DarkYellow
+      return $PiHostWan
+    }
+    return $raw
   }
   $trimLan = if ($null -eq $PiHostLan) { "" } else { $PiHostLan.Trim() }
   if ($trimLan.Length -eq 0) {
+    $preferredLan = "192.168.0.222"
+    if (Test-CronusSshPort -ComputerName $preferredLan) {
+      Write-Host "[Pi] LAN SSH: ${PiUser}@${preferredLan}" -ForegroundColor DarkCyan
+      return $preferredLan
+    }
     $wanOk = Test-CronusSshPort -ComputerName $PiHostWan
     if ($wanOk) {
       Write-Host "[Pi] WAN SSH: ${PiUser}@${PiHostWan}" -ForegroundColor DarkCyan
       return $PiHostWan
     }
-    $fallbackLan = "192.168.1.22"
-    $lanOk = Test-CronusSshPort -ComputerName $fallbackLan
-    if ($lanOk) {
-      Write-Host "[Pi] WAN(22) no response -> LAN fallback: ${PiUser}@${fallbackLan}" -ForegroundColor DarkYellow
-      return $fallbackLan
-    }
-    Write-Host "[Pi] WAN default(use script to verify): ${PiUser}@${PiHostWan}" -ForegroundColor DarkCyan
+    Write-Host "[Pi] LAN/WAN(22) no response, default WAN: ${PiUser}@${PiHostWan}" -ForegroundColor DarkYellow
     return $PiHostWan
   }
   $lanOk = Test-CronusSshPort -ComputerName $trimLan
