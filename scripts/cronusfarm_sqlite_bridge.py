@@ -7,7 +7,7 @@ Pi에서 Node-RED가 tele/cmd를 POST하면 SQLite에 적재합니다.
   CRONUSFARM_SQLITE_PATH  DB 파일 경로 (기본: ~/.node-red/cronusfarm.sqlite)
   CRONUSFARM_BRIDGE_HOST  바인드 주소 (기본: 127.0.0.1)
   CRONUSFARM_BRIDGE_PORT  포트 (기본: 18766)
-  CRONUSFARM_SCHEDULE_MQTT  1/true 시 PUT /api/schedule 성공 후 mosquitto_pub으로 cmd 발행(선택)
+  CRONUSFARM_SCHEDULE_MQTT  0/false/off 시에만 SCHED_JSON MQTT 발행 생략(그 외는 기본 발행, mosquitto_pub 필요)
   CRONUSFARM_MQTT_HOST      mosquitto_pub -h (기본: 127.0.0.1)
   CRONUSFARM_MQTT_PORT      mosquitto_pub -p (기본: 1883)
 
@@ -19,6 +19,11 @@ GET  /health
 GET  /api/snapshot?device_id=...  JSON: tele/cmd 건수·마지막 tele 시각·settings_kv 목록
 GET  /api/schedule?device_id=...&channel=...  JSON: schedule_rule 목록
 PUT  /api/schedule?device_id=...&channel=...  JSON: rules[] 에 rule_kind(window|cycle), window 시 on_min/off_min(분), cycle 시 on_sec/off_sec(초)
+GET  /api/channel/timeline?device_id=...&channel=...&hours=24  JSON: tele_channel_fact 시계열(그래프). anchor_ts_ms=창 시작(ms), points는 창 시작·끝 보간 포함
+POST /api/channel/backfill  JSON: { device_id, channel|channel_key, hours? } tele_sample→tele_channel_fact 누락 행 보강
+GET  /api/channel/status?device_id=...  JSON: 채널별 최신 state·auto_mode(마지막 tele 적재)
+GET  /api/audit_log?device_id=...&limit=100&channel=&since_ms=0  JSON: manual_switch_event 감사 로그(수동·스케줄 저장·자동 ON/OFF)
+POST /ingest/manual_event  JSON: UI 수동 조작 로그 → manual_switch_event (source: ui|system|…)
 OPTIONS  CORS 프리플라이트 (브라우저에서 dashboard→브리지 fetch용)
 """
 from __future__ import annotations
@@ -89,19 +94,20 @@ def _publish_schedule_mqtt(
     device_id: str,
     channel_key: str,
     rules: list[dict[str, object]],
-) -> None:
-    """Pi에 mosquitto_pub 있을 때만 동작. 펌웨어는 SCHED_JSON 파싱을 추후 구현."""
+) -> tuple[str, int]:
+    """PUT /api/schedule 직후 Arduino cmd 토픽으로 SCHED_JSON 발행(기본 on). 반환: (상태, sch_ver)."""
+    sch_ver = int(time.time())
     flag = os.environ.get("CRONUSFARM_SCHEDULE_MQTT", "").strip().lower()
-    if flag not in ("1", "true", "yes", "on"):
-        return
+    if flag in ("0", "false", "no", "off"):
+        return ("skipped_env", sch_ver)
     exe = shutil.which("mosquitto_pub")
     if not exe:
-        return
+        return ("no_mosquitto_pub", sch_ver)
     host = os.environ.get("CRONUSFARM_MQTT_HOST", "127.0.0.1").strip() or "127.0.0.1"
     port = os.environ.get("CRONUSFARM_MQTT_PORT", "1883").strip() or "1883"
     topic = f"cronusfarm/{device_id}/cmd"
     envelope = {
-        "sch_ver": int(time.time()),
+        "sch_ver": sch_ver,
         "channel": channel_key,
         "rules": rules,
     }
@@ -115,13 +121,15 @@ def _publish_schedule_mqtt(
             capture_output=True,
         )
     except (OSError, subprocess.TimeoutExpired):
-        pass
+        return ("publish_error", sch_ver)
+    return ("published", sch_ver)
 
 
 ALL_CHANNELS = [
     "led_a1",
     "led_a2",
     "led_b1",
+    "led_b2",
     "pump_a1",
     "pump_a2",
     "pump_b1",
@@ -135,6 +143,60 @@ ALL_CHANNELS = [
     "pump_d1",
     "pump_d2",
 ]
+
+_MANUAL_SWITCH_DDL = """
+CREATE TABLE IF NOT EXISTS manual_switch_event (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL,
+  ts_ms INTEGER NOT NULL,
+  channel_key TEXT NOT NULL,
+  source TEXT,
+  prev_auto INTEGER,
+  new_auto INTEGER,
+  prev_state INTEGER,
+  new_state INTEGER,
+  meta_json TEXT,
+  FOREIGN KEY (device_id) REFERENCES device(device_id)
+);
+CREATE INDEX IF NOT EXISTS idx_manual_dev_ts ON manual_switch_event(device_id, ts_ms DESC);
+"""
+
+
+def _ensure_manual_switch_event_table(conn: sqlite3.Connection) -> None:
+    conn.executescript(_MANUAL_SWITCH_DDL)
+
+
+def _insert_manual_switch_event(
+    conn: sqlite3.Connection,
+    *,
+    device_id: str,
+    channel_key: str,
+    source: str,
+    ts_ms: int,
+    prev_auto: int,
+    new_auto: int,
+    prev_state: int,
+    new_state: int,
+    meta: dict[str, object],
+) -> None:
+    _ensure_manual_switch_event_table(conn)
+    _ensure_device(conn, device_id)
+    conn.execute(
+        """INSERT INTO manual_switch_event
+        (device_id, ts_ms, channel_key, source, prev_auto, new_auto, prev_state, new_state, meta_json)
+        VALUES (?,?,?,?,?,?,?,?,?)""",
+        (
+            device_id,
+            ts_ms,
+            channel_key,
+            source,
+            prev_auto,
+            new_auto,
+            prev_state,
+            new_state,
+            json.dumps(meta, ensure_ascii=False),
+        ),
+    )
 
 
 def _parse_kv(part: str) -> dict[str, str]:
@@ -151,6 +213,68 @@ def _ensure_device(conn: sqlite3.Connection, device_id: str) -> None:
         "INSERT OR IGNORE INTO device (device_id, label) VALUES (?, ?)",
         (device_id, device_id),
     )
+
+
+def backfill_tele_channel_from_samples(
+    conn: sqlite3.Connection,
+    *,
+    device_id: str,
+    channel_key: str,
+    cutoff_ms: int,
+) -> int:
+    """tele_sample raw를 다시 파싱해 tele_channel_fact에 없는 시각만 삽입."""
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT ts_ms, raw FROM tele_sample
+        WHERE device_id=? AND ts_ms>=?
+        ORDER BY ts_ms ASC
+        LIMIT 12000""",
+        (device_id, cutoff_ms),
+    )
+    inserted = 0
+    for ts_ms, raw in cur.fetchall():
+        if not raw:
+            continue
+        kv_s, kv_a, kv_t, _gu = parse_tele_sections(str(raw))
+        if (
+            channel_key not in kv_s
+            and channel_key not in kv_a
+            and channel_key not in kv_t
+        ):
+            continue
+        st = kv_s.get(channel_key)
+        au = kv_a.get(channel_key)
+        state_i = int(st) if st in ("0", "1") else None
+        auto_i = int(au) if au in ("0", "1") else None
+        on_sec = off_sec = None
+        tv = kv_t.get(channel_key)
+        if tv and "/" in str(tv):
+            a, _, b = str(tv).partition("/")
+            if a.isdigit() and b.isdigit():
+                on_sec, off_sec = int(a), int(b)
+        if (
+            state_i is None
+            and auto_i is None
+            and (on_sec is None or off_sec is None)
+        ):
+            continue
+        tsm = int(ts_ms)
+        cur.execute(
+            """SELECT 1 FROM tele_channel_fact
+            WHERE device_id=? AND channel_key=? AND ts_ms=?
+            LIMIT 1""",
+            (device_id, channel_key, tsm),
+        )
+        if cur.fetchone():
+            continue
+        cur.execute(
+            """INSERT INTO tele_channel_fact
+            (device_id, ts_ms, channel_key, state, auto_mode, on_sec, off_sec)
+            VALUES (?,?,?,?,?,?,?)""",
+            (device_id, tsm, channel_key, state_i, auto_i, on_sec, off_sec),
+        )
+        inserted += 1
+    return inserted
 
 
 def parse_tele_sections(raw: str) -> tuple[dict[str, str], dict[str, str], dict[str, str], list[tuple[str, str, int | None]]]:
@@ -191,6 +315,9 @@ def parse_tele_sections(raw: str) -> tuple[dict[str, str], dict[str, str], dict[
 
 
 def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock) -> type[BaseHTTPRequestHandler]:
+    # tele S: 구간에서 state 전이 추적(자동 모드일 때만 감사 로그)
+    last_tele_ch: dict[tuple[str, str], tuple[int | None, int]] = {}
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt: str, *args: object) -> None:
             return
@@ -278,6 +405,199 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                     "rules": rules,
                     "rule_count": len(rules),
                 }
+                raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+                self._cors_headers()
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+                return
+            if path == "/api/audit_log":
+                qs = parse_qs(parsed.query or "")
+                device_id = (qs.get("device_id") or [""])[0].strip()
+                if not device_id:
+                    self.send_response(400)
+                    self._cors_headers()
+                    self.end_headers()
+                    self.wfile.write(b"device_id required")
+                    return
+                try:
+                    limit = int((qs.get("limit") or ["80"])[0] or 80)
+                except ValueError:
+                    limit = 80
+                limit = max(1, min(500, limit))
+                ch_f = (qs.get("channel") or [""])[0].strip()
+                try:
+                    since_ms = int((qs.get("since_ms") or ["0"])[0] or 0)
+                except ValueError:
+                    since_ms = 0
+                with lock:
+                    _ensure_manual_switch_event_table(conn)
+                    cur = conn.cursor()
+                    if ch_f:
+                        cur.execute(
+                            """SELECT id, ts_ms, channel_key, source, prev_auto, new_auto,
+                            prev_state, new_state, meta_json
+                            FROM manual_switch_event
+                            WHERE device_id=? AND channel_key=? AND ts_ms >= ?
+                            ORDER BY ts_ms DESC LIMIT ?""",
+                            (device_id, ch_f, since_ms, limit),
+                        )
+                    else:
+                        cur.execute(
+                            """SELECT id, ts_ms, channel_key, source, prev_auto, new_auto,
+                            prev_state, new_state, meta_json
+                            FROM manual_switch_event
+                            WHERE device_id=? AND ts_ms >= ?
+                            ORDER BY ts_ms DESC LIMIT ?""",
+                            (device_id, since_ms, limit),
+                        )
+                    rows_out: list[dict[str, object]] = []
+                    for r in cur.fetchall():
+                        meta_obj: object = r[8]
+                        try:
+                            if isinstance(r[8], str) and r[8]:
+                                meta_obj = json.loads(r[8])
+                        except json.JSONDecodeError:
+                            meta_obj = r[8]
+                        rows_out.append(
+                            {
+                                "id": int(r[0]),
+                                "ts_ms": int(r[1]),
+                                "channel_key": r[2],
+                                "source": r[3],
+                                "prev_auto": r[4],
+                                "new_auto": r[5],
+                                "prev_state": r[6],
+                                "new_state": r[7],
+                                "meta": meta_obj,
+                            }
+                        )
+                body = {"device_id": device_id, "limit": limit, "rows": rows_out}
+                raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+                self._cors_headers()
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+                return
+            if path == "/api/channel/timeline":
+                qs = parse_qs(parsed.query or "")
+                device_id = (qs.get("device_id") or [""])[0].strip()
+                channel = (qs.get("channel") or [""])[0].strip()
+                hours = int((qs.get("hours") or ["24"])[0] or 24)
+                if not device_id or not channel:
+                    self.send_response(400)
+                    self._cors_headers()
+                    self.end_headers()
+                    self.wfile.write(b"device_id and channel required")
+                    return
+                if hours < 1 or hours > 168:
+                    hours = 24
+                now_ms = int(time.time() * 1000)
+                cutoff = now_ms - hours * 3600 * 1000
+                anchor_ts_ms = cutoff
+                with lock:
+                    cur = conn.cursor()
+                    cur.execute(
+                        """SELECT ts_ms, state, auto_mode
+                        FROM tele_channel_fact
+                        WHERE device_id=? AND channel_key=? AND ts_ms >= ?
+                        ORDER BY ts_ms ASC
+                        LIMIT 4000""",
+                        (device_id, channel, cutoff),
+                    )
+                    points: list[dict[str, object]] = [
+                        {
+                            "ts_ms": int(r[0]),
+                            "state": r[1],
+                            "auto_mode": r[2],
+                        }
+                        for r in cur.fetchall()
+                    ]
+                    cur.execute(
+                        """SELECT ts_ms, state, auto_mode
+                        FROM tele_channel_fact
+                        WHERE device_id=? AND channel_key=? AND ts_ms < ?
+                        ORDER BY ts_ms DESC
+                        LIMIT 1""",
+                        (device_id, channel, cutoff),
+                    )
+                    pre = cur.fetchone()
+                    if pre is not None:
+                        points.insert(
+                            0,
+                            {
+                                "ts_ms": anchor_ts_ms,
+                                "state": pre[1],
+                                "auto_mode": pre[2],
+                            },
+                        )
+                    elif points:
+                        points.insert(
+                            0,
+                            {
+                                "ts_ms": anchor_ts_ms,
+                                "state": points[0]["state"],
+                                "auto_mode": points[0].get("auto_mode"),
+                            },
+                        )
+                    if points:
+                        last = points[-1]
+                        last_ts = int(last["ts_ms"])
+                        if last_ts < now_ms:
+                            points.append(
+                                {
+                                    "ts_ms": now_ms,
+                                    "state": last["state"],
+                                    "auto_mode": last.get("auto_mode"),
+                                }
+                            )
+                body = {
+                    "device_id": device_id,
+                    "channel_key": channel,
+                    "hours": hours,
+                    "anchor_ts_ms": anchor_ts_ms,
+                    "window_end_ms": now_ms,
+                    "points": points,
+                }
+                raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+                self._cors_headers()
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+                return
+            if path == "/api/channel/status":
+                qs = parse_qs(parsed.query or "")
+                device_id = (qs.get("device_id") or ["cronusfarm-01"])[0].strip() or "cronusfarm-01"
+                with lock:
+                    cur = conn.cursor()
+                    cur.execute(
+                        """
+                        SELECT t.channel_key, t.state, t.auto_mode, t.ts_ms
+                        FROM tele_channel_fact t
+                        INNER JOIN (
+                          SELECT channel_key, MAX(ts_ms) AS mx
+                          FROM tele_channel_fact
+                          WHERE device_id=?
+                          GROUP BY channel_key
+                        ) u ON t.channel_key = u.channel_key AND t.ts_ms = u.mx
+                        WHERE t.device_id=?
+                        """,
+                        (device_id, device_id),
+                    )
+                    chans = {}
+                    for r in cur.fetchall():
+                        chans[str(r[0])] = {
+                            "state": r[1],
+                            "auto_mode": r[2],
+                            "ts_ms": int(r[3]) if r[3] is not None else None,
+                        }
+                body = {"device_id": device_id, "channels": chans}
                 raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
                 self.send_response(200)
                 self._cors_headers()
@@ -447,12 +767,36 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                                 ),
                             )
                     conn.commit()
-                _publish_schedule_mqtt(
+                mqtt_st, sch_ver = _publish_schedule_mqtt(
                     device_id=device_id,
                     channel_key=channel,
                     rules=mqtt_rules,
                 )
-                out = {"ok": True, "saved": len(mqtt_rules)}
+                with lock:
+                    _insert_manual_switch_event(
+                        conn,
+                        device_id=device_id,
+                        channel_key=channel,
+                        source="schedule",
+                        ts_ms=int(time.time() * 1000),
+                        prev_auto=-1,
+                        new_auto=-1,
+                        prev_state=-1,
+                        new_state=-1,
+                        meta={
+                            "action": "schedule_save",
+                            "saved": len(mqtt_rules),
+                            "sch_ver": sch_ver,
+                            "mqtt": mqtt_st,
+                        },
+                    )
+                    conn.commit()
+                out = {
+                    "ok": True,
+                    "saved": len(mqtt_rules),
+                    "sch_ver": sch_ver,
+                    "mqtt": mqtt_st,
+                }
                 raw = json.dumps(out, ensure_ascii=False).encode("utf-8")
                 self.send_response(200)
                 self._cors_headers()
@@ -476,6 +820,52 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
         def do_POST(self) -> None:
             path = urlparse(self.path).path
             body = self._json_body()
+            if path == "/api/channel/backfill":
+                try:
+                    device_id = str(body.get("device_id") or "cronusfarm-01").strip()
+                    ch = str(
+                        body.get("channel_key") or body.get("channel") or ""
+                    ).strip()
+                    if not ch:
+                        raise ValueError("channel or channel_key required")
+                    hours = int(body.get("hours") or 72)
+                    if hours < 1 or hours > 168:
+                        hours = 72
+                    cutoff = int(time.time() * 1000) - hours * 3600 * 1000
+                    with lock:
+                        _ensure_device(conn, device_id)
+                        n_ins = backfill_tele_channel_from_samples(
+                            conn,
+                            device_id=device_id,
+                            channel_key=ch,
+                            cutoff_ms=cutoff,
+                        )
+                        conn.commit()
+                    out = {
+                        "ok": True,
+                        "device_id": device_id,
+                        "channel_key": ch,
+                        "hours": hours,
+                        "inserted": n_ins,
+                    }
+                    raw = json.dumps(out, ensure_ascii=False).encode("utf-8")
+                    self.send_response(200)
+                    self._cors_headers()
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Length", str(len(raw)))
+                    self.end_headers()
+                    self.wfile.write(raw)
+                except Exception as e:
+                    err = json.dumps(
+                        {"ok": False, "error": str(e)}, ensure_ascii=False
+                    ).encode("utf-8")
+                    self.send_response(400)
+                    self._cors_headers()
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Length", str(len(err)))
+                    self.end_headers()
+                    self.wfile.write(err)
+                return
             try:
                 with lock:
                     if path == "/ingest/tele":
@@ -486,6 +876,8 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                         self._post_status(conn, body)
                     elif path == "/settings/kv":
                         self._post_kv(conn, body)
+                    elif path == "/ingest/manual_event":
+                        self._post_manual_event(conn, body)
                     else:
                         self.send_error(404)
                         return
@@ -523,12 +915,46 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                     a, _, b = str(tv).partition("/")
                     if a.isdigit() and b.isdigit():
                         on_sec, off_sec = int(a), int(b)
+                key = (device_id, ch)
+                prev = last_tele_ch.get(key)
+                prev_st = prev[0] if prev else None
+                prev_au = prev[1] if prev else None
+                eff_au = auto_i if auto_i is not None else prev_au
+                if eff_au is None:
+                    eff_au = 0
+                if (
+                    state_i is not None
+                    and prev_st is not None
+                    and state_i != prev_st
+                    and int(eff_au) == 1
+                ):
+                    _insert_manual_switch_event(
+                        c,
+                        device_id=device_id,
+                        channel_key=ch,
+                        source="tele_auto",
+                        ts_ms=ts_ms,
+                        prev_auto=-1,
+                        new_auto=-1,
+                        prev_state=int(prev_st),
+                        new_state=int(state_i),
+                        meta={"action": "output_change_auto"},
+                    )
                 c.execute(
                     """INSERT INTO tele_channel_fact
                     (device_id, ts_ms, channel_key, state, auto_mode, on_sec, off_sec)
                     VALUES (?,?,?,?,?,?,?)""",
                     (device_id, ts_ms, ch, state_i, auto_i, on_sec, off_sec),
                 )
+                n_st = state_i if state_i is not None else prev_st
+                n_au = auto_i if auto_i is not None else prev_au
+                if n_au is None:
+                    n_au = 0
+                if n_st is not None:
+                    last_tele_ch[key] = (int(n_st), int(n_au))
+                elif prev is not None:
+                    pst = prev_st if prev_st is not None else 0
+                    last_tele_ch[key] = (int(pst), int(n_au))
             for ch, code, rem in guards:
                 c.execute(
                     """INSERT INTO pump_guard_event
@@ -558,6 +984,91 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                 "INSERT INTO mqtt_status_log (device_id, ts_ms, topic, payload) VALUES (?,?,?,?)",
                 (device_id, ts_ms, topic, payload),
             )
+
+        def _post_manual_event(self, c: sqlite3.Connection, body: dict) -> None:
+            """UI·시스템 등에서 수동·자동 전환·홀드 분 등 메타를 남김."""
+            device_id = str(body.get("device_id") or "cronusfarm-01").strip()
+            channel_key = str(
+                body.get("channel_key") or body.get("channel") or ""
+            ).strip()
+            if not channel_key:
+                raise ValueError("channel_key required")
+            ts_ms = int(body.get("ts_ms") or (time.time() * 1000))
+            action = str(body.get("action") or "ui")
+            prev_auto = body.get("prev_auto")
+            new_auto = body.get("new_auto")
+            prev_state = body.get("prev_state")
+            new_state = body.get("new_state")
+            pa = int(prev_auto) if prev_auto is not None else -1
+            na = int(new_auto) if new_auto is not None else -1
+            ps = int(prev_state) if prev_state is not None else -1
+            ns = int(new_state) if new_state is not None else -1
+            if ns < 0 and action == "set_output":
+                onv = body.get("on")
+                if onv in (True, 1, "1"):
+                    ns = 1
+                elif onv in (False, 0, "0"):
+                    ns = 0
+            src = str(body.get("source") or "ui").strip()[:24] or "ui"
+            if src not in ("ui", "schedule", "tele_auto", "system", "nr"):
+                src = "ui"
+            meta: dict[str, object] = {
+                "action": action,
+                "hold_minutes": body.get("hold_minutes"),
+                "mqtt_payload": body.get("mqtt_payload"),
+            }
+            _insert_manual_switch_event(
+                c,
+                device_id=device_id,
+                channel_key=channel_key,
+                source=src,
+                ts_ms=ts_ms,
+                prev_auto=pa,
+                new_auto=na,
+                prev_state=ps,
+                new_state=ns,
+                meta=meta,
+            )
+            if action not in ("set_output", "set_auto", "set_manual", "revert_auto"):
+                return
+            cur2 = c.cursor()
+            cur2.execute(
+                """SELECT state, auto_mode FROM tele_channel_fact
+                   WHERE device_id=? AND channel_key=? ORDER BY ts_ms DESC LIMIT 1""",
+                (device_id, channel_key),
+            )
+            row = cur2.fetchone()
+            cur_st = int(row[0]) if row and row[0] is not None else None
+            cur_au = int(row[1]) if row and row[1] is not None else None
+            new_st = cur_st
+            new_au = 0 if cur_au is None else int(cur_au)
+            if action == "set_output" and ns in (0, 1):
+                new_st = ns
+                new_au = 0
+            elif action == "set_auto":
+                new_au = 1
+            elif action == "set_manual":
+                new_au = 0
+            elif action == "revert_auto":
+                new_au = 1
+            if new_st is None and ps >= 0:
+                new_st = ps
+            if new_st is not None:
+                c.execute(
+                    """INSERT INTO tele_channel_fact
+                    (device_id, ts_ms, channel_key, state, auto_mode, on_sec, off_sec)
+                    VALUES (?,?,?,?,?,?,?)""",
+                    (
+                        device_id,
+                        ts_ms,
+                        channel_key,
+                        int(new_st),
+                        int(new_au),
+                        None,
+                        None,
+                    ),
+                )
+                last_tele_ch[(device_id, channel_key)] = (int(new_st), int(new_au))
 
         def _post_kv(self, c: sqlite3.Connection, body: dict) -> None:
             device_id = str(body.get("device_id") or "cronusfarm-01").strip()
@@ -601,6 +1112,9 @@ def main() -> None:
     port = int(os.environ.get("CRONUSFARM_BRIDGE_PORT", "18766"))
     conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.execute("PRAGMA foreign_keys = ON")
+    _ensure_manual_switch_event_table(conn)
+    _ensure_schedule_rule_table(conn)
+    conn.commit()
     lk = threading.Lock()
     Handler = handle_bridge(conn, db_path, lk)
 

@@ -49,7 +49,7 @@ Serial(USB)로 Node-RED를 붙이면 `/dev/ttyACM0` 점유로 업로드가 막�
 #### Node-RED 대시보드(추천)
 - UI 개발 기본 경로는 **`python scripts/merge_nodered_deploy.py --use-split`** 뒤 **`.\scripts\run-nodered-local-ui.ps1`** → 편집기에서 **`nodered/merged-deploy.json`** Import·Deploy(자세히 `docs/nodered_dashboard_workflow.md`).
 - 단일 대시보드만 빠르게 볼 때는 `nodered/flows_cronusfarm_dashboard.json` 를 Import 해도 됩니다.
-- 개발·배포 순서도는 **`nodered/flows_cronusfarm_devflow_flow.json`** 플로우(에디터 탭 `CronusFarm 개발환경`)의 `ui_template`이 대시보드 탭 **`CronusFarm 개발환경`** 에 그립니다. `deploy-cronusfarm-pi.ps1` 병합에 포함됩니다(맥에서 탭이 없으면 세 JSON 전체 deploy 또는 Import).
+- 개발·배포 순서도는 **`nodered/flows_cronusfarm_devflow_flow.json`** 플로우(에디터 탭 `CronusFarm 개발환경`)의 `ui_template`이 **Dashboard 2** 탭 **`CronusFarm 개발환경`** 에 그립니다. URL은 **`http://<호스트>:1880/nrdb2`** (`ui-base` 경로). **Dashboard 1** 모니터/설정은 **`/ui`** (`settings.js`의 `ui: { path: 'ui' }`). `/nrdb2`가 안 열리면 Pi `~/.node-red`에 **`@flowfuse/node-red-dashboard`** 가 없는 경우가 많습니다 — `deploy-cronusfarm-pi.ps1` 가 `scripts/pi-nodered-install-dashboard2.sh` 로 자동 설치를 시도합니다.
 - 포함 기능
   - Pi 상태: 부팅(uptime), WiFi SSID, IP, Node-RED/Mosquitto 서비스 상태
   - Arduino 상태: status/tele 수신 시각 기반 연결 상태(LED), tele(raw) 표시

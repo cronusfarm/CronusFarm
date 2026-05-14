@@ -15,6 +15,7 @@
   - 상태 발행:   cronusfarm/cronusfarm-01/tele
   - 온라인 발행: cronusfarm/cronusfarm-01/status  (online/offline)
   - Pi SSID 동기: MQTT_TOPIC_PI_WIFI_SSID — `SSID` 또는 `SSID 비밀번호`(첫 공백 기준, 목록 외 등록)
+  - Pi→R4 RTC 동기: cmd `rtc_local=YYYYMMDDHHmmss` (Pi `date` 로컬 시각 14자리, scripts/pi-mqtt-publish-rtc-to-r4.sh)
 
   페이로드(간단/라이브러리 최소화)
   - cmd:  아래 2가지 형식을 모두 지원
@@ -22,11 +23,12 @@
     2) key=value 토큰(공백 구분): "auto=1 b1=0 b2=1 led=1 on=30 off=90"
   - tele: "S:... | A:... | T:... | W:... | G:..." (채널·WiFi·펌프 가드 — docs/cronusfarm_settings_schema.md)
 
-  핀(UNO R4 WiFi 메인 — 패널은 별도 UNO R3 I2C 슬레이브)
-  - I2C 마스터: SDA A4, SCL A5 → R3 패널(슬레이브 0x38)
+  핀(UNO R4 WiFi 메인 — `docs/cronusfarm_hardware_pins.md` 동기)
+  - 패널 링크: I2C SDA=A4, SCL=A5 → R3 슬레이브 0x38 (GND 공통). 패널 UART 미사용.
   - A Bed: LED_A1 D2, LED_A2 D3, PUMP_A1 D4, PUMP_A2 D5
-  - B Bed: LED_B1 D6, PUMP_B1 D7, PUMP_B2 D8
-  - D9~D13: 예비 / SPI 확장 비움 권장
+  - B Bed: LED_B1 D6, PUMP_B1 D7, PUMP_B2 D8, LED_B2(여분) D13
+  - FAN: FAN_A1 D9, FAN_A2 D10, FAN_B1 D11, FAN_B2 D12
+  - Pump C/D: PUMP_C1 A0, PUMP_C2 A1, PUMP_D1 A2, PUMP_D2 A3
 
   내장 LED 매트릭스(12x8)
   - WiFi만 연결: 고정 비트맵(사용자 지정 W 형태)
@@ -73,6 +75,7 @@ static const int FAN_A1 = 9;
 static const int FAN_A2 = 10;
 static const int FAN_B1 = 11;
 static const int FAN_B2 = 12;
+static const int LED_B2 = 13;
 static const int PUMP_C1 = A0;
 static const int PUMP_C2 = A1;
 static const int PUMP_D1 = A2;
@@ -82,7 +85,11 @@ static const int PUMP_D2 = A3;
 static bool gPanelReady = false;
 static bool gLcdWelcomed = false;
 static uint32_t gLcdWelcomeAtMs = 0;
+// millis() 경계·언더플로로 isInWelcomeWindow만으로는 환영이 안 끝난 것처럼 보일 때 푸시가 Edit에 못 들어가는 것 방지
+static bool gLcdWelcomeBypass = false;
 static uint32_t gLastLcdRtcMs = 0;
+// 브라우즈·EDIT: 루프가 느릴 때 큐에 쌓인 엔코더를 한 번에 여러 번 적용하지 않도록
+static uint32_t gLastEncBrowseApplyMs = 0;
 // 패널 브라우즈 화면 갱신(엔코더·적용 직후 + 주기적 STATE 반영)
 static bool gPanelBrowseDirty = true;
 static uint32_t gLastBrowseDrawMs = 0;
@@ -90,21 +97,33 @@ static uint32_t gLastBrowseDrawMs = 0;
 // 실제로 브라우즈 화면(4줄)이 한 번이라도 그려졌는지 추적합니다.
 static bool gPanelBrowseShown = false;
 static const uint32_t PANEL_WELCOME_MS = 5000;
+// I2C 링크 직후 스플래시(CronusFarm/WiFi/MQTT)가 같은 루프에서 대기 화면에 덮이지 않게 최소 표시
+static const uint32_t PANEL_LINK_SPLASH_MIN_MS = 5000;
+// WiFi 미연결 대기 화면(Waiting link) 최소 유지 — 다음 화면(환영) 전에 눈으로 확인 가능
+static const uint32_t PANEL_LINK_WAIT_MIN_MS = 5000;
+static uint32_t gPanelLinkSplashUntilMs = 0;
+static uint32_t gPanelWaitMinUntilMs = 0;
 static const uint32_t PANEL_BROWSE_REFRESH_MS = 800;
 static bool gPanelUiDirty = true;          // EDIT 화면용: dirty일 때만 4줄 강제 갱신
 static uint32_t gLastEditDrawMs = 0;
 static const uint32_t PANEL_EDIT_REFRESH_MS = 400;
-static bool gUiStartFromWelcomePending = false; // 환영 화면에서 입력 시 CH1부터 시작(1회)
-
 // 패널 LCD 라인 캐시(중복 전송 감소)
 static bool gPanelLineInit[4] = { false, false, false, false };
 static char gPanelLineCache[4][21];
 
-// 패널 링크: R4↔R3 UART(권장: I2C 풀업/레벨 문제 회피 + 업로드 충돌 회피)
-// - R4: Serial1 (핀 0=RX, 1=TX)
-// - R3: SoftwareSerial (예: RX=10, TX=11) — HW Serial(0/1)은 USB 업로드 전용 유지
-#define CF_PANEL_LINK_UART 1
-#define CF_PANEL_LINK_I2C 0
+// 패널 이벤트(엔코더/클릭) 수신 진단
+static uint32_t gPanelLastEvtMs = 0;
+static uint32_t gPanelEvtCount = 0;
+
+// 패널 링크(권장: I2C 전용)
+// - 목적: R3 SoftwareSerial(UART) 반이중(RX/TX)로 인한 LCD 줄 깨짐/이벤트 유실을 구조적으로 제거
+// - 배선:
+//   * R4 SDA(A4) ↔ R3 SDA(A4)
+//   * R4 SCL(A5) ↔ R3 SCL(A5)
+//   * GND 공통(필수)
+// - R3는 I2C 슬레이브(0x38)로 동작하며, LCD/엔코더 이벤트를 I2C로만 처리합니다.
+#define CF_PANEL_LINK_UART 0
+#define CF_PANEL_LINK_I2C 1
 
 #if CF_PANEL_LINK_I2C
 static uint32_t gLastPanelI2cPingMs = 0;
@@ -112,6 +131,7 @@ static uint32_t gLastPanelI2cPingMs = 0;
 static uint8_t gPanelI2cLastEndTxRc = 255;
 static int gPanelI2cLastReqGot = -1;
 static uint32_t gPanelI2cLastRxMs = 0;
+
 static bool panelI2cPing(uint32_t nowMs) {
   // 너무 자주 두드리면 버스가 지저분해질 수 있어 간격을 둡니다.
   if (gLastPanelI2cPingMs != 0 && (nowMs - gLastPanelI2cPingMs) < 300) {
@@ -131,15 +151,15 @@ static bool panelI2cPing(uint32_t nowMs) {
 // UART 관련 전송 제어
 #if CF_PANEL_LINK_UART
 // SoftwareSerial(R3) 안정성을 위해 보수적으로 낮춤
-static const uint32_t CF_PANEL_UART_BAUD = 19200;
+static const uint32_t CF_PANEL_UART_BAUD = 9600;
 #define CF_PANEL_UART Serial1
 static char gPanelRxLine[96];
 static uint8_t gPanelRxLen = 0;
 static uint32_t gPanelLastTxUs = 0;
-static uint32_t gPanelKeepaliveMs = 0;
 static void panelUartTxPace() {
   // UART 스트림이 섞여 라인 경계가 흔들리는 문제를 완화하기 위한 전송 간격 제한
-  const uint32_t minGapUs = 6000; // 6ms
+  // R3 SoftwareSerial RX가 줄 단위로 쉴 틈을 주려면 L, 명령 사이 간격을 넉넉히
+  const uint32_t minGapUs = 14000; // ~14ms (9600 + SS 여유)
   const uint32_t nowUs = (uint32_t)micros();
   if (gPanelLastTxUs != 0) {
     const uint32_t gap = nowUs - gPanelLastTxUs;
@@ -166,14 +186,15 @@ static void lcdBrowseDraw(uint32_t nowMs);
 enum UiMode : uint8_t { UI_BROWSE = 0, UI_EDIT = 1 };
 static UiMode gUiMode = UI_BROWSE;
 static uint8_t gUiCh = 0;
-static bool gUiPickOn = false;
-static bool gUiEditOrigOn = false;
+// EDIT SET: 0=OFF, 1=ON, 2=AUTO(chAuto·스케줄/펌웨어 자동 루프)
+static uint8_t gUiEditSet = 0;
+static uint8_t gUiEditOrigSet = 0;
 
 static uint32_t gBtnLastMs = 0;
 
 static void beepShort();
 static void beepLong();
-static void uiApplySelection(uint8_t ch, bool on);
+static void uiApplyEditSelection(uint8_t ch, uint8_t setVal);
 static void lcdRenderUi(uint32_t nowMs, bool wifiOk, bool mqttOk);
 static void encoderDelta(int8_t d);
 static void panelHandleClick(uint32_t nowMs);
@@ -195,27 +216,29 @@ enum Channel : uint8_t {
   CH_PUMP_C2 = 12,
   CH_PUMP_D1 = 13,
   CH_PUMP_D2 = 14,
-  CH_COUNT = 15
+  CH_LED_B2 = 15,
+  CH_COUNT = 16
 };
 
 // 다이얼로 UI를 순환할 채널 순서(항상 고정)
-// V0.7(15채널) 순서 고정
+// V0.7+(16채널) 브라우즈 순서 고정: CH1→CH16 한 칸씩만 이동(uiNextCh)
 static const uint8_t UI_CH_ORDER[CH_COUNT] = {
   CH_LED_A1,   // CH1
   CH_LED_A2,   // CH2
   CH_LED_B1,   // CH3
-  CH_PUMP_A1,  // CH4
-  CH_PUMP_A2,  // CH5
-  CH_PUMP_B1,  // CH6
-  CH_PUMP_B2,  // CH7
-  CH_FAN_A1,   // CH8
-  CH_FAN_A2,   // CH9
-  CH_FAN_B1,   // CH10
-  CH_FAN_B2,   // CH11
-  CH_PUMP_C1,  // CH12
-  CH_PUMP_C2,  // CH13
-  CH_PUMP_D1,  // CH14
-  CH_PUMP_D2,  // CH15
+  CH_LED_B2,   // CH4 (B 여분 LED, D13)
+  CH_PUMP_A1,  // CH5
+  CH_PUMP_A2,  // CH6
+  CH_PUMP_B1,  // CH7
+  CH_PUMP_B2,  // CH8
+  CH_FAN_A1,   // CH9
+  CH_FAN_A2,   // CH10
+  CH_FAN_B1,   // CH11
+  CH_FAN_B2,   // CH12
+  CH_PUMP_C1,  // CH13
+  CH_PUMP_C2,  // CH14
+  CH_PUMP_D1,  // CH15
+  CH_PUMP_D2,  // CH16
 };
 
 static int8_t uiOrderPos(uint8_t ch) {
@@ -234,8 +257,10 @@ static uint8_t uiNextCh(uint8_t cur, int8_t dir) {
   return UI_CH_ORDER[(uint8_t)pos];
 }
 
+// 환영 5초 구간 + 사용자가 환영을 끊은 뒤(gLcdWelcomeBypass)에는 시간 비교 무시
 static inline bool isInWelcomeWindow() {
-  return gLcdWelcomed && (int32_t)(millis() - gLcdWelcomeAtMs) < (int32_t)PANEL_WELCOME_MS;
+  return gLcdWelcomed && !gLcdWelcomeBypass &&
+         (uint32_t)(millis() - gLcdWelcomeAtMs) < (uint32_t)PANEL_WELCOME_MS;
 }
 
 static void forceStartFromCh1();
@@ -257,6 +282,7 @@ static const int CH_PIN[CH_COUNT] = {
   PUMP_C2,  // CH_PUMP_C2
   PUMP_D1,  // CH_PUMP_D1
   PUMP_D2,  // CH_PUMP_D2
+  LED_B2,   // CH_LED_B2
 };
 
 static const char* const CH_KEY[CH_COUNT] = {
@@ -275,6 +301,7 @@ static const char* const CH_KEY[CH_COUNT] = {
   "pump_c2",
   "pump_d1",
   "pump_d2",
+  "led_b2",
 };
 
 static const char* const CH_LABEL_KO[CH_COUNT] = {
@@ -282,16 +309,16 @@ static const char* const CH_LABEL_KO[CH_COUNT] = {
   "PUMP A1", "PUMP A2", "PUMP B1", "PUMP B2",
   "FAN A1",  "FAN A2",  "FAN B1",  "FAN B2",
   "PUMP C1", "PUMP C2", "PUMP D1", "PUMP D2",
+  "LED B2",
 };
 
-// 채널별 AUTO(1)/수동(0)
+// 채널별 AUTO(1)/수동(0) — 부팅 초기는 전부 수동·OFF(아래 chManual/chState·setup 후처리와 일치)
 static bool chAuto[CH_COUNT] = {
-  false, false, false, // LED A1/A2/B1
-  true, true,          // PUMP A1/A2
-  true, true,          // PUMP B1/B2
-  false, false, false, false, // FAN A1/A2/B1/B2
-  true, true,          // PUMP C1/C2
-  true, true           // PUMP D1/D2
+  false, false, false,
+  false, false, false, false,
+  false, false, false, false,
+  false, false, false, false,
+  false
 };
 
 static const char* chPinLabel(uint8_t ch) {
@@ -311,6 +338,7 @@ static const char* chPinLabel(uint8_t ch) {
     case CH_PUMP_C2: return "A1";
     case CH_PUMP_D1: return "A2";
     case CH_PUMP_D2: return "A3";
+    case CH_LED_B2: return "D13";
     default: return "?";
   }
 }
@@ -320,52 +348,255 @@ static bool chManual[CH_COUNT] = {
   false, false, false,
   false, false, false, false,
   false, false, false, false,
-  false, false, false, false
+  false, false, false, false,
+  false
 };
 // MQTT(cmd)와 패널(UI) 동시 제어 시, 패널에서 막 바꾼 상태가 즉시 덮어써져 OFF로 “튀는” 현상 방지용
 static uint32_t gUiLocalOverrideAtMs[CH_COUNT] = {
-  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+  0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 };
 static const uint32_t UI_LOCAL_OVERRIDE_HOLD_MS = 3000;
 static uint32_t chOnMs[CH_COUNT]  = {
-  0, 0, 0,                 // LED
+  0, 0, 0,                 // LED A1,A2,B1
   30000, 30000,            // PUMP A
   30000, 30000,            // PUMP B
   0, 0, 0, 0,              // FAN
   30000, 30000,            // PUMP C
-  30000, 30000             // PUMP D
+  30000, 30000,            // PUMP D
+  0                        // LED B2
 };
 static uint32_t chOffMs[CH_COUNT] = {
-  0, 0, 0,                 // LED
+  0, 0, 0,                 // LED A1,A2,B1
   90000, 90000,            // PUMP A
   90000, 90000,            // PUMP B
   0, 0, 0, 0,              // FAN
   90000, 90000,            // PUMP C
-  90000, 90000             // PUMP D
+  90000, 90000,            // PUMP D
+  0                        // LED B2
 };
 static uint32_t chPrevMs[CH_COUNT] = {
   0,0,0,
   0,0,0,0,
   0,0,0,0,
-  0,0,0,0
+  0,0,0,0,
+  0
 };
 static bool chState[CH_COUNT] = {
   false, false, false,
   false, false, false, false,
   false, false, false, false,
-  false, false, false, false
+  false, false, false, false,
+  false
 };
+
+// ---------- Pi 스케줄(SCHED_JSON) — SQLite 브리지가 MQTT cmd로 전달 ----------
+#ifndef CF_SCH_MAX_RULES
+#define CF_SCH_MAX_RULES 4
+#endif
+
+struct CfSchRule {
+  uint8_t kind;  // 0=window(on_min/off_min 분), 1=cycle(on_sec/off_sec)
+  uint8_t dow_mask;
+  uint16_t on_min;
+  uint16_t off_min;
+  uint32_t on_sec;
+  uint32_t off_sec;
+  uint8_t enabled;
+};
+
+static CfSchRule gSchRules[CH_COUNT][CF_SCH_MAX_RULES];
+static uint8_t gSchRuleCount[CH_COUNT];
+static uint32_t gSchVer[CH_COUNT];
+
+static int cfHexVal(int c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return -1;
+}
+
+static void cfUrlDecode(const char* in, char* out, size_t outsz) {
+  size_t j = 0;
+  if (outsz == 0) return;
+  for (size_t i = 0; in[i] && j + 1 < outsz; ) {
+    if (in[i] == '%' && cfHexVal((unsigned char)in[i + 1]) >= 0 &&
+        cfHexVal((unsigned char)in[i + 2]) >= 0) {
+      int a = cfHexVal((unsigned char)in[i + 1]);
+      int b = cfHexVal((unsigned char)in[i + 2]);
+      out[j++] = (char)((a << 4) | b);
+      i += 3;
+    } else if (in[i] == '+') {
+      out[j++] = ' ';
+      ++i;
+    } else {
+      out[j++] = in[i++];
+    }
+  }
+  out[j] = '\0';
+}
+
+static bool cfMinuteInWindow(uint16_t nowMin, uint16_t on, uint16_t off) {
+  if (on == off) return false;
+  if (on < off) return (nowMin >= on) && (nowMin < off);
+  return (nowMin >= on) || (nowMin < off);
+}
+
+static bool cfCycleWantOn(uint32_t ons, uint32_t offs, uint32_t secDay) {
+  uint32_t per = ons + offs;
+  if (per == 0) return false;
+  uint32_t ph = secDay % per;
+  return ph < ons;
+}
+
+static uint8_t cfRtcDowToUiMask(DayOfWeek d) {
+  switch (d) {
+    case DayOfWeek::SUNDAY: return 1;
+    case DayOfWeek::MONDAY: return 2;
+    case DayOfWeek::TUESDAY: return 4;
+    case DayOfWeek::WEDNESDAY: return 8;
+    case DayOfWeek::THURSDAY: return 16;
+    case DayOfWeek::FRIDAY: return 32;
+    default:
+    case DayOfWeek::SATURDAY: return 64;
+  }
+}
+
+static bool cfParseOneRule(const char* s, CfSchRule* out) {
+  memset(out, 0, sizeof(*out));
+  out->enabled = 1;
+  const bool isCyc = (strstr(s, "\"rule_kind\":\"cycle\"") != nullptr);
+  out->kind = isCyc ? (uint8_t)1 : (uint8_t)0;
+  const char* p = strstr(s, "\"dow_mask\":");
+  if (!p) return false;
+  unsigned long dm = strtoul(p + 11, nullptr, 10);
+  if (dm > 127) dm = 127;
+  out->dow_mask = (uint8_t)dm;
+  if (isCyc) {
+    p = strstr(s, "\"on_sec\":");
+    if (!p) return false;
+    out->on_sec = (uint32_t)strtoul(p + 9, nullptr, 10);
+    p = strstr(s, "\"off_sec\":");
+    if (!p) return false;
+    out->off_sec = (uint32_t)strtoul(p + 10, nullptr, 10);
+  } else {
+    p = strstr(s, "\"on_min\":");
+    if (!p) return false;
+    out->on_min = (uint16_t)strtoul(p + 9, nullptr, 10);
+    p = strstr(s, "\"off_min\":");
+    if (!p) return false;
+    out->off_min = (uint16_t)strtoul(p + 10, nullptr, 10);
+  }
+  p = strstr(s, "\"enabled\":");
+  if (p) {
+    unsigned long en = strtoul(p + 11, nullptr, 10);
+    out->enabled = en ? (uint8_t)1 : (uint8_t)0;
+  }
+  return true;
+}
+
+static void cfSchClear(uint8_t ch) {
+  if (ch >= CH_COUNT) return;
+  gSchRuleCount[ch] = 0;
+  memset(gSchRules[ch], 0, sizeof(gSchRules[ch]));
+}
+
+static bool cfSchWant(uint8_t ch) {
+  if (ch >= CH_COUNT || gSchRuleCount[ch] == 0) return false;
+  RTCTime t;
+  if (!RTC.getTime(t)) return false;
+  const uint8_t dowb = cfRtcDowToUiMask(t.getDayOfWeek());
+  const int nowMin = t.getHour() * 60 + t.getMinutes();
+  const uint32_t secDay =
+    (uint32_t)t.getHour() * 3600u + (uint32_t)t.getMinutes() * 60u + (uint32_t)t.getSeconds();
+  for (uint8_t ri = 0; ri < gSchRuleCount[ch]; ++ri) {
+    const CfSchRule& r = gSchRules[ch][ri];
+    if (!r.enabled) continue;
+    if ((r.dow_mask & dowb) == 0) continue;
+    if (r.kind == 0) {
+      if (cfMinuteInWindow((uint16_t)nowMin, r.on_min, r.off_min)) return true;
+    } else {
+      if (cfCycleWantOn(r.on_sec, r.off_sec, secDay)) return true;
+    }
+  }
+  return false;
+}
+
+static void cfApplySchedJson(const char* json) {
+  if (!json || !*json) return;
+  long ver = 0;
+  const char* pv = strstr(json, "\"sch_ver\":");
+  if (pv) ver = strtol(pv + 10, nullptr, 10);
+
+  char chName[20];
+  memset(chName, 0, sizeof(chName));
+  const char* pc = strstr(json, "\"channel\":\"");
+  if (!pc) return;
+  pc += 11;
+  const char* qc = strchr(pc, '"');
+  if (!qc || (size_t)(qc - pc) >= sizeof(chName)) return;
+  memcpy(chName, pc, (size_t)(qc - pc));
+
+  int chIdx = -1;
+  for (uint8_t i = 0; i < CH_COUNT; ++i) {
+    if (strcmp(chName, CH_KEY[i]) == 0) {
+      chIdx = (int)i;
+      break;
+    }
+  }
+  if (chIdx < 0) return;
+
+  const char* pr = strstr(json, "\"rules\":[");
+  if (!pr) return;
+  pr += 9;
+  while (*pr == ' ' || *pr == '\t' || *pr == '\n' || *pr == '\r') pr++;
+  if (*pr == ']') {
+    cfSchClear((uint8_t)chIdx);
+    gSchVer[(uint8_t)chIdx] = (uint32_t)ver;
+    Serial.print(F("SCHED clear "));
+    Serial.println(chName);
+    return;
+  }
+
+  static char ruleBuf[280];
+  uint8_t n = 0;
+  while (n < CF_SCH_MAX_RULES && *pr && *pr != ']') {
+    if (*pr == ',') pr++;
+    while (*pr == ' ' || *pr == '\t' || *pr == '\n' || *pr == '\r') pr++;
+    if (*pr == ']') break;
+    if (*pr != '{') {
+      pr++;
+      continue;
+    }
+    const char* end = strchr(pr, '}');
+    if (!end) break;
+    size_t len = (size_t)(end - pr) + 1;
+    if (len >= sizeof(ruleBuf)) len = sizeof(ruleBuf) - 1;
+    memcpy(ruleBuf, pr, len);
+    ruleBuf[len] = '\0';
+    CfSchRule rule;
+    if (cfParseOneRule(ruleBuf, &rule) && rule.enabled) {
+      gSchRules[(uint8_t)chIdx][n++] = rule;
+    }
+    pr = end + 1;
+  }
+  gSchRuleCount[(uint8_t)chIdx] = n;
+  gSchVer[(uint8_t)chIdx] = (uint32_t)ver;
+  if (n > 0) chAuto[(uint8_t)chIdx] = true;
+  Serial.print(F("SCHED ok "));
+  Serial.print(chName);
+  Serial.print(F(" n="));
+  Serial.println(n);
+}
 
 static void forceStartFromCh1() {
   // 환영 화면에서 다이얼/푸시 입력이 들어오면, 사용자가 현재 CH를 모르므로
   // 무조건 CH1부터 브라우즈 화면을 시작합니다.
   gUiMode = UI_BROWSE;
   gUiCh = UI_CH_ORDER[0];
-  gUiPickOn = (digitalRead((uint8_t)CH_PIN[gUiCh]) == HIGH);
   gPanelBrowseDirty = true;
   gLastBrowseDrawMs = 0;
   gPanelBrowseShown = false;
-  gUiStartFromWelcomePending = true;
+  gLcdWelcomeBypass = true;
 }
 
 // ---------- 패널 링크 (현장: R4↔R3 UART 권장) ----------
@@ -377,6 +608,7 @@ static void panelClear() {
   Wire.beginTransmission(PANEL_I2C_ADDR);
   Wire.write((uint8_t)PANEL_CMD_CLEAR);
   (void)Wire.endTransmission();
+  delayMicroseconds(1200);
 #elif CF_PANEL_LINK_UART
   panelUartTxPace();
   CF_PANEL_UART.println("C");
@@ -404,7 +636,12 @@ static void panelSetLine20(uint8_t row, const char line20[21]) {
     const char c = line20[i] ? line20[i] : ' ';
     Wire.write((uint8_t)c);
   }
-  (void)Wire.endTransmission();
+  // I2C NACK 등 실패 시 캐시를 갱신하지 않음 — 다음 루프에서 MODE 행 등 재전송
+  if (Wire.endTransmission() != 0) {
+    return;
+  }
+  // 연속 SET_LINE 시 슬레이브 처리·버스 여유(2행 MODE 등 중간 행 유실 완화)
+  delayMicroseconds(850);
 #elif CF_PANEL_LINK_UART
   panelUartTxPace();
   CF_PANEL_UART.print("L,");
@@ -417,6 +654,8 @@ static void panelSetLine20(uint8_t row, const char line20[21]) {
     CF_PANEL_UART.print(c);
   }
   CF_PANEL_UART.println();
+  // R3 SoftwareSerial이 한 줄 처리·버퍼 비우기 전에 다음 명령이 붙는 것을 줄임
+  delayMicroseconds(4000);
 #else
   // no-op
 #endif
@@ -496,34 +735,61 @@ static void publishTelemetry();
 static void panelPollEvents(uint32_t nowMs) {
 #if CF_PANEL_LINK_I2C
   // I2C 이벤트 처리 로직 (현재 사용 중)
-  // R3(slave) 큐에서 이벤트를 가져옵니다: [n][t0][p0]...
-  const uint8_t want = 1 + (2 * 7);
+  // R3(slave) 큐: [n][t0][p0]... (최대 14이벤트 — 엔코더 밀림 시 클릭 지연·유실 완화)
+  const uint8_t want = 1 + (2 * 14);
   const int got = Wire.requestFrom((int)PANEL_I2C_ADDR, (int)want);
   gPanelI2cLastReqGot = got;
-  if (got <= 0) {
-    return;
-  }
-  if (Wire.available() <= 0) {
+  if (got <= 0 || Wire.available() <= 0) {
+    // R3 리셋·버스 끊김: 응답이 잠깐이라도 없으면 링크 해제 → 재 ping·스플래시 경로
+    if (gPanelReady && gPanelI2cLastRxMs != 0 &&
+        (uint32_t)(nowMs - gPanelI2cLastRxMs) > 1500u) {
+      gPanelReady = false;
+      gPanelI2cLastRxMs = 0;
+      for (uint8_t r = 0; r < 4; r++) {
+        gPanelLineInit[r] = false;
+      }
+      gPanelBrowseShown = false;
+      gPanelBrowseDirty = true;
+    }
     return;
   }
   // 이벤트가 0개(n==0)여도, I2C 응답이 왔다는 것 자체로 패널 링크는 살아있다고 판단합니다.
   gPanelReady = true;
   gPanelI2cLastRxMs = nowMs;
   const uint8_t n = (uint8_t)Wire.read();
-  const uint8_t useN = (n > 7) ? 7 : n;
+  uint8_t useN = (n > 14) ? 14 : n;
+  // 슬레이브가 보낸 길이와 n 불일치 시 잘못 파싱되어 CH 2칸·클릭 무시처럼 보일 수 있음
+  if (got >= 1) {
+    const int pairBytes = got - 1;
+    if (pairBytes >= 0) {
+      const uint8_t maxByWire = (uint8_t)((unsigned)pairBytes / 2u);
+      if (useN > maxByWire) {
+        useN = maxByWire;
+      }
+    }
+  }
+  // 한 번에 CW/CCW 여러 개를 풀면 루프 1회에 채널이 연속 점프함 → 순 방향만 ±1스텝으로 합침
+  int32_t encNet = 0;
+  bool sawClick = false;
   for (uint8_t i = 0; i < useN; i++) {
     if (Wire.available() < 2) break;
     const uint8_t t = (uint8_t)Wire.read();
     const uint8_t p = (uint8_t)Wire.read();
     switch (t) {
       case PANEL_EVT_ENC_CW:
-        encoderDelta(+1);
+        gPanelLastEvtMs = nowMs;
+        gPanelEvtCount++;
+        encNet++;
         break;
       case PANEL_EVT_ENC_CCW:
-        encoderDelta(-1);
+        gPanelLastEvtMs = nowMs;
+        gPanelEvtCount++;
+        encNet--;
         break;
       case PANEL_EVT_CLICK:
-        panelHandleClick(nowMs);
+        gPanelLastEvtMs = nowMs;
+        gPanelEvtCount++;
+        sawClick = true;
         break;
       case PANEL_EVT_KILL:
         if (p) {
@@ -535,9 +801,28 @@ static void panelPollEvents(uint32_t nowMs) {
         break;
     }
   }
+  while (Wire.available() > 0) {
+    (void)Wire.read();
+  }
+  if (sawClick) {
+    encNet = 0;
+    panelHandleClick(nowMs);
+  }
+  // I2C만 BROWSE에서 엔코더를 넣었던 버그 → EDIT에서 다이얼이 무시되고 SET 행도 안 갱신됨
+  if (encNet != 0 && (gUiMode == UI_BROWSE || gUiMode == UI_EDIT)) {
+    const uint32_t encGapMs = 110u;
+    if (gLastEncBrowseApplyMs == 0u ||
+        (uint32_t)(nowMs - gLastEncBrowseApplyMs) >= encGapMs) {
+      gLastEncBrowseApplyMs = nowMs;
+      encoderDelta(encNet > 0 ? 1 : -1);
+    }
+  }
 #elif CF_PANEL_LINK_UART
-  while (CF_PANEL_UART.available() > 0) {
-    const char c = (char)CF_PANEL_UART.read();
+  {
+    int uartBudget = 0;
+    while (CF_PANEL_UART.available() > 0 && uartBudget < 96) {
+      uartBudget++;
+      const char c = (char)CF_PANEL_UART.read();
     if (c == '\r') continue;
     if (c == '\n') {
       if (gPanelRxLen == 0) continue;
@@ -551,12 +836,18 @@ static void panelPollEvents(uint32_t nowMs) {
       if (sscanf(gPanelRxLine, "E,%d,%d", &t, &p) == 2) {
         switch ((uint8_t)t) {
           case PANEL_EVT_ENC_CW:
+            gPanelLastEvtMs = nowMs;
+            gPanelEvtCount++;
             encoderDelta(+1);
             break;
           case PANEL_EVT_ENC_CCW:
+            gPanelLastEvtMs = nowMs;
+            gPanelEvtCount++;
             encoderDelta(-1);
             break;
           case PANEL_EVT_CLICK:
+            gPanelLastEvtMs = nowMs;
+            gPanelEvtCount++;
             panelHandleClick(nowMs);
             break;
           case PANEL_EVT_KILL:
@@ -574,6 +865,7 @@ static void panelPollEvents(uint32_t nowMs) {
     if (gPanelRxLen < (uint8_t)(sizeof(gPanelRxLine) - 1)) {
       gPanelRxLine[gPanelRxLen++] = c;
     }
+  }
   }
 #else
   // no-op
@@ -593,12 +885,59 @@ static const char* dowShortEn(DayOfWeek d) {
   }
 }
 
+static DayOfWeek dowFromYmd(int y, int m, int d) {
+  // Sakamoto algorithm: 0=Sun..6=Sat
+  static const int t[] = {0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4};
+  int yy = y;
+  if (m < 3) yy -= 1;
+  int w = (yy + yy / 4 - yy / 100 + yy / 400 + t[m - 1] + d) % 7;
+  switch (w) {
+    case 0: return DayOfWeek::SUNDAY;
+    case 1: return DayOfWeek::MONDAY;
+    case 2: return DayOfWeek::TUESDAY;
+    case 3: return DayOfWeek::WEDNESDAY;
+    case 4: return DayOfWeek::THURSDAY;
+    case 5: return DayOfWeek::FRIDAY;
+    default: return DayOfWeek::SATURDAY;
+  }
+}
+
+static void rtcEnsureValidOnce() {
+  // RTC가 유효하지 않을 때 1회 기본값(현장 합의: 2025-12-22 09:00)
+  static bool sDid = false;
+  if (sDid) return;
+  sDid = true;
+
+  RTCTime t;
+  if (RTC.getTime(t)) {
+    const int y = t.getYear();
+    if (y >= 2024 && y <= 2099) {
+      return;
+    }
+  }
+
+  DayOfWeek dow = dowFromYmd(2025, 12, 22);
+  struct tm tm1;
+  memset(&tm1, 0, sizeof(tm1));
+  tm1.tm_year = 2025 - 1900;
+  tm1.tm_mon = 12 - 1;
+  tm1.tm_mday = 22;
+  tm1.tm_hour = 9;
+  tm1.tm_min = 0;
+  tm1.tm_sec = 0;
+  tm1.tm_wday = (int)dow;
+  RTCTime ct(tm1);
+  RTC.setTime(ct);
+}
+
 static void lcdRefreshRtcDateTime() {
   if (!gPanelReady) {
     return;
   }
   RTCTime t;
   if (!RTC.getTime(t)) {
+    panelPrintLine(2, "RTC -- set time");
+    panelPrintLine(3, "--:--:--");
     return;
   }
   char lineDate[21];
@@ -618,8 +957,33 @@ static void lcdRefreshRtcDateTime() {
   }
   snprintf(lineTime, sizeof(lineTime), "%02d:%02d:%02d %s",
            h12, mi, s, pm ? "PM" : "AM");
-  panelPrintLine(2, lineDate);
-  panelPrintLine(3, lineTime);
+  // I2C에서 2·3행만 간헐적으로 NACK/유실되는 케이스가 있어(웰컴에서 날짜가 비는 증상),
+  // 전송 실패(gPanelLineInit=false) 시 재시도합니다.
+  for (uint8_t attempt = 0; attempt < 8; attempt++) {
+    panelPrintLine(2, lineDate);
+    panelPrintLine(3, lineTime);
+    if (gPanelLineInit[2] && gPanelLineInit[3]) {
+      break;
+    }
+    delayMicroseconds(1400);
+  }
+}
+
+// 환영 4행: RTC 초당 갱신이 2·3행만 보내면 I2C 연속 전송 구간에서 1행(CronusFarm) 한 번 실패 시 끝까지 빈 줄로 남을 수 있음 → 매번 0·1행도 같이 재전송
+static void lcdWelcomeSplashPaint() {
+  panelPrintLine(0, "Welcome to");
+#if CF_PANEL_LINK_I2C
+  delayMicroseconds(900);
+#endif
+  panelPrintLine(1, "CronusFarm");
+#if CF_PANEL_LINK_I2C
+  delayMicroseconds(1200);
+#endif
+  lcdRefreshRtcDateTime();
+#if CF_PANEL_LINK_I2C
+  delayMicroseconds(2200);
+  lcdRefreshRtcDateTime();
+#endif
 }
 
 static void lcdWelcomeIfOk(uint32_t nowMs, bool wifiOk, bool mqttOk) {
@@ -630,20 +994,32 @@ static void lcdWelcomeIfOk(uint32_t nowMs, bool wifiOk, bool mqttOk) {
   if (gLcdWelcomed) {
     return;
   }
+  if (gPanelLinkSplashUntilMs != 0 && (int32_t)(nowMs - gPanelLinkSplashUntilMs) < 0) {
+    return;
+  }
+  if (gPanelWaitMinUntilMs != 0 && (int32_t)(nowMs - gPanelWaitMinUntilMs) < 0) {
+    return;
+  }
   // MQTT 없이도 패널 UI 사용 — 브로커 지연/끊김 시 엔코더·채널 화면이 막히지 않게 함
   if (!wifiOk) {
     return;
   }
 
   panelClear();
-  panelPrintLine(0, "Welcome to");
-  panelPrintLine(1, "CronusFarm");
-  lcdRefreshRtcDateTime();
+#if CF_PANEL_LINK_I2C
+  delayMicroseconds(4500);
+#endif
+  lcdWelcomeSplashPaint();
 
+  gPanelLinkSplashUntilMs = 0;
+  gPanelWaitMinUntilMs = 0;
   gLcdWelcomed = true;
+  gLcdWelcomeBypass = false;
   gLcdWelcomeAtMs = nowMs;
   gLastLcdRtcMs = nowMs;
   gPanelBrowseDirty = true;
+  // 환영 직후 브라우즈는 순서상 CH1(UI_CH_ORDER[0])부터 표시
+  gUiCh = UI_CH_ORDER[0];
 }
 
 // 환영(5초) 이후: 채널 순서 LED A1→…→Pump B2, 엔코더로만 이동
@@ -654,8 +1030,22 @@ static void lcdBrowseDraw(uint32_t nowMs) {
   if (gUiMode != UI_BROWSE) {
     return;
   }
-  if ((nowMs - gLcdWelcomeAtMs) < PANEL_WELCOME_MS) {
+  // R3 재부팅 후 재링크: 스플래시 구간은 브라우즈가 덮지 않음(이미 환영된 세션)
+  if (gPanelLinkSplashUntilMs != 0) {
+    if ((int32_t)(nowMs - gPanelLinkSplashUntilMs) < 0) {
+      return;
+    }
+    gPanelLinkSplashUntilMs = 0;
+    gPanelBrowseDirty = true;
+    for (uint8_t r = 0; r < 4; r++) {
+      gPanelLineInit[r] = false;
+    }
+  }
+  if (!gLcdWelcomeBypass && (nowMs - gLcdWelcomeAtMs) < PANEL_WELCOME_MS) {
     return;
+  }
+  if ((uint32_t)(nowMs - gLcdWelcomeAtMs) >= (uint32_t)PANEL_WELCOME_MS) {
+    gLcdWelcomeBypass = true;
   }
 
   const uint8_t ch = gUiCh;
@@ -671,7 +1061,7 @@ static void lcdBrowseDraw(uint32_t nowMs) {
   // 1) 장치명 (핀/설명)
   // 2) MODE + 간단 설명(스케쥴/로컬)
   // 3) STATE + CH<현재>/<전체> (스페이스 포함 고정)
-  // 4) "DIAL Next PUSH Edit"
+  // 4) "Dial:Next, Push:Edit" (20자)
   snprintf(line1, sizeof(line1), "MODE:%s", isAuto ? "AUTO" : "MAN ");
   const int8_t pos = uiOrderPos(ch);
   const uint8_t orderCh = (pos < 0) ? (uint8_t)(ch + 1) : (uint8_t)(pos + 1);
@@ -680,7 +1070,8 @@ static void lcdBrowseDraw(uint32_t nowMs) {
   const char* state3 = on ? "ON " : "OFF";
   snprintf(line2, sizeof(line2), "STATE:%s    CH%u/%u",
            state3, (unsigned)orderCh, (unsigned)CH_COUNT);
-  snprintf(line3, sizeof(line3), "DIAL Next PUSH Edit");
+  // 20×4 LCD에 딱 맞는 힌트(시뮬/패널 예제와 동일 포맷, UART 잔상 시에도 구분 쉬움)
+  snprintf(line3, sizeof(line3), "Dial:Next, Push:Edit");
 
   char pad0[21], pad1[21], pad2[21], pad3[21];
   panelPadLine20FromText(pad0, line0);
@@ -688,7 +1079,19 @@ static void lcdBrowseDraw(uint32_t nowMs) {
   panelPadLine20FromText(pad2, line2);
   panelPadLine20FromText(pad3, line3);
 
-  const bool periodic = (nowMs - gLastBrowseDrawMs) >= PANEL_BROWSE_REFRESH_MS;
+  bool periodic = (nowMs - gLastBrowseDrawMs) >= PANEL_BROWSE_REFRESH_MS;
+#if CF_PANEL_LINK_UART
+  // UART(SoftwareSerial)에서는 주기적 리프레시는 TX를 과도하게 늘려
+  // R3→R4 이벤트 송신을 방해합니다. 브라우즈는 "입력/상태변경" 때만 갱신합니다.
+  periodic = false;
+#endif
+  static uint8_t sPrevBrowseUiCh = 0xFF;
+  // 채널 변경 시 3·4행 문자열이 동일해도 I2C 유실 후 캐시=패드로 rowDiff가 안 나와 빈 줄이 고착될 수 있음
+  if (sPrevBrowseUiCh != ch) {
+    for (uint8_t r = 0; r < 4; r++) {
+      gPanelLineInit[r] = false;
+    }
+  }
   const bool rowDiff =
     !gPanelLineInit[0] || (memcmp(pad0, gPanelLineCache[0], 20) != 0) ||
     !gPanelLineInit[1] || (memcmp(pad1, gPanelLineCache[1], 20) != 0) ||
@@ -699,13 +1102,49 @@ static void lcdBrowseDraw(uint32_t nowMs) {
     return;
   }
 
-  static uint8_t sPrevBrowseUiCh = 0xFF;
   const bool chChanged = (sPrevBrowseUiCh != ch);
+#if CF_PANEL_LINK_UART
+  const bool needFullRedraw =
+    !gPanelBrowseShown || chChanged || gPanelBrowseDirty;
+#elif CF_PANEL_LINK_I2C
+  const bool needFullRedraw =
+    !gPanelBrowseShown || chChanged || gPanelBrowseDirty;
+#else
   const bool needFullRedraw = !gPanelBrowseShown || chChanged;
+#endif
 
-  if (needFullRedraw) {
+#if CF_PANEL_LINK_I2C
+  // 첫 브라우즈만 clear — 채널 바꿀 때마다 clear하면 2004에서 3행(STATE)만 비는 현장 케이스가 있음
+  if (needFullRedraw && !gPanelBrowseShown) {
     panelClear();
-    panelSetBlink(0, 0, false); // 브라우즈에서는 반전(커서) 표시를 끕니다.
+  }
+  panelSetBlink(0, 0, false);
+  panelPrintLine(0, line0);
+  panelPrintLine(1, line1);
+  panelPrintLine(2, line2);
+  panelPrintLine(3, line3);
+  // NACK·슬레이브 밀림 시 3행(STATE) 등만 빈칸 → 재시도 + 마지막에 STATE 한 번 더
+  for (uint8_t attempt = 0; attempt < 5u; attempt++) {
+    bool anyMissing = false;
+    for (uint8_t r = 0; r < 4; r++) {
+      if (gPanelLineInit[r]) {
+        continue;
+      }
+      anyMissing = true;
+      const char* txt = (r == 0) ? line0 : (r == 1) ? line1 : (r == 2) ? line2 : line3;
+      panelPrintLine(r, txt);
+    }
+    if (!anyMissing) {
+      break;
+    }
+    delayMicroseconds(800);
+  }
+  delayMicroseconds(600);
+  panelPrintLine(2, line2);
+  sPrevBrowseUiCh = ch;
+#else
+  if (needFullRedraw) {
+    panelSetBlink(0, 0, false);
     panelPrintLine(0, line0);
     panelPrintLine(1, line1);
     panelPrintLine(2, line2);
@@ -725,6 +1164,7 @@ static void lcdBrowseDraw(uint32_t nowMs) {
       panelPrintLine(3, line3);
     }
   }
+#endif
 
   gPanelBrowseDirty = false;
   gLastBrowseDrawMs = nowMs;
@@ -740,19 +1180,41 @@ static void beepLong() {
   panelBeepLong();
 }
 
-static void uiApplySelection(uint8_t ch, bool on) {
-  if (ch >= CH_COUNT) {
+static void uiApplyEditSelection(uint8_t ch, uint8_t setVal) {
+  // setVal: 0=OFF, 1=ON, 2=AUTO
+  if (ch >= CH_COUNT || setVal > 2) {
     return;
   }
-  chAuto[ch] = false;
-  chManual[ch] = on;
   gUiLocalOverrideAtMs[ch] = millis();
+
+  if (setVal == 2) {
+    chAuto[ch] = true;
+    const bool isPump =
+      (ch == CH_PUMP_A1 || ch == CH_PUMP_A2 || ch == CH_PUMP_B1 || ch == CH_PUMP_B2 ||
+       ch == CH_PUMP_C1 || ch == CH_PUMP_C2 || ch == CH_PUMP_D1 || ch == CH_PUMP_D2);
+    const bool isFan =
+      (ch == CH_FAN_A1 || ch == CH_FAN_A2 || ch == CH_FAN_B1 || ch == CH_FAN_B2);
+    if (isPump) {
+      chPrevMs[ch] = millis();
+    } else if (isFan) {
+      digitalWrite(CH_PIN[ch], LOW);
+      chState[ch] = false;
+    } else {
+      // LED 등: AUTO 시 펌웨어 루프가 LOW 고정 — Pi 스케줄은 MQTT(auto_·cmd)와 연동
+      digitalWrite(CH_PIN[ch], LOW);
+      chState[ch] = false;
+    }
+    return;
+  }
+
+  chAuto[ch] = false;
+  const bool on = (setVal == 1);
+  chManual[ch] = on;
   digitalWrite(CH_PIN[ch], on ? HIGH : LOW);
   chState[ch] = on;
 }
 
 static void lcdRenderUi(uint32_t nowMs, bool wifiOk, bool mqttOk) {
-  (void)nowMs;
   if (!gPanelReady) {
     return;
   }
@@ -764,11 +1226,43 @@ static void lcdRenderUi(uint32_t nowMs, bool wifiOk, bool mqttOk) {
 
   // WiFi+MQTT 연결 전 대기 화면
   if (!gLcdWelcomed) {
+    if (gPanelLinkSplashUntilMs != 0 && (int32_t)(nowMs - gPanelLinkSplashUntilMs) < 0) {
+      return;
+    }
+    if (gPanelLinkSplashUntilMs != 0 && (int32_t)(nowMs - gPanelLinkSplashUntilMs) >= 0) {
+      gPanelLinkSplashUntilMs = 0;
+      if (!wifiOk && gPanelWaitMinUntilMs == 0) {
+        gPanelWaitMinUntilMs = nowMs + PANEL_LINK_WAIT_MIN_MS;
+      }
+    }
+    // I2C 스플래시를 안 거친 경로(UART 등)에서도 대기 화면 최소 유지
+    if (gPanelLinkSplashUntilMs == 0 && gPanelWaitMinUntilMs == 0 && !wifiOk) {
+      gPanelWaitMinUntilMs = nowMs + PANEL_LINK_WAIT_MIN_MS;
+    }
     snprintf(line0, sizeof(line0), "%s %s", CH_LABEL_KO[gUiCh], chPinLabel(gUiCh));
+    const bool mqttLineOk = wifiOk && mqttOk;
     snprintf(line1, sizeof(line1), "%s %s", wifiOk ? "WiFi OK" : "WiFi --",
-             mqttOk ? " MQTT OK" : " MQTT --");
+             mqttLineOk ? " MQTT OK" : " MQTT --");
     snprintf(line2, sizeof(line2), "Waiting link...");
     snprintf(line3, sizeof(line3), "");
+    // 매 루프마다 UART 4줄을 쏘면 R3 SoftwareSerial RX가 포화되어 엔코더 이벤트가 거의 안 들어옵니다.
+    static uint32_t sLastWaitUiMs = 0;
+    static char sWait0[21], sWait1[21], sWait2[21], sWait3[21];
+    const uint32_t interval = 350;
+    if (sLastWaitUiMs != 0 && (uint32_t)(nowMs - sLastWaitUiMs) < interval &&
+        strncmp(sWait0, line0, 20) == 0 && strncmp(sWait1, line1, 20) == 0 &&
+        strncmp(sWait2, line2, 20) == 0 && strncmp(sWait3, line3, 20) == 0) {
+      return;
+    }
+    sLastWaitUiMs = nowMs;
+    strncpy(sWait0, line0, 20);
+    sWait0[20] = '\0';
+    strncpy(sWait1, line1, 20);
+    sWait1[20] = '\0';
+    strncpy(sWait2, line2, 20);
+    sWait2[20] = '\0';
+    strncpy(sWait3, line3, 20);
+    sWait3[20] = '\0';
     panelPrintLine(0, line0);
     panelPrintLine(1, line1);
     panelPrintLine(2, line2);
@@ -784,25 +1278,49 @@ static void lcdRenderUi(uint32_t nowMs, bool wifiOk, bool mqttOk) {
   // 4줄 EDIT(고정 포맷)
   // 1) "Setting Mode (EDIT)" — (EDIT) 강조(커서 블링크로 유사 반전)
   // 2) 장치명 (핀/설명)
-  // 3) SET:ON/OFF — 다이얼로 바꾼 값이면 ON/OFF 쪽 커서 블링크로 강조
-  // 4) "Dial:On/Off Push:OK"
+  // 3) SET:OFF/ON/AUTO — 다이얼로 바꾼 값이면 강조(UART: 블링크)
+  // 4) 힌트
   snprintf(line0, sizeof(line0), "Setting Mode (EDIT)");
   snprintf(line1, sizeof(line1), "%s (%s)", CH_LABEL_KO[gUiCh], chPinLabel(gUiCh));
-  snprintf(line2, sizeof(line2), "SET:%s", gUiPickOn ? "ON" : "OFF");
-  snprintf(line3, sizeof(line3), "Dial:On/Off Push:OK");
+  const char* setStr = (gUiEditSet == 2) ? "AUTO" : (gUiEditSet == 1) ? "ON" : "OFF";
+  snprintf(line2, sizeof(line2), "SET:%s", setStr);
+  snprintf(line3, sizeof(line3), "Dial:Sel Push:OK");
 
   // EDIT는 매 갱신마다 4줄 전체를 강제 재전송(환영 시간/잔상 방지)
+  // UART(SoftwareSerial)에서는 clear가 깜빡임/수신 포화(엔코더 이벤트 드랍)를 유발할 수 있어 피합니다.
+#if CF_PANEL_LINK_I2C
   panelClear();
+#endif
   gPanelUiDirty = false;
   panelPrintLine(0, line0);
   panelPrintLine(1, line1);
   panelPrintLine(2, line2);
   panelPrintLine(3, line3);
+#if CF_PANEL_LINK_I2C
+  // 브라우즈와 동일: NACK·슬레이브 밀림 시 3행(SET)만 빈칸되는 현장 케이스 완화
+  for (uint8_t attempt = 0; attempt < 5u; attempt++) {
+    bool anyMissing = false;
+    for (uint8_t r = 0; r < 4; r++) {
+      if (gPanelLineInit[r]) {
+        continue;
+      }
+      anyMissing = true;
+      const char* txt = (r == 0) ? line0 : (r == 1) ? line1 : (r == 2) ? line2 : line3;
+      panelPrintLine(r, txt);
+    }
+    if (!anyMissing) {
+      break;
+    }
+    delayMicroseconds(800);
+  }
+  delayMicroseconds(600);
+  panelPrintLine(2, line2);
+#endif
   // (EDIT) 글자 반전은 LCD 특성상 직접 구현이 어려워, 커서 블링크로 유사 반전 표시합니다.
   // "Setting Mode (EDIT)" 에서 'E' 위치(col=14)로 고정.
   panelSetBlink(0, 14, true);
   // SET 값이 "진입 시 상태"에서 변경되면 강조(SET:의 값 시작 col=4)
-  panelSetBlink(2, 4, (gUiPickOn != gUiEditOrigOn));
+  panelSetBlink(2, 4, (gUiEditSet != gUiEditOrigSet));
 }
 
 static void encoderDelta(int8_t d) {
@@ -818,58 +1336,60 @@ static void encoderDelta(int8_t d) {
       for (uint8_t r = 0; r < 4; r++) gPanelLineInit[r] = false;
       return;
     }
-    // 환영에서 막 넘어온 직후에는 이미 CH1을 표시했으므로, 첫 이동은 다음 입력부터 반영합니다.
-    if (gUiStartFromWelcomePending) {
-      gUiStartFromWelcomePending = false;
-      for (uint8_t r = 0; r < 4; r++) gPanelLineInit[r] = false;
-      gPanelBrowseDirty = true;
-      return;
-    }
     // 브라우즈 이동은 encoder 부호 그대로 UI 순서를 진행합니다.
     gUiCh = uiNextCh(gUiCh, d);
-    gUiPickOn = (digitalRead((uint8_t)CH_PIN[gUiCh]) == HIGH);
     // 채널이 바뀌면 항상 다시 그리기(환영 5초 안에서는 lcdBrowseDraw가 스킵되지만,
     // 5초 후 첫 갱신 시 최종 채널이 반영되도록 dirty 유지)
     if (prevCh != gUiCh) {
       gPanelBrowseDirty = true;
     }
-    if (prevCh != gUiCh && gLcdWelcomed &&
-        (int32_t)(millis() - gLcdWelcomeAtMs) >= (int32_t)PANEL_WELCOME_MS) {
-      beepShort();
-    }
+    // 엔코더 회전 비프: beepShort() 비활성
   } else {
-    bool prev = gUiPickOn;
-    gUiPickOn = !gUiPickOn;
-    if (prev != gUiPickOn) {
-      beepShort();
-      gPanelUiDirty = true; // EDIT 토글이면 4줄 재전송
+    // EDIT: OFF → ON → AUTO → OFF (CCW 역방향)
+    const uint8_t prev = gUiEditSet;
+    if (d > 0) {
+      gUiEditSet = (uint8_t)((gUiEditSet + 1u) % 3u);
+    } else {
+      gUiEditSet = (uint8_t)((gUiEditSet + 2u) % 3u);
+    }
+    if (prev != gUiEditSet) {
+      gPanelUiDirty = true;
     }
   }
 }
 
 static void panelHandleClick(uint32_t nowMs) {
-  if (nowMs - gBtnLastMs < 220) {
+  if (nowMs - gBtnLastMs < 120) {
     return;
   }
   gBtnLastMs = nowMs;
   if (gUiMode == UI_BROWSE) {
-    // 환영 화면에서의 푸시는 EDIT 진입이 아니라 CH1부터 브라우즈 시작으로 처리
-    if (!gPanelBrowseShown || !gLcdWelcomed ||
-        (int32_t)(millis() - gLcdWelcomeAtMs) < (int32_t)PANEL_WELCOME_MS) {
-      if (gLcdWelcomed) {
-        gLcdWelcomeAtMs = millis() - PANEL_WELCOME_MS;
-      }
+    if (!gLcdWelcomed) {
       forceStartFromCh1();
       for (uint8_t r = 0; r < 4; r++) gPanelLineInit[r] = false;
       return;
     }
+    // 환영 5초 안: 푸시는 환영 종료+CH1만(EDIT 아님)
+    if (isInWelcomeWindow()) {
+      gLcdWelcomeAtMs = millis() - PANEL_WELCOME_MS;
+      forceStartFromCh1();
+      for (uint8_t r = 0; r < 4; r++) gPanelLineInit[r] = false;
+      return;
+    }
+    // 환영 시간 비교 오류로 isInWelcomeWindow가 남아 있어도 Edit는 열리게
+    gLcdWelcomeBypass = true;
+    // 환영 끝난 뒤: gPanelBrowseShown(I2C 유실 등)과 무관하게 Push→Edit (이전엔 false면 Edit 불가)
     gUiMode = UI_EDIT;
-    gUiPickOn = (digitalRead((uint8_t)CH_PIN[gUiCh]) == HIGH);
-    gUiEditOrigOn = gUiPickOn;
+    if (chAuto[gUiCh]) {
+      gUiEditSet = 2;
+    } else {
+      gUiEditSet = chManual[gUiCh] ? 1u : 0u;
+    }
+    gUiEditOrigSet = gUiEditSet;
     beepShort();
     gPanelUiDirty = true;
   } else {
-    uiApplySelection(gUiCh, gUiPickOn);
+    uiApplyEditSelection(gUiCh, gUiEditSet);
     beepLong();
     publishTelemetry();
     gUiMode = UI_BROWSE;
@@ -1365,6 +1885,21 @@ static void publishTelemetry() {
   }
   // 패널(I2C) 링크 진단: 배선/주소 문제로 LCD가 갱신 안 될 때 원인 파악용
   if (off < sizeof(payload) - 1) {
+#if CF_PANEL_LINK_I2C
+    const uint32_t nowMs = millis();
+    const uint32_t rxAge = (gPanelI2cLastRxMs > 0) ? (uint32_t)((nowMs - gPanelI2cLastRxMs) / 1000) : 9999;
+    const uint32_t evtAge = (gPanelLastEvtMs > 0) ? (uint32_t)((nowMs - gPanelLastEvtMs) / 1000) : 9999;
+    off = tele_append_v(payload, sizeof(payload), off,
+                        " | P:i2c_rc=%u got=%d rxage=%lus evt=%lu eage=%lus ready=%d",
+                        (unsigned)gPanelI2cLastEndTxRc, (int)gPanelI2cLastReqGot,
+                        (unsigned long)rxAge, (unsigned long)gPanelEvtCount,
+                        (unsigned long)evtAge, gPanelReady ? 1 : 0);
+#elif CF_PANEL_LINK_UART
+    const uint32_t nowMs = millis();
+    const uint32_t evtAge = (gPanelLastEvtMs > 0) ? (uint32_t)((nowMs - gPanelLastEvtMs) / 1000) : 9999;
+    off = tele_append_v(payload, sizeof(payload), off, " | P:evt=%lu age=%lus",
+                        (unsigned long)gPanelEvtCount, (unsigned long)evtAge);
+#endif
     off = pumpGuardAppendTele(payload, sizeof(payload), off, millis());
   }
   mqtt.beginMessage(topicTele);
@@ -1653,12 +2188,62 @@ static void applySingleCharCmd(const char cmd, const char* rest) {
   (void)rest;
 }
 
+static void applyRtcLocalDigits14(const char* value) {
+  // Pi 로컬 시각(예: date +%Y%m%d%H%M%S)을 그대로 R4 RV3028에 기록 — NTP·타임존은 Pi에 맡김
+  if (!value) {
+    return;
+  }
+  size_t n = strlen(value);
+  if (n != 14) {
+    return;
+  }
+  for (size_t i = 0; i < n; i++) {
+    if (value[i] < '0' || value[i] > '9') {
+      return;
+    }
+  }
+  int y = 0, mo = 0, d = 0, H = 0, M = 0, S = 0;
+  if (sscanf(value, "%4d%2d%2d%2d%2d%2d", &y, &mo, &d, &H, &M, &S) != 6) {
+    return;
+  }
+  if (y < 2024 || y > 2099 || mo < 1 || mo > 12 || d < 1 || d > 31 || H < 0 || H > 23 || M < 0 || M > 59 || S < 0 || S > 59) {
+    return;
+  }
+  DayOfWeek dow = dowFromYmd(y, mo, d);
+  struct tm tm1;
+  memset(&tm1, 0, sizeof(tm1));
+  tm1.tm_year = y - 1900;
+  tm1.tm_mon = mo - 1;
+  tm1.tm_mday = d;
+  tm1.tm_hour = H;
+  tm1.tm_min = M;
+  tm1.tm_sec = S;
+  tm1.tm_wday = (int)dow;
+  RTCTime ct(tm1);
+  RTC.setTime(ct);
+  Serial.print(F("RTC sync rtc_local="));
+  Serial.println(value);
+  lcdRefreshRtcDateTime();
+}
+
 static void applyKeyValue(const char* key, const char* value) {
   if (!key || !*key || !value || !*value) return;
 
   auto parseBool = [](const char* v) -> bool {
     return (strcmp(v, "1") == 0 || strcasecmp(v, "on") == 0 || strcasecmp(v, "true") == 0);
   };
+
+  if (strcmp(key, "rtc_local") == 0) {
+    applyRtcLocalDigits14(value);
+    return;
+  }
+
+  if (strcmp(key, "SCHED_JSON") == 0) {
+    static char sSchedDec[680];
+    cfUrlDecode(value, sSchedDec, sizeof(sSchedDec));
+    cfApplySchedJson(sSchedDec);
+    return;
+  }
 
   // 1) 채널 수동 상태: led_a1=0/1 ...
   for (uint8_t i = 0; i < CH_COUNT; i++) {
@@ -1743,7 +2328,7 @@ static void pollMqtt() {
 
   String t = mqtt.messageTopic();
 
-  char payload[160];
+  char payload[1200];
   int i = 0;
   while (mqtt.available() && i < (int)sizeof(payload) - 1) {
     payload[i++] = (char)mqtt.read();
@@ -1774,9 +2359,14 @@ void setup() {
   allOff();
   // 부팅 직후 적용 순서(정책)
   // 1) allOff()로 전체 OFF
-  // 2) persistLoadToState()로 "펌프는 OFF 유지, 그 외는 마지막 상태 복원"
-  // 3) 이후 loop의 AUTO/스케줄 로직이 상태를 계속 갱신
+  // 2) persistLoadToState()로 EEPROM과 내부 마스크 동기(복원 값은 아래 3에서 덮음)
+  // 3) 모든 채널 수동·OFF 고정(초기 출력·UI·tele 일치)
   persistLoadToState();
+  for (uint8_t i = 0; i < CH_COUNT; i++) {
+    chManual[i] = false;
+    chState[i] = false;
+    digitalWrite(CH_PIN[i], LOW);
+  }
   pumpGuardLoadFromEeprom();
 
   Serial.begin(BAUD);
@@ -1798,10 +2388,10 @@ void setup() {
   matRenderStatus(false, false);
 
   gUiCh = 0;
-  gUiPickOn = false;
 
   RTC.begin();
-  // RTC 시각은 코인셀/백업 또는 별도 설정으로 맞춰야 합니다(여기서 임의 setTime 하지 않음).
+  rtcEnsureValidOnce();
+  // RTC 무효 시에만 1회 2025-12-22 09:00 기록(rtcEnsureValidOnce). 이후 NTP·수동으로 교정.
 
   buildTopics();
   connectWiFi();
@@ -1823,32 +2413,22 @@ void loop() {
 
   uint32_t now = millis();
 
-#if CF_PANEL_LINK_UART
-  // UART 링크가 끊겼는지 즉시 눈으로 확인하기 위한 keepalive
-  // - R3가 Welcome 화면으로 돌아가면(=R4 명령 미수신) UART/전원/레벨 이슈 가능성이 큽니다.
-  if ((int32_t)(now - gPanelKeepaliveMs) >= 1000) {
-    gPanelKeepaliveMs = now;
-    panelPrintLine(0, "CronusFarm (UART)");
-    panelPrintLine(1, "Link keepalive...");
-    char l2[21];
-    snprintf(l2, sizeof(l2), "ms=%lu", (unsigned long)now);
-    panelPrintLine(2, l2);
-    panelPrintLine(3, "Dial:Next Push:Edit");
-  }
-#endif
 #if CF_PANEL_LINK_I2C
   // I2C 슬레이브(R3)가 살아있으면, 이벤트가 0개여도 LCD를 R4가 소유하도록 전환합니다.
   // (그렇지 않으면 R3의 부팅/환영 화면이 계속 남아 있어 “멈춘 것처럼” 보입니다.)
   if (!gPanelReady) {
     if (panelI2cPing(now)) {
       gPanelReady = true;
+      gPanelI2cLastRxMs = now;
       for (uint8_t r = 0; r < 4; r++) gPanelLineInit[r] = false;
-      // 즉시 한 번 그려서 배선/통신 여부를 눈으로 확인
+      gPanelLinkSplashUntilMs = now + PANEL_LINK_SPLASH_MIN_MS;
+      gPanelWaitMinUntilMs = 0;
+      // 즉시 한 번 그려서 배선/통신 여부를 눈으로 확인(이후 PANEL_LINK_SPLASH_MIN_MS 동안 덮어쓰지 않음)
       const bool wifiOk = (WiFi.status() == WL_CONNECTED);
-      const bool mqttOk = mqtt.connected();
+      const bool mqttLineOk = wifiOk && mqtt.connected();
       panelPrintLine(0, "CronusFarm");
       panelPrintLine(1, wifiOk ? "WiFi OK" : "WiFi --");
-      panelPrintLine(2, mqttOk ? "MQTT OK" : "MQTT --");
+      panelPrintLine(2, mqttLineOk ? "MQTT OK" : "MQTT --");
       panelPrintLine(3, "Dial/Push Ready");
     }
   }
@@ -1858,7 +2438,8 @@ void loop() {
   panelPollEvents(now);
 
   // 채널별 AUTO/수동 처리
-  // - AUTO=1: 해당 채널이 펌프류면 on/off 주기로 토글, LED류면 수동(기본 OFF) 유지
+  // - AUTO=1 + SCHED_JSON 스케줄 있음: RTC 기준 window/cycle로 출력(LED·펌프·팬)
+  // - AUTO=1 + 스케줄 없음: 펌프는 on_/off_ 주기, LED는 LOW, 팬은 LOW
   // - AUTO=0: chManual[] 값대로 출력
   for (uint8_t i = 0; i < CH_COUNT; i++) {
     const bool isPump =
@@ -1875,14 +2456,33 @@ void loop() {
     }
 
     if (!isPump && !isFan) {
-      digitalWrite(CH_PIN[i], LOW);
-      chState[i] = false;
+      if (gSchRuleCount[i] > 0) {
+        const bool want = cfSchWant(i);
+        digitalWrite(CH_PIN[i], want ? HIGH : LOW);
+        chState[i] = want;
+      } else {
+        digitalWrite(CH_PIN[i], LOW);
+        chState[i] = false;
+      }
       continue;
     }
 
-    // FAN은 AUTO를 아직 사용하지 않습니다(예상치 못한 분사/환기 방지)
     if (isFan) {
-      chState[i] = false;
+      if (gSchRuleCount[i] > 0) {
+        const bool want = cfSchWant(i);
+        digitalWrite(CH_PIN[i], want ? HIGH : LOW);
+        chState[i] = want;
+      } else {
+        digitalWrite(CH_PIN[i], LOW);
+        chState[i] = false;
+      }
+      continue;
+    }
+
+    if (gSchRuleCount[i] > 0) {
+      const bool want = cfSchWant(i);
+      digitalWrite(CH_PIN[i], want ? HIGH : LOW);
+      chState[i] = want;
       continue;
     }
 
@@ -1912,11 +2512,11 @@ void loop() {
 
   // 패널: WiFi+MQTT 후 환영(5초)→채널 브라우즈 / 다이얼=채널·편집·비프
   lcdWelcomeIfOk(now, wifiOk, mqttOk);
-  if (gLcdWelcomed && gUiMode == UI_BROWSE &&
+  if (gLcdWelcomed && gUiMode == UI_BROWSE && !gLcdWelcomeBypass &&
       (now - gLcdWelcomeAtMs) < PANEL_WELCOME_MS) {
     if (now - gLastLcdRtcMs >= 1000) {
       gLastLcdRtcMs = now;
-      lcdRefreshRtcDateTime();
+      lcdWelcomeSplashPaint();
     }
   }
   if (gUiMode == UI_EDIT) {
@@ -1926,5 +2526,10 @@ void loop() {
   } else {
     lcdBrowseDraw(now);
   }
+
+#if CF_PANEL_LINK_I2C
+  // LCD SET_LINE 연속 전송 직후 쌓인 클릭/엔코더를 같은 틱에서 한 번 더 수집
+  panelPollEvents(millis());
+#endif
 }
 

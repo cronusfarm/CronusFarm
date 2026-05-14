@@ -263,12 +263,12 @@ y += 1
 panels.append(
     bargauge_channels(
         "LED / 펌프 ON 비율 (0–1)",
-        ["led_a1", "led_a2", "led_b1", "pump_a1", "pump_a2", "pump_b1", "pump_b2"],
+        ["led_a1", "led_a2", "led_b1", "led_b2", "pump_a1", "pump_a2", "pump_b1", "pump_b2"],
         y,
-        7,
+        8,
     )
 )
-y += 7
+y += 8
 
 panels.append(row("팬 · 예비 채널", y))
 y += 1

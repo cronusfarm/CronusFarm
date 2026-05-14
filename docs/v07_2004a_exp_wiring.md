@@ -16,6 +16,8 @@
 
 ## 1) UNO R3 + 2004A — 핀 매칭 (현장 배선/표준 배선)
 
+> **CronusFarm 운영( BigTreeTech 2004A + UNO R3 )** — **클릭 EXP1-2→D8**, EXP2 리본 **6번→D13**(SD CS), EXP2 **2번→D10**(MISO 등·클릭 아님). 표준 리본만(2→D13, 6→D10)이면 `docs/cronusfarm_hardware_pins.md` §3.4 의 매크로 되돌리기.
+
 현재 저장소의 `CronusFarmPanel.ino`는 **UNO R3에서 “현장 배선(검증)” 핀맵**을 기본으로 사용한다.  
 즉, 아래 두 가지 중 **어느 배선으로 물려 있는지**에 따라 코드/배선을 맞춰야 한다.
 

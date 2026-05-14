@@ -62,7 +62,7 @@ const parts = (msg.topic || '').toString().split('/').filter(Boolean);
 const deviceId = (parts.length >= 2 ? parts[1] : 'cronusfarm-01').replace(/[^a-zA-Z0-9_-]/g, '_');
 
 const fields = [];
-const ch = ['led_a1', 'led_a2', 'led_b1', 'pump_a1', 'pump_a2', 'pump_b1', 'pump_b2', 'fan_a1', 'fan_a2', 'fan_b1', 'fan_b2', 'pump_c1', 'pump_c2', 'pump_d1', 'pump_d2'];
+const ch = ['led_a1', 'led_a2', 'led_b1', 'led_b2', 'pump_a1', 'pump_a2', 'pump_b1', 'pump_b2', 'fan_a1', 'fan_a2', 'fan_b1', 'fan_b2', 'pump_c1', 'pump_c2', 'pump_d1', 'pump_d2'];
 ch.forEach(k => {
   if (kvS[k] === undefined) return;
   fields.push(`${k}=${kvS[k] === '1' ? 1 : 0}i`);

@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<!--
+CRONUSFARM-설정 (/ui 탭 iframe) 요구 체크리스트 — 미완 항목은 순차 구현
+  [v] MQTT/SQLite: 저장 후 SCHED_JSON cmd·sch_ver 응답(브리지 기본 MQTT, 펌웨어 파싱·RTC 적용)
+  [v] 수동 스위치 vs 스케줄 구동 로그(감사) UI·DB 조회 — manual_switch_event + GET /api/audit_log
+  [v] 모니터: 채널별 ON/OFF 타임라인 — anchor_ts_ms·창 끝 보간, tele_sample→fact POST 백필(/api/channel/backfill)
+  [v] Bed A/B 행: 아이콘·라벨+핀·상태점·ON/OFF·자동/수동·1~60분 자동복귀
+  [v] 채널별 스케줄(윈도/주기) 편집 UI
+-->
+
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>CronusFarm Bed·스케줄</title>
+  <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    /* 모니터 #cf-shell 과 동일 토큰 — 설정 화면 전체 통일 */
+    :root{
+      --g0:#040d07;--g1:#0a1a0f;--g2:#0f2415;--g3:#152e1a;
+      --accent:#2dff7a;--accent2:#00e5ff;--accent3:#ffb830;--warn:#ff6b35;
+      --muted:#3a5c42;--text:#c8e6c9;--text2:#6b9c73;--text3:#3a5c42;
+      --border:rgba(45,255,122,.07);--border2:rgba(45,255,122,.16);
+      --card:rgba(10,26,15,.9);--glow:0 0 28px rgba(45,255,122,.07);
+      --fb:'Noto Sans KR','Malgun Gothic',system-ui,sans-serif;
+      --cf-bg0:var(--g0);--cf-bg:var(--g1);--cf-card:var(--card);--cf-line:var(--border2);
+      --cf-text:var(--text);--cf-muted:var(--text2);--cf-accent:var(--accent);--cf-title:var(--accent3);
+      --cf-on:#34c759;--cf-off:var(--warn);--cf-auto:var(--accent3);--cf-manual:#eaf7ee;
+      --r:14px;
+    }
+    html,body{height:100%;margin:0;background:var(--g0);color:var(--text);font-family:var(--fb);}
+    .cf-settings-app{max-width:1120px;margin:0 auto;padding:12px;}
+    .cf-settings-shell{
+      position:relative;border-radius:var(--r);border:1px solid var(--border);overflow:hidden;
+      box-shadow:var(--glow);
+      background:linear-gradient(180deg,var(--g0),var(--g1) 55%,var(--g0));
+      padding:14px 16px 18px;
+    }
+    .cf-settings-shell::before{
+      content:'';position:absolute;inset:0;z-index:0;pointer-events:none;
+      background-image:linear-gradient(rgba(45,255,122,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(45,255,122,.022) 1px,transparent 1px);
+      background-size:48px 48px;
+    }
+    .cf-settings-shell>*{position:relative;z-index:1;}
+    .devbar{display:flex;gap:10px;align-items:center;margin-bottom:12px;font-size:12px;color:var(--text2);}
+    .devbar input{flex:1;max-width:280px;padding:6px 10px;border-radius:10px;border:1px solid var(--border2);background:rgba(0,0,0,.35);color:var(--text);}
+    .bed{margin-bottom:16px;padding:14px;border-radius:var(--r);border:1px solid var(--border2);background:rgba(15,36,21,.78);box-shadow:0 8px 24px rgba(0,0,0,.35);}
+    .bed h2{margin:0 0 10px;font-size:15px;color:var(--accent3);font-weight:900;text-shadow:0 1px 0 rgba(0,0,0,.55);}
+    .ch-row{display:grid;grid-template-columns:40px 1fr 18px 100px 150px;gap:10px;align-items:center;padding:8px 6px;border-radius:12px;border:1px solid var(--border);margin-bottom:8px;background:rgba(0,0,0,.22);}
+    @media(max-width:720px){.ch-row{grid-template-columns:36px 1fr 16px 1fr;grid-template-rows:auto auto;}.sw5{grid-column:1/-1;}}
+    .ic{display:flex;align-items:center;justify-content:center;}
+    .lb{font-weight:800;font-size:13px;}
+    .pin{color:var(--text2);font-weight:600;font-size:11px;margin-left:6px;}
+    .dot{width:14px;height:14px;border-radius:50%;margin:0 auto;}
+    .dot.on{background:var(--cf-on);box-shadow:0 0 10px rgba(45,255,122,.45);}
+    .dot.off{background:var(--cf-off);box-shadow:0 0 10px rgba(255,107,53,.35);}
+    .sw-out{height:40px;border-radius:12px;border:2px solid var(--border2);cursor:pointer;font-weight:900;font-size:12px;}
+    .sw-out.on{border-color:rgba(45,255,122,.5);background:rgba(45,255,122,.14);color:#d8ffe8;}
+    .sw-out.off{border-color:rgba(255,107,53,.45);background:rgba(255,107,53,.12);color:#ffe8e0;}
+    .sw-out:disabled{opacity:.35;cursor:not-allowed;}
+    .sw5{display:flex;flex-wrap:wrap;gap:8px;align-items:center;}
+    .sw-am{min-width:72px;height:36px;border-radius:12px;border:2px solid var(--border2);cursor:pointer;font-weight:900;font-size:11px;}
+    .sw-am.auto{background:rgba(255,184,48,.14);border-color:rgba(255,184,48,.45);color:var(--cf-auto);}
+    .sw-am.manual{background:rgba(0,229,255,.06);border-color:rgba(0,229,255,.28);color:var(--accent2);}
+    .hold-sel{padding:4px 6px;border-radius:8px;border:1px solid var(--border2);background:rgba(0,0,0,.28);color:var(--text);font-size:11px;}
+    .sched{margin-top:8px;padding:14px;border-radius:var(--r);border:1px solid var(--border2);background:rgba(10,26,15,.88);}
+    .sched h2{margin:0 0 10px;font-size:15px;color:var(--accent3);font-weight:900;}
+    .row2{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px;font-size:12px;}
+    .row2 select,.row2 input{padding:6px 8px;border-radius:10px;border:1px solid var(--border2);background:rgba(0,0,0,.28);color:var(--text);}
+    .btn{padding:7px 12px;border-radius:12px;border:1px solid var(--border2);background:rgba(255,255,255,.06);color:var(--text);font-weight:800;cursor:pointer;font-size:12px;}
+    .btn-prim{border-color:rgba(45,255,122,.42);background:rgba(45,255,122,.12);}
+    .tbl{width:100%;border-collapse:collapse;font-size:11px;margin-top:8px;}
+    .tbl th,.tbl td{border-bottom:1px solid rgba(45,255,122,.1);padding:6px 4px;text-align:left;}
+    .err{color:#ffab91;font-size:12px;margin:6px 0;}
+    .ok{color:#9ccc65;font-size:12px;margin:6px 0;}
+    .hint{font-size:11px;color:var(--text2);line-height:1.45;margin-top:8px;}
+    .audit-tbl td:last-child{max-width:280px;word-break:break-all;}
+  </style>
+</head>
+<body>
+<div id="app" class="cf-settings-app">
+  <div class="cf-settings-shell">
+  <div class="devbar">
+    <label>장치 ID <input v-model="deviceId" type="text" spellcheck="false" @change="persistDev"/></label>
+    <button type="button" class="btn" @click="poll">상태 새로고침</button>
+  </div>
+
+  <div v-for="bed in beds" :key="bed.id" class="bed">
+    <h2>{{ bed.title }}</h2>
+    <div v-for="row in bed.channels" :key="row.key" class="ch-row">
+      <span class="ic" v-html="iconSvg(row.kind)"></span>
+      <div class="lb">{{ row.label }}<span class="pin">({{ row.pin }})</span></div>
+      <div class="dot" :class="isOn(row.key) ? 'on' : 'off'"></div>
+      <button type="button" class="sw-out" :class="isOn(row.key)?'on':'off'" :disabled="isAuto(row.key)" @click="toggleOut(row.key)">{{ isOn(row.key)?'ON':'OFF' }}</button>
+      <div class="sw5">
+        <button type="button" class="sw-am" :class="isAuto(row.key)?'auto':'manual'" @click="toggleMode(row.key)">{{ isAuto(row.key)?'자동':'수동' }}</button>
+        <template v-if="!isAuto(row.key)">
+          <label class="hint" style="margin:0">자동복귀(분)
+            <select class="hold-sel" v-model.number="holdMin[row.key]" @change="reapplyHold(row.key)">
+              <option v-for="m in holdOptions" :key="m" :value="m">{{ m }}분</option>
+            </select>
+          </label>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <div class="sched">
+    <h2>채널별 스케줄</h2>
+    <div class="row2">
+      <label>채널
+        <select v-model="schChannel">
+          <option v-for="c in allChannels" :key="c" :value="c">{{ c }}</option>
+        </select>
+      </label>
+      <label><input type="radio" value="window" v-model="topKind"/> 시간대</label>
+      <label><input type="radio" value="cycle" v-model="topKind"/> 주기</label>
+      <button type="button" class="btn" @click="loadSch">불러오기</button>
+      <button type="button" class="btn btn-prim" @click="saveSch">저장</button>
+    </div>
+    <div v-if="schErr" class="err">{{ schErr }}</div>
+    <div v-if="schOk" class="ok">{{ schOk }}</div>
+
+    <div v-if="topKind==='window'">
+      <table class="tbl">
+        <thead><tr><th>요일(월~일)</th><th>켜짐</th><th>꺼짐</th><th>사용</th><th></th></tr></thead>
+        <tbody>
+          <tr v-for="(s,idx) in winSlots" :key="'w'+idx">
+            <td>
+              <label v-for="(d,i) in dayLabels" :key="i" style="margin-right:4px;font-size:10px;">
+                <input type="checkbox" v-model="s.days[i]"/>{{ d }}
+              </label>
+            </td>
+            <td><input type="time" v-model="s.onStr" step="60"/></td>
+            <td><input type="time" v-model="s.offStr" step="60"/></td>
+            <td><input type="checkbox" v-model="s.enabled" :true-value="1" :false-value="0"/></td>
+            <td><button type="button" class="btn" @click="dropWin(idx)" :disabled="winSlots.length<=1">삭제</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <button type="button" class="btn" @click="addWin">+ 구간</button>
+    </div>
+
+    <div v-else>
+      <table class="tbl">
+        <thead><tr><th>요일</th><th>ON분</th><th>ON초</th><th>OFF분</th><th>OFF초</th><th>사용</th><th></th></tr></thead>
+        <tbody>
+          <tr v-for="(c,idx) in cycSlots" :key="'c'+idx">
+            <td>
+              <label v-for="(d,i) in dayLabels" :key="i" style="margin-right:4px;font-size:10px;">
+                <input type="checkbox" v-model="c.days[i]"/>{{ d }}
+              </label>
+            </td>
+            <td><input type="number" min="0" max="1440" v-model.number="c.onM" style="width:52px"/></td>
+            <td><input type="number" min="0" max="59" v-model.number="c.onS" style="width:44px"/></td>
+            <td><input type="number" min="0" max="1440" v-model.number="c.offM" style="width:52px"/></td>
+            <td><input type="number" min="0" max="59" v-model.number="c.offS" style="width:44px"/></td>
+            <td><input type="checkbox" v-model="c.enabled" :true-value="1" :false-value="0"/></td>
+            <td><button type="button" class="btn" @click="dropCyc(idx)" :disabled="cycSlots.length<=1">삭제</button></td>
+          </tr>
+        </tbody>
+      </table>
+      <button type="button" class="btn" @click="addCyc">+ 주기</button>
+    </div>
+    <p class="hint">저장은 SQLite schedule_rule에 반영되고, Pi에 mosquitto_pub이 있으면 기본으로 MQTT cmd에 SCHED_JSON이 나갑니다(끄려면 환경변수 CRONUSFARM_SCHEDULE_MQTT=off). Arduino는 SCHED_JSON을 수신하면 해당 채널 자동 모드로 RTC 기준 스케줄을 적용합니다.</p>
+  </div>
+
+  <div class="sched audit">
+    <h2>감사 로그 <span style="font-weight:600;color:var(--cf-muted);font-size:12px">(수동 UI · 스케줄 저장 · 자동 출력)</span></h2>
+    <div class="row2">
+      <label>채널
+        <select v-model="auditCh">
+          <option value="">(전체)</option>
+          <option v-for="c in allChannels" :key="'aud'+c" :value="c">{{ c }}</option>
+        </select>
+      </label>
+      <label>건수 <input type="number" min="10" max="500" v-model.number="auditLimit" style="width:64px"/></label>
+      <button type="button" class="btn" @click="loadAudit">새로고침</button>
+      <button type="button" class="btn btn-prim" @click="backfillTimeline" title="tele_sample raw를 다시 파싱해 그래프용 fact 행 보강">타임라인 백필</button>
+    </div>
+    <div v-if="auditErr" class="err">{{ auditErr }}</div>
+    <div v-if="auditOk" class="ok" style="font-size:11px">{{ auditOk }}</div>
+    <div style="overflow-x:auto;max-height:380px;overflow-y:auto;margin-top:8px;border-radius:12px;border:1px solid var(--cf-line);">
+      <table class="tbl audit-tbl">
+        <thead><tr><th>시간</th><th>채널</th><th>출처</th><th>자동</th><th>출력</th><th>비고</th></tr></thead>
+        <tbody>
+          <tr v-for="r in auditRows" :key="r.id">
+            <td>{{ fmtTs(r.ts_ms) }}</td>
+            <td>{{ r.channel_key }}</td>
+            <td>{{ r.source }}</td>
+            <td>{{ fmtAut(r.prev_auto, r.new_auto) }}</td>
+            <td>{{ fmtOut(r.prev_state, r.new_state) }}</td>
+            <td>{{ metaBrief(r.meta) }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="hint">출처: ui=설정 화면, schedule=스케줄 저장(DB+MQTT), tele_auto=자동 모드에서 tele 기준 출력 변화, system=자동복귀 타이머.</p>
+  </div>
+  </div>
+</div>
+<script>
+const { createApp } = Vue;
+const API = '/farm/cronusfarm-sqlite';
+
+function apiOrigin() {
+  return (typeof location !== 'undefined' && location.origin) ? location.origin : '';
+}
+
+createApp({
+  data() {
+    const holdOptions = [];
+    for (let i = 1; i <= 60; i++) holdOptions.push(i);
+    const days7 = () => [true, true, true, true, true, true, true];
+    return {
+      deviceId: 'cronusfarm-01',
+      status: { channels: {} },
+      pollTimer: null,
+      holdMin: {},
+      holdOptions,
+      dayLabels: ['월', '화', '수', '목', '금', '토', '일'],
+      beds: [
+        { id: 'A', title: 'A Bed', channels: [
+          { key: 'led_a1', label: 'LED A1', pin: 'R4-D2', kind: 'led' },
+          { key: 'led_a2', label: 'LED A2', pin: 'R4-D3', kind: 'led' },
+          { key: 'pump_a1', label: 'Pump A1', pin: 'R4-D4', kind: 'pump' },
+          { key: 'pump_a2', label: 'Pump A2', pin: 'R4-D5', kind: 'pump' },
+          { key: 'fan_a1', label: 'Fan A1', pin: 'R4-D9', kind: 'fan' },
+          { key: 'fan_a2', label: 'Fan A2', pin: 'R4-D10', kind: 'fan' },
+        ]},
+        { id: 'B', title: 'B Bed', channels: [
+          { key: 'led_b1', label: 'LED B1', pin: 'R4-D6', kind: 'led' },
+          { key: 'led_b2', label: 'LED B2', pin: 'R4-D13', kind: 'led' },
+          { key: 'pump_b1', label: 'Pump B1', pin: 'R4-D7', kind: 'pump' },
+          { key: 'pump_b2', label: 'Pump B2', pin: 'R4-D8', kind: 'pump' },
+          { key: 'fan_b1', label: 'Fan B1', pin: 'R4-D11', kind: 'fan' },
+          { key: 'fan_b2', label: 'Fan B2', pin: 'R4-D12', kind: 'fan' },
+        ]},
+      ],
+      schChannel: 'led_a1',
+      topKind: 'window',
+      winSlots: [{ days: days7(), onStr: '06:00', offStr: '22:00', enabled: 1 }],
+      cycSlots: [{ days: days7(), onM: 0, onS: 30, offM: 0, offS: 30, enabled: 1 }],
+      schErr: '',
+      schOk: '',
+      auditRows: [],
+      auditErr: '',
+      auditOk: '',
+      auditCh: '',
+      auditLimit: 120,
+    };
+  },
+  computed: {
+    allChannels() {
+      return this.beds.flatMap(b => b.channels.map(c => c.key));
+    },
+  },
+  watch: {
+    schChannel() {
+      this.loadSch();
+    },
+  },
+  mounted() {
+    try {
+      const s = localStorage.getItem('cfDeviceId');
+      if (s && s.trim()) this.deviceId = s.trim();
+    } catch (e) {}
+    this.allChannels.forEach(k => { if (this.holdMin[k] == null) this.holdMin[k] = 30; });
+    this.poll();
+    this.pollTimer = setInterval(() => this.poll(), 5000);
+    this.loadSch();
+    this.loadAudit();
+  },
+  unmounted() {
+    if (this.pollTimer) clearInterval(this.pollTimer);
+  },
+  methods: {
+    persistDev() {
+      try { localStorage.setItem('cfDeviceId', (this.deviceId || '').trim()); } catch (e) {}
+    },
+    iconSvg(kind) {
+      if (kind === 'led') return '<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5" fill="#FFD54F"/></svg>';
+      if (kind === 'pump') return '<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24"><path fill="#4FC3F7" d="M7 4h10v5H7z"/><rect x="9" y="9" width="6" height="8" fill="#29B6F6"/></svg>';
+      if (kind === 'fan') return '<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="#66BB6A" stroke-width="2"/></svg>';
+      return '';
+    },
+    chSt(k) {
+      return this.status.channels[k] || {};
+    },
+    isOn(k) {
+      return Number(this.chSt(k).state) === 1;
+    },
+    isAuto(k) {
+      return Number(this.chSt(k).auto_mode) === 1;
+    },
+    async poll() {
+      this.persistDev();
+      try {
+        const u = apiOrigin() + API + '/api/channel/status?device_id=' + encodeURIComponent(this.deviceId);
+        const r = await fetch(u, { credentials: 'same-origin' });
+        if (!r.ok) throw new Error('status HTTP ' + r.status);
+        this.status = await r.json();
+      } catch (e) { console.warn(e); }
+    },
+    async postAction(body) {
+      const u = apiOrigin() + API + '/api/channel-action';
+      const r = await fetch(u, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json; charset=utf-8' },
+        body: JSON.stringify(Object.assign({ device_id: this.deviceId }, body)),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+      await this.poll();
+      await this.loadAudit();
+    },
+    async toggleOut(k) {
+      if (this.isAuto(k)) return;
+      const on = !this.isOn(k);
+      await this.postAction({
+        channel: k,
+        action: 'set_output',
+        on,
+        new_state: on ? 1 : 0,
+        new_auto: 0,
+        prev_auto: this.chSt(k).auto_mode,
+        prev_state: this.chSt(k).state,
+      });
+    },
+    async toggleMode(k) {
+      if (this.isAuto(k)) {
+        const hm = this.holdMin[k] || 30;
+        await this.postAction({
+          channel: k,
+          action: 'set_manual',
+          hold_minutes: hm,
+          prev_auto: 1,
+          new_auto: 0,
+        });
+      } else {
+        await this.postAction({
+          channel: k,
+          action: 'set_auto',
+          prev_auto: 0,
+          new_auto: 1,
+        });
+      }
+    },
+    async reapplyHold(k) {
+      if (this.isAuto(k)) return;
+      const hm = this.holdMin[k] || 30;
+      await this.postAction({
+        channel: k,
+        action: 'set_manual',
+        hold_minutes: hm,
+        prev_auto: 0,
+        new_auto: 0,
+      });
+    },
+    daysArrToMask(arr) {
+      const bits = [1, 2, 4, 8, 16, 32, 64];
+      let m = 0;
+      for (let i = 0; i < 7; i++) if (arr[i]) m |= bits[i];
+      return m;
+    },
+    maskToDays(m) {
+      const bits = [1, 2, 4, 8, 16, 32, 64];
+      return bits.map(b => !!(m & b));
+    },
+    timeStrToMin(s) {
+      const p = (s || '00:00').split(':');
+      let hh = parseInt(p[0], 10), mm = parseInt(p[1], 10);
+      if (isNaN(hh)) hh = 0;
+      if (isNaN(mm)) mm = 0;
+      return Math.min(1439, hh * 60 + mm);
+    },
+    minToStr(n) {
+      n = Math.max(0, Math.min(1439, n | 0));
+      const hh = String(Math.floor(n / 60)).padStart(2, '0');
+      const mm = String(n % 60).padStart(2, '0');
+      return hh + ':' + mm;
+    },
+    addWin() {
+      const days7 = () => [true, true, true, true, true, true, true];
+      this.winSlots.push({ days: days7(), onStr: '06:00', offStr: '22:00', enabled: 1 });
+    },
+    dropWin(i) {
+      if (this.winSlots.length <= 1) return;
+      this.winSlots.splice(i, 1);
+    },
+    addCyc() {
+      const days7 = () => [true, true, true, true, true, true, true];
+      this.cycSlots.push({ days: days7(), onM: 0, onS: 30, offM: 0, offS: 30, enabled: 1 });
+    },
+    dropCyc(i) {
+      if (this.cycSlots.length <= 1) return;
+      this.cycSlots.splice(i, 1);
+    },
+    applyRules(list) {
+      const win = list.filter(r => (r.rule_kind || 'window') === 'window');
+      const cyc = list.filter(r => r.rule_kind === 'cycle');
+      if (cyc.length) {
+        this.topKind = 'cycle';
+        this.cycSlots = cyc.map(r => {
+          const on = parseInt(r.on_sec, 10) || 0, off = parseInt(r.off_sec, 10) || 0;
+          return {
+            days: this.maskToDays(parseInt(r.dow_mask, 10) || 0),
+            onM: Math.floor(on / 60), onS: on % 60,
+            offM: Math.floor(off / 60), offS: off % 60,
+            enabled: r.enabled ? 1 : 0,
+          };
+        });
+        return;
+      }
+      this.topKind = 'window';
+      this.winSlots = win.length ? win.map(r => ({
+        days: this.maskToDays(parseInt(r.dow_mask, 10) || 0),
+        onStr: this.minToStr(parseInt(r.on_min, 10) || 0),
+        offStr: this.minToStr(parseInt(r.off_min, 10) || 0),
+        enabled: r.enabled ? 1 : 0,
+      })) : [{ days: [true, true, true, true, true, true, true], onStr: '06:00', offStr: '22:00', enabled: 1 }];
+    },
+    async loadSch() {
+      this.schErr = '';
+      this.schOk = '';
+      try {
+        const u = apiOrigin() + API + '/api/schedule?device_id=' + encodeURIComponent(this.deviceId) + '&channel=' + encodeURIComponent(this.schChannel);
+        const r = await fetch(u, { credentials: 'same-origin' });
+        if (!r.ok) throw new Error('불러오기 실패 ' + r.status);
+        const j = await r.json();
+        this.applyRules(j.rules || []);
+        this.schOk = '불러옴';
+      } catch (e) {
+        this.schErr = e.message || String(e);
+      }
+    },
+    buildPayload() {
+      if (this.topKind === 'cycle') {
+        const out = [];
+        let si = 0;
+        for (const c of this.cycSlots) {
+          if (!c.enabled) continue;
+          const mask = this.daysArrToMask(c.days);
+          if (!mask) throw new Error('주기: 요일 선택');
+          const onT = Math.min(86400, (c.onM | 0) * 60 + (c.onS | 0));
+          const offT = Math.min(86400, (c.offM | 0) * 60 + (c.offS | 0));
+          if (onT + offT === 0) throw new Error('주기: ON+OFF 길이');
+          out.push({
+            rule_kind: 'cycle', dow_mask: mask, slot_index: si++,
+            on_min: 0, off_min: 0, on_sec: onT, off_sec: offT, enabled: 1,
+          });
+        }
+        return out;
+      }
+      const out = [];
+      let si = 0;
+      for (const s of this.winSlots) {
+        if (!s.enabled) continue;
+        const mask = this.daysArrToMask(s.days);
+        if (!mask) throw new Error('시간대: 요일 선택');
+        out.push({
+          rule_kind: 'window', dow_mask: mask, slot_index: si++,
+          on_min: this.timeStrToMin(s.onStr), off_min: this.timeStrToMin(s.offStr),
+          enabled: 1,
+        });
+      }
+      return out;
+    },
+    async saveSch() {
+      this.schErr = '';
+      this.schOk = '';
+      try {
+        const rules = this.buildPayload();
+        const u = apiOrigin() + API + '/api/schedule?device_id=' + encodeURIComponent(this.deviceId) + '&channel=' + encodeURIComponent(this.schChannel);
+        const res = await fetch(u, {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({ rules }),
+        });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(j.error || ('저장 실패 ' + res.status));
+        let tail = '';
+        if (j.sch_ver != null && j.sch_ver !== '') tail += ' sch_ver=' + j.sch_ver;
+        if (j.mqtt) tail += ' mqtt:' + j.mqtt;
+        this.schOk = '저장됨 (' + rules.length + '건)' + tail;
+        await this.loadAudit();
+      } catch (e) {
+        this.schErr = e.message || String(e);
+      }
+    },
+    fmtTs(ms) {
+      const n = Number(ms);
+      if (!n) return '—';
+      const d = new Date(n);
+      return d.toLocaleString('ko-KR', { hour12: false });
+    },
+    fmtAut(pa, na) {
+      if (pa == null || na == null) return '—';
+      if (pa < 0 && na < 0) return '—';
+      return String(pa) + '→' + String(na);
+    },
+    fmtOut(ps, ns) {
+      if (ps == null || ns == null) return '—';
+      if (ps < 0 && ns < 0) return '—';
+      return String(ps) + '→' + String(ns);
+    },
+    metaBrief(meta) {
+      if (!meta || typeof meta !== 'object') return '';
+      const a = meta.action;
+      if (a === 'schedule_save') {
+        return '스케줄저장 sch_ver=' + (meta.sch_ver != null ? meta.sch_ver : '') + ' ' + (meta.mqtt != null ? meta.mqtt : '');
+      }
+      if (a === 'output_change_auto') return '자동 출력 변화';
+      if (meta.mqtt_payload) return String(meta.mqtt_payload);
+      return a ? String(a) : '';
+    },
+    async loadAudit() {
+      this.auditErr = '';
+      this.auditOk = '';
+      try {
+        const lim = Math.min(500, Math.max(10, parseInt(this.auditLimit, 10) || 120));
+        let u = apiOrigin() + API + '/api/audit_log?device_id=' + encodeURIComponent(this.deviceId) + '&limit=' + lim;
+        if (this.auditCh) u += '&channel=' + encodeURIComponent(this.auditCh);
+        const r = await fetch(u, { credentials: 'same-origin' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const j = await r.json();
+        this.auditRows = j.rows || [];
+        this.auditOk = (this.auditRows.length) + '건';
+      } catch (e) {
+        this.auditErr = e.message || String(e);
+      }
+    },
+    async backfillTimeline() {
+      this.auditErr = '';
+      this.auditOk = '';
+      try {
+        const u = apiOrigin() + API + '/api/channel/backfill';
+        const r = await fetch(u, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({
+            device_id: this.deviceId,
+            channel: this.schChannel,
+            hours: 72,
+          }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
+        this.auditOk = '백필 삽입 ' + (j.inserted != null ? j.inserted : '?') + '건 (' + (this.schChannel || '') + ')';
+        await this.loadAudit();
+      } catch (e) {
+        this.auditErr = e.message || String(e);
+      }
+    },
+  },
+}).mount('#app');
+</script>
+</body>
+</html>

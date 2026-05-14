@@ -58,6 +58,11 @@ def main() -> int:
         action="store_true",
         help="Arduino 업로드 시 포트 자동탐지를 끔(기본은 자동탐지 ON)",
     )
+    ap.add_argument(
+        "--skip-nginx-deploy",
+        action="store_true",
+        help="deploy/nginx 동기화·nginx reload 생략",
+    )
 
     args = ap.parse_args()
 
@@ -96,6 +101,8 @@ def main() -> int:
         ps_cmd.append("-ApplyNodeRed")
     if args.use_split_flows:
         ps_cmd.append("-UseSplitFlows")
+    if args.skip_nginx_deploy:
+        ps_cmd.append("-SkipNginxDeploy")
 
     run(ps_cmd, cwd=repo_root)
     return 0

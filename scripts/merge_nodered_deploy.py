@@ -141,6 +141,31 @@ def main() -> None:
 
             raise SystemExit(f"JSON 최상위는 배열이어야 함: {mono}")
 
+        # 보내기에 없는 노드는 devflow 분할 JSON에서 뒤에 붙임(ui_tab_devflow 등 누락 방지).
+        devflow_path = root / "nodered" / "flows_cronusfarm_devflow_flow.json"
+        if devflow_path.is_file():
+            overlay = json.loads(devflow_path.read_text(encoding="utf-8-sig"))
+            if isinstance(overlay, list):
+                have: set[str] = {
+                    n["id"]
+                    for n in data
+                    if isinstance(n, dict) and isinstance(n.get("id"), str) and n["id"]
+                }
+                added = 0
+                for n in overlay:
+                    if not isinstance(n, dict):
+                        continue
+                    nid = n.get("id")
+                    if not isinstance(nid, str) or not nid:
+                        continue
+                    if nid in have:
+                        continue
+                    data.append(n)
+                    have.add(nid)
+                    added += 1
+                if added:
+                    print(f"  + devflow 오버레이: {added} 노드 추가 ({devflow_path.name})")
+
         out_path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
         print(f"OK merged-deploy.json <- {EXPORT_NAME} (기본, 노드 위치 유지) nodes={len(data)}")

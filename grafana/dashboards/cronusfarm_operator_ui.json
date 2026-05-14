@@ -10,7 +10,7 @@
   "timezone": "Asia/Seoul",
   "refresh": "10s",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 12,
   "time": {
     "from": "now-24h",
     "to": "now"
@@ -42,7 +42,7 @@
       },
       "options": {
         "mode": "markdown",
-        "content": "### CronusFarm 운영 화면 (Grafana)\n\n- **데이터**: Node-RED MQTT 플로우가 Influx `tele` 로 적재한 필드를 그립니다.\n- **제어 UI**는 Node-RED Dashboard를 쓰고, **모니터링·화려한 그래프**는 이 대시보드에서 구성합니다.\n- 센서 필드명(`temp` 등)이 펌웨어/플로우와 다르면 해당 Stat 패널만 데이터 없음으로 나올 수 있습니다.\n"
+        "content": "### CronusFarm 운영 화면 (Grafana)\n\n- **데이터**: Node-RED MQTT 플로우가 Influx `tele` 로 적재한 필드를 그립니다. `tele` 문자열의 `S:` 안 **채널 외 숫자·0/1 키**도 동일 measurement에 함께 기록됩니다.\n- **제어 UI**는 Node-RED Dashboard를 쓰고, **모니터링·화려한 그래프**는 이 대시보드에서 구성합니다.\n- 하단 **누적·가동** 행: 펌프·팬·LED는 ON 구간을 **적분(초)** 으로, 내부 센서는 구간 대비 **차분 누적**으로 표시합니다.\n- 센서 필드명(`temp` 등)이 펌웨어/플로우와 다르면 해당 Stat 패널만 데이터 없음으로 나올 수 있습니다.\n"
       },
       "id": 1
     },
@@ -1103,6 +1103,467 @@
         }
       },
       "id": 20
+    },
+    {
+      "type": "row",
+      "title": "기상청 KMA (외기)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 67
+      },
+      "collapsed": false,
+      "id": 22
+    },
+    {
+      "type": "stat",
+      "title": "외기 온도 (KMA)",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 68
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"kma_temp\")\n  |> last()"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 5
+              },
+              {
+                "color": "orange",
+                "value": 25
+              },
+              {
+                "color": "red",
+                "value": 32
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "id": 23
+    },
+    {
+      "type": "stat",
+      "title": "외기 습도 (KMA)",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 68
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"kma_humidity\")\n  |> last()"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 20
+              },
+              {
+                "color": "green",
+                "value": 40
+              },
+              {
+                "color": "blue",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "id": 24
+    },
+    {
+      "type": "stat",
+      "title": "풍속 (KMA)",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 68
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"kma_wind_speed\")\n  |> last()"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "mps",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 7
+              },
+              {
+                "color": "red",
+                "value": 14
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "id": 25
+    },
+    {
+      "type": "stat",
+      "title": "강수형태 PTY (KMA)",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 68
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"kma_pty\")\n  |> last()"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "textMode": "value_and_name",
+        "wideLayout": true
+      },
+      "id": 26
+    },
+    {
+      "type": "timeseries",
+      "title": "외기 추세 (KMA: 온도·습도·풍속)",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 73
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"kma_temp\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"kma_humidity\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"kma_wind_speed\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "kma_humidity"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "id": 27
+    },
+    {
+      "type": "row",
+      "title": "누적·가동 (tele)",
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 82
+      },
+      "collapsed": false,
+      "id": 28
+    },
+    {
+      "type": "timeseries",
+      "title": "펌프·팬·LED ON 누적 (적분, 초)",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 83
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\")\n  |> filter(fn: (r) => r._field =~ /^(led_|pump_|fan_)/)\n  |> filter(fn: (r) => r._field !~ /_(on_s|off_s)$/)\n  |> aggregateWindow(every: 1m, fn: last, createEmpty: false)\n  |> fill(usePrevious: true)\n  |> integral(unit: 1s)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "gradientMode": "opacity",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "id": 29
+    },
+    {
+      "type": "timeseries",
+      "title": "내부 센서 누적 변화 (구간 첫 샘플 대비, 차분 누적)",
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 83
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"cronusfarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\")\n  |> filter(fn: (r) => r._field =~ /^(temp|humidity|ph|ec|co2)$/)\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> difference(nonNegative: false)\n  |> cumulativeSum()"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "gradientMode": "opacity",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/humidity/"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "calcs": [
+            "lastNotNull"
+          ]
+        }
+      },
+      "id": 30
+    },
+    {
+      "type": "text",
+      "title": "CCTV 최신 사진 (cam01)",
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 57
+      },
+      "options": {
+        "mode": "html",
+        "content": "<div style=\"display:flex;flex-direction:column;gap:10px;\">\n  <div style=\"font-size:12px;opacity:.8;\">최신 사진 URL: <code>http://192.168.0.222:1880/cctv/cam01/latest.jpg</code></div>\n  <img src=\"http://192.168.0.222:1880/cctv/cam01/latest.jpg?t=${__unixEpochNow}\" style=\"max-width:100%;height:auto;border-radius:10px;border:1px solid rgba(255,255,255,.08);\" />\n</div>"
+      },
+      "transparent": true,
+      "id": 21
     }
   ]
 }

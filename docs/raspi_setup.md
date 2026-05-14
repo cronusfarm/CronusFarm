@@ -99,7 +99,7 @@ Serial(USB) 대신 MQTT 노드를 사용하면 업로드와 포트 점유 충돌
 `scripts/upcode.ps1` 기본 Pi 호스트는 **`ida.mango-larch.ts.net`** 입니다. PC에 Tailscale 클라이언트가 있고 같은 tailnet이면 `ssh dooly@ida.mango-larch.ts.net` 로 접속됩니다.
 
 ### 7) 원클릭 배포(Windows → Pi: Arduino + Node-RED)
-저장소 `scripts/deploy-cronusfarm-pi.ps1` 는 순서대로 **upcode(스케치 복사·컴파일·업로드)** → **`nodered/*.json` 을 Pi의 `~/CronusFarm/nodered/` 로 복사** → 선택 시 **`merged-deploy.json` 을 `POST http://127.0.0.1:1880/flows` 로 반영**합니다.
+저장소 `scripts/deploy-cronusfarm-pi.ps1` 는 순서대로 **upcode(스케치 복사·컴파일·업로드)** → **`nodered/*.json` 을 Pi의 `~/CronusFarm/nodered/` 로 복사** → **`deploy/nginx/cronusfarm-nodered.conf` 를 Pi에 두고 가능하면 `nginx reload`** → 선택 시 **`merged-deploy.json` 을 Admin API `POST …/<adminRoot>/flows` 로 반영**합니다(nginx가 1880을 쓰는 멀티플렉스면 스크립트가 **Node-RED 실제 포트(예: 1882)** 로 직접 POST 해 502를 피합니다).
 
 추가로, 더 짧게 쓰려면 파이썬 래퍼를 사용할 수 있습니다:
 
@@ -111,9 +111,11 @@ python .\scripts\deploy_all.py --apply-nodered --use-split-flows
 - Node-RED 적용 생략(Arduino만): `python .\scripts\deploy_all.py`
 - Arduino 포트 자동탐지를 끄고 싶을 때(비권장): `python .\scripts\deploy_all.py --apply-nodered --use-split-flows --no-auto-port`
 - JSON만 동기화: `deploy-cronusfarm-pi.ps1`
-- Node-RED까지 자동 적용: `deploy-cronusfarm-pi.ps1 -ApplyNodeRed` (실행 중인 NR의 **전체 플로우가 교체**되므로, 다른 탭이 있으면 백업 파일 `~/.node-red/flows.cronusfarm-backup.*.json` 을 확인하세요.)
+- Node-RED까지 자동 적용: `deploy-cronusfarm-pi.ps1 -ApplyNodeRed` (실행 중인 NR의 **전체 플로우가 교체**되므로, 다른 탭이 있으면 백업 파일 `~/.node-red/flows.cronusfarm-backup.*.json` 을 확인하세요.)  
+  - **`http://<Pi>:1880/nrdb2`**(Dashboard 2·개발환경)는 **`@flowfuse/node-red-dashboard`** 패키지가 있어야 열립니다. 동일 스크립트가 `pi-nodered-install-dashboard2.sh` 로 없을 때 설치를 시도합니다. 모니터/설정만 보려면 **`/ui`** 를 쓰면 됩니다.
 
-Pi에만 있을 때 수동 적용: `scripts/pi-nodered-apply-merged.sh /home/dooly/CronusFarm/nodered/merged-deploy.json`
+Pi에만 있을 때 수동 적용: `scripts/pi-nodered-apply-merged.sh /home/dooly/CronusFarm/nodered/merged-deploy.json`  
+nginx만 갱신: `bash ~/CronusFarm/scripts/pi-nginx-apply-cronusfarm.sh`
 
 ### 8) Samba 공유 `[MyCode]` 를 CronusFarm 과 맞추기
 **자동 적용(개발 PC → ida):** `powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\apply-ida-samba-mycode.ps1`  
@@ -216,6 +218,11 @@ curl -sS "http://127.0.0.1:1880/farm/cronusfarm/telegram-ping?text=테스트"
 2. 해당 포트로 직접 호출해 동작 여부 확인: `curl -sS "http://127.0.0.1:<NR포트>/farm/cronusfarm/telegram-ping"`
 3. nginx `server` 블록에 **`location ^~ /farm/`** → `proxy_pass http://127.0.0.1:<NR포트>;` 추가. 예시는 저장소 `scripts/pi-nginx-farm-location.snippet.conf` 참고.
 4. `sudo nginx -t && sudo systemctl reload nginx` 후 다시 `1880` 으로 테스트.
+
+**nginx 502 (대개 `POST /admin/flows`·대시보드 배포)**  
+**로컬 `curl 127.0.0.1:1880/ui/` 가 `Server: nginx` + 502 인 경우:** nginx 가 1880 을 잡고 Node-RED 는 **1882** 등 업스트림에서 떠 있어야 하는데 NR 이 1880 으로만 떠 있거나 NR 이 꺼져 있으면 502 가 납니다. Pi에서 `bash ~/CronusFarm/scripts/pi-nodered-ensure-upstream-for-nginx.sh` (sudo 비번이면 drop-in 적용·`nodered` 재시작) 또는 멀티플렉스 전체: `scripts/pi-nodered-multiplex-v05-v07.sh` 참고.
+
+본문 크기 제한·업스트림 응답 지연으로 프록시가 끊기면 502가 납니다. 저장소 `deploy/nginx/cronusfarm-nodered.conf`( `client_max_body_size`·긴 `proxy_*_timeout` 등)를 Pi에 반영: `bash ~/CronusFarm/scripts/pi-nginx-apply-cronusfarm.sh` 또는 Windows에서 `deploy-cronusfarm-pi.ps1` 한 번 실행. `pi-nodered-apply-merged.sh` 는 기본 **`~/.node-red/flows.json` 복사 + `nodered` 재시작**만 하며(Admin `POST` 생략·502 회피), 예전처럼 API만 쓰려면 Pi에서 `CRONUSFARM_NR_DEPLOY=api` 를 붙여 실행합니다.
 
 #### 10-3) Hailo (추후 장착 시)
 - Hailo AI Kit 장착 후에는 Hailo 제공 런타임/예제(TAPPAS/Model Zoo 등)를 설치해야 합니다.

@@ -76,6 +76,79 @@ def ensure_inserted(js: str, key: str, value_js: str) -> str:
 
 out2 = ensure_inserted(out2, "httpAdminRoot", "'/admin'")
 
+# CronusFarm 정적 HTML: /cronusfarm-static/<파일명> → ~/CronusFarm/nodered/dashboard
+def ensure_http_static(js: str) -> str:
+    home = str(Path.home()).replace("\\", "/")
+    root = home + "/CronusFarm/nodered/dashboard"
+    # 잘못된 삽입 복구: //httpStatic: [ 주석인데 그 다음 줄에 객체만 있는 경우(구문 오류)
+    js = re.sub(
+        r"(^\s*//httpStatic:\s*\[\s*)\n\s*\{path:\s*['\"]/cronusfarm-static['\"]\s*,\s*root:\s*['\"][^'\"]*['\"]\s*\},\s*\n",
+        r"\1\n",
+        js,
+        flags=re.M,
+    )
+    # 기존 항목의 root만 교체(이미 httpStatic이 있어도 경로 갱신)
+    m = re.search(
+        r"(path\s*:\s*['\"]/cronusfarm-static['\"]\s*,\s*root\s*:\s*['\"])([^'\"]*)(['\"])",
+        js,
+    )
+    if m:
+        return js[: m.start(2)] + root + js[m.end(2) :]
+    if re.search(r"(?m)^\s*httpStatic\s*:", js):
+        m2 = re.search(r"(?m)^\s*httpStatic\s*:\s*\[", js)
+        if m2 and "/cronusfarm-static" not in js[m2.start() : m2.start() + 800]:
+            ins = m2.end()
+            entry = f"\n        {{path: '/cronusfarm-static', root: '{root}'}},\n"
+            return js[:ins] + entry + js[ins:]
+        return js
+    cctv_root = home + "/CronusFarm/CCTV"
+    block = (
+        "    // CronusFarm: dashboard HTML + CCTV 스냅샷(/cctv/...)\n"
+        "    httpStatic: [\n"
+        f"        {{path: '/cronusfarm-static', root: '{root}'}},\n"
+        f"        {{path: '/cctv', root: '{cctv_root}'}}\n"
+        "    ],\n"
+    )
+    m3 = re.search(r"(^\s*uiPort\s*:\s*.*?[,]\s*$)", js, re.M)
+    if m3:
+        return js[: m3.end()] + "\n" + block + js[m3.end():]
+    return re.sub(r"(module\.exports\s*=\s*\{\s*\n)", r"\1" + block, js, count=1)
+
+
+# CCTV 스냅샷: Grafana/브라우저에서 /cctv/cam01/latest.jpg (scripts/cronusfarm_cctv_capture_daemon.py 출력과 동일 경로)
+def ensure_cctv_http_static(js: str) -> str:
+    home = str(Path.home()).replace("\\", "/")
+    cctv_root = home + "/CronusFarm/CCTV"
+    m = re.search(
+        r"(path\s*:\s*['\"]/cctv['\"]\s*,\s*root\s*:\s*['\"])([^'\"]*)(['\"])",
+        js,
+    )
+    if m:
+        return js[: m.start(2)] + cctv_root + js[m.end(2) :]
+    m2 = re.search(r"(?m)^\s*httpStatic\s*:\s*\[", js)
+    if not m2:
+        return js
+    window = js[m2.start() : m2.start() + 2500]
+    if re.search(r"path\s*:\s*['\"]/cctv['\"]", window):
+        return js
+    ins_obj = f"\n        {{path: '/cctv', root: '{cctv_root}'}},"
+    m3 = re.search(
+        r"(\{\s*path\s*:\s*['\"]/cronusfarm-static['\"]\s*,\s*root\s*:\s*['\"][^'\"]+['\"]\s*\},)",
+        window,
+    )
+    if m3:
+        pos = m2.start() + m3.end(1)
+        return js[:pos] + ins_obj + js[pos:]
+    m4 = re.search(r"(\{\s*path\s*:\s*['\"]/cronusfarm-static['\"]\s*,\s*root\s*:\s*['\"][^'\"]+['\"]\s*\}\s*)\]", window)
+    if m4:
+        pos = m2.start() + m4.end(1)
+        return js[:pos] + "," + ins_obj + js[pos:]
+    return js
+
+
+out2 = ensure_http_static(out2)
+out2 = ensure_cctv_http_static(out2)
+
 if out2 != src:
     settings.write_text(out2, encoding="utf-8")
     print("patched settings.js")

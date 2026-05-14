@@ -1,5 +1,6 @@
 # System(Node-RED·Mosquitto)·R4 MQTT: cf-srv-inlay / 펌프 가드 제목–내부 박스 간격 축소
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,7 +44,7 @@ FMT_NR = """<div class="cf-srv-inlay">
   </div>
 </div>"""
 
-FMT_TELE_GUARD = """<div class="cf-tele-guard-ui cf-fe-wide cf-arduino-stack-gap0" style="width:100%;max-width:100%;box-sizing:border-box"><div class="cf-ar-title-nogap">펌프 가드 <span class="cf-muted">(tele G:)</span></div><pre class="cf-tele-guard-pre" ng-class="{'cf-guard-warn': (msg.payload||'').toString().indexOf('mx')>=0 || (msg.payload||'').toString().indexOf('mf')>=0, 'cf-guard-ok': (msg.payload||'').toString()==='ok', 'cf-guard-legacy': (msg.payload||'').toString().indexOf('—')===0}" ng-bind="msg.payload"></pre></div><style>.cf-tele-guard-ui{margin:0;padding:0;display:flex;flex-direction:column;gap:1px;width:100%!important;max-width:100%!important;min-width:0;overflow:visible!important}.cf-tele-guard-ui .cf-ar-title-nogap{margin:0!important;padding:0!important;line-height:1.15!important;font-size:12px;color:var(--cf-muted,#9db0cc)}.cf-tele-guard-pre{display:block;margin:0!important;padding:5px 10px 6px!important;width:100%!important;min-width:0;box-sizing:border-box!important;font-size:11.5px;line-height:1.4;color:#e6edf7;white-space:pre-wrap;word-break:break-word;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:10px;min-height:2em;max-height:none;overflow:visible}.cf-guard-ok{border-color:rgba(40,167,69,.5)!important;background:rgba(40,167,69,.08)!important}.cf-guard-warn{border-color:rgba(255,193,7,.6)!important;background:rgba(255,193,7,.1)!important}.cf-guard-legacy{border-color:rgba(157,176,204,.35)!important;background:rgba(255,255,255,.04)!important}</style>"""
+FMT_TELE_GUARD = """<div class="cf-tele-guard-ui cf-fe-wide cf-arduino-stack-gap0" style="width:100%;max-width:100%;box-sizing:border-box;margin-bottom:-16px"><div class="cf-ar-title-nogap">펌프 가드 <span class="cf-muted">(tele G:)</span></div><pre class="cf-tele-guard-pre" ng-class="{'cf-guard-warn': (msg.payload||'').toString().indexOf('mx')>=0 || (msg.payload||'').toString().indexOf('mf')>=0, 'cf-guard-ok': (msg.payload||'').toString()==='ok', 'cf-guard-legacy': (msg.payload||'').toString().indexOf('—')===0}" ng-bind="msg.payload"></pre></div><style>.cf-tele-guard-ui{margin:0;padding:0;display:flex;flex-direction:column;gap:0;width:100%!important;max-width:100%!important;min-width:0;overflow:visible!important}.cf-tele-guard-ui .cf-ar-title-nogap{margin:0!important;padding:0 0 1px!important;line-height:1.1!important;font-size:12px;color:var(--cf-muted,#9db0cc)}.cf-tele-guard-pre{display:block;margin:0!important;padding:2px 6px 2px!important;width:100%!important;min-width:0;box-sizing:border-box!important;font-size:11.5px;line-height:1.25;color:#e6edf7;white-space:pre-wrap;word-break:break-word;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:8px;min-height:1.15em;max-height:2.8em;overflow:hidden}.cf-guard-ok{border-color:rgba(40,167,69,.5)!important;background:rgba(40,167,69,.08)!important}.cf-guard-warn{border-color:rgba(255,193,7,.6)!important;background:rgba(255,193,7,.1)!important}.cf-guard-legacy{border-color:rgba(157,176,204,.35)!important;background:rgba(255,255,255,.04)!important}</style>"""
 
 OLD_TILES_R4_CSS = """/* R4 MQTT: 높이 1유닛·두 줄 — 스크롤바 숨기고 세로 여백 최소화 */
 .nr-dashboard-theme .nr-dashboard-group .nr-dashboard-template:has(.cf-r4-mqtt-strip){
@@ -138,6 +139,15 @@ def main() -> None:
             n["height"] = "1"
         elif n.get("id") == "ui_tpl_tele_guard":
             n["format"] = FMT_TELE_GUARD
+        elif n.get("id") == "ui_tpl_arduino_led_tele":
+            fmt = n.get("format") or ""
+            if "cf-tele-sum-tight" not in fmt:
+                fmt = fmt.replace('<div class="cf-tele-sum-ui">', '<div class="cf-tele-sum-ui cf-tele-sum-tight">', 1)
+                fmt = fmt.replace("</style>", ".cf-tele-sum-ui.cf-tele-sum-tight{margin-top:-18px!important}</style>", 1)
+            else:
+                fmt = re.sub(r"margin-top:-1[04]px", "margin-top:-18px", fmt)
+            if fmt != (n.get("format") or ""):
+                n["format"] = fmt
 
     for n in data:
         if isinstance(n, dict) and n.get("id") == "ui_tpl_css_tiles_v1":

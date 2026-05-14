@@ -39,7 +39,8 @@ export default {
         { label: '목표 pH', topic: 'ctl_target_ph', min: 0, max: 14, step: 0.1, v: 7.0 },
         { label: '목표 EC (mS/cm)', topic: 'ctl_target_ec', min: 0, max: 3, step: 0.05, v: 1.0 },
         { label: '목표 온도 (°C)', topic: 'ctl_target_temp_c', min: 10, max: 35, step: 0.5, v: 25.0 },
-        { label: '목표 습도 (%)', topic: 'ctl_target_rh_pct', min: 30, max: 90, step: 1, v: 60 }
+        { label: '목표 습도 (%)', topic: 'ctl_target_rh_pct', min: 30, max: 90, step: 1, v: 60 },
+        { label: '사진 촬영 주기 cam01 (분)', topic: 'cctv_cam01_interval_min', min: 1, max: 720, step: 1, v: 60 }
       ]
     }
   },

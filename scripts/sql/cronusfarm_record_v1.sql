@@ -150,6 +150,27 @@ CREATE TABLE IF NOT EXISTS schedule_rule (
 );
 CREATE INDEX IF NOT EXISTS idx_schedule_rule_dev_ch ON schedule_rule(device_id, channel_key);
 
+-- CCTV 사진: 원본 파일은 파일시스템에 저장하고, DB에는 메타데이터/경로만 저장한다.
+-- 기본 경로(권장): ~/CronusFarm/CCTV/cam01/YYYY/MM/DD/YYYYMMDD_HHMMSS.jpg
+CREATE TABLE IF NOT EXISTS cctv_photo (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  device_id TEXT NOT NULL,
+  camera_key TEXT NOT NULL,         -- 예: cam01, cam02 ...
+  captured_at_ms INTEGER NOT NULL,  -- epoch ms
+  rel_path TEXT NOT NULL,           -- base_dir 기준 상대경로
+  bytes INTEGER,
+  sha256 TEXT,
+  width INTEGER,
+  height INTEGER,
+  meta_json TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (device_id) REFERENCES device(device_id)
+);
+CREATE INDEX IF NOT EXISTS idx_cctv_photo_dev_cam_ts ON cctv_photo(device_id, camera_key, captured_at_ms DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_cctv_photo_rel_path ON cctv_photo(rel_path);
+
 INSERT OR IGNORE INTO schema_version (version, note) VALUES (1, 'cronusfarm_record_v1 initial');
 INSERT OR IGNORE INTO schema_version (version, note) VALUES (2, 'schedule_rule for NRDB2');
 INSERT OR IGNORE INTO schema_version (version, note) VALUES (3, 'schedule_rule rule_kind + cycle on_sec/off_sec');
+INSERT OR IGNORE INTO schema_version (version, note) VALUES (4, 'cctv_photo table (file path + metadata)');
+INSERT OR IGNORE INTO schema_version (version, note) VALUES (5, 'GET /api/channel/timeline|status, POST /ingest/manual_event (브리지 런타임)');

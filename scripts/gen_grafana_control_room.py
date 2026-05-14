@@ -152,6 +152,7 @@ panels.append(
             "led_a1",
             "led_a2",
             "led_b1",
+            "led_b2",
             "pump_a1",
             "pump_a2",
             "pump_b1",

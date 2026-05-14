@@ -1,0 +1,275 @@
+<div class="cf-pu-scroll"><style>
+/* Dashboard /ui ui_template 높이 제한 시에도 스크롤로 전체 표시 */
+.cf-pu-scroll{max-height:min(92vh,4800px);overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-right:10px;box-sizing:border-box}
+.cf-pu{
+  font-family:system-ui,"Malgun Gothic",sans-serif;
+  color:var(--cf-text,#e6edf7);
+  line-height:1.55;
+  max-width:1040px;
+  margin:0 auto
+}
+.cf-pu h3{margin:0 0 12px;font-size:1.05rem;color:var(--cf-title,#FFD54F);font-weight:900;text-shadow:0 1px 0 rgba(0,0,0,.65)}
+.cf-pu h4{margin:16px 0 6px;font-size:0.92rem;color:var(--cf-text,#e6edf7);font-weight:900}
+.cf-pu h5{margin:12px 0 4px;font-size:0.85rem;color:var(--cf-muted,#9db0cc);font-weight:800}
+.cf-pu p,.cf-pu li{font-size:0.8rem;color:var(--cf-text,#e6edf7);opacity:.92;margin:5px 0}
+.cf-pu ul{margin:4px 0;padding-left:1.1rem}
+.cf-pu .snap{
+  font-family:Consolas,"Courier New",monospace;
+  font-size:0.7rem;
+  color:var(--cf-text,#e6edf7);
+  background:rgba(255,255,255,.04);
+  padding:10px 12px;
+  margin:8px 0;
+  border-radius:12px;
+  border:1px solid var(--cf-line,rgba(255,255,255,.08));
+  white-space:pre;
+  line-height:1.32;
+  overflow-x:auto
+}
+.cf-pu .cap{font-size:0.68rem;color:var(--cf-muted,#9db0cc);margin:0 0 10px}
+.cf-pu .dial{
+  margin-top:10px;
+  padding:10px 12px;
+  background:rgba(255,255,255,.03);
+  border-radius:12px;
+  border:1px solid var(--cf-line,rgba(255,255,255,.08));
+  font-size:0.78rem
+}
+.cf-pu .dial strong{color:var(--cf-title,#FFD54F)}
+.cf-pu code{font-size:0.82em;background:rgba(0,0,0,.20);padding:1px 6px;border-radius:6px;color:var(--cf-title,#FFD54F)}
+.cf-pu table{font-size:0.72rem;border-collapse:collapse;width:100%;margin:8px 0}
+.cf-pu th,.cf-pu td{border:1px solid var(--cf-line,rgba(255,255,255,.08));padding:6px 8px;text-align:left}
+.cf-pu th{background:rgba(255,255,255,.04);color:var(--cf-muted,#9db0cc)}
+.cf-pu .note{border-left:3px solid var(--cf-accent,#4f8cff);padding:8px 12px;background:rgba(255,255,255,.03);margin:10px 0;font-size:0.74rem;color:var(--cf-muted,#9db0cc)}
+</style>
+<div class="cf-pu">
+
+<h3>패널 LCD — 전체 상태 (20×4, 캡처 스타일)</h3>
+<h4>이 문서가 붙는 Node-RED 위치</h4>
+<ul>
+<li><strong>개발플로우 탭</strong> <code>ui_tab_devflow</code> → 그룹 <strong>하드웨어</strong> (<code>cf_grp_dev_hw</code>) → <code>cf_tpl_dev_hw_panel</code>(EXP1/EXP2 핀 요약) · 템플릿 <code>cf_tpl_dev_panel_usage</code> (표기상 “패널 LCD 사용 가이드” 전체).</li>
+<li><strong>Dashboard 1</strong> <code>/ui</code> 의 <strong>쉘(Shell)</strong> 탭 → <code>ui_tpl_shell_panel_usage</code> 노드(이 HTML과 동일 본문). 정본 파일은 저장소 <code>nodered/panel_usage_cf_tpl.html</code> — 수정 후 <code>python scripts/sync_panel_usage_into_dashboard_shell.py</code> 로 devflow·쉘에 동기.</li>
+</ul>
+<h4>R3 EXP1(2004A) ↔ UNO — 액정·부저·전원 (현장 검증)</h4>
+<p><strong>2×5 IDC:</strong> 확인 기준 <strong>오른쪽 위 = 9번(GND)</strong>, <strong>오른쪽 아래 = 10번(VCC)</strong>. <strong>엔코더 회전은 EXP2</strong> 리본, <strong>클릭은 EXP1-2 → D8</strong>(EXP1-2와 EXP2-2를 **잇지 않아도 됨**). EXP1-1은 <strong>부저</strong>, 타단 <strong>VCC</strong>(통상 10번).</p>
+<table>
+<thead><tr><th>EXP1 물리</th><th>역할</th><th>UNO(R3) 연결</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><strong>부저</strong> (타단 VCC·보통 10번)</td><td><strong>D9</strong></td></tr>
+<tr><td>2</td><td><strong>엔코더 클릭</strong> (BTN_ENC)</td><td><strong>D8</strong></td></tr>
+<tr><td>3</td><td>LCD EN</td><td><strong>D7</strong></td></tr>
+<tr><td>4</td><td>LCD RS</td><td><strong>D6</strong></td></tr>
+<tr><td>5</td><td>LCD D4</td><td><strong>D5</strong></td></tr>
+<tr><td>6</td><td>LCD D5</td><td><strong>D4</strong></td></tr>
+<tr><td>7</td><td>LCD D6</td><td><strong>D3</strong></td></tr>
+<tr><td>8</td><td>LCD D7</td><td><strong>D2</strong></td></tr>
+<tr><td>9</td><td>GND</td><td><strong>GND</strong></td></tr>
+<tr><td>10</td><td>5V (VCC)</td><td><strong>5V</strong></td></tr>
+</tbody>
+</table>
+<p>정본: <a href="https://github.com/cronusfarm/CronusFarm/blob/main/docs/cronusfarm_hardware_pins.md" target="_blank" rel="noopener">docs/cronusfarm_hardware_pins.md</a> §3.2.1.</p>
+
+<h4>R3 EXP2(2004A) ↔ UNO — 엔코더·SD (교차 배선)</h4>
+<p><strong>엔코더 회전(A/B)·SD SPI</strong>는 EXP2. 기본(교차): <strong>2→D10</strong>(MISO 등·클릭 아님), <strong>3·5→A0·A1</strong>, <strong>6→D13</strong>. 클릭은 <strong>EXP1-2→D8</strong>.</p>
+<table>
+<thead><tr><th>EXP2 물리</th><th>UNO 핀(연결)</th><th>역할(기본 펌웨어)</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>D12</td><td>풀업 고정</td></tr>
+<tr><td>2</td><td><strong>D10</strong></td><td>SPI/MISO 등 (클릭은 EXP1-2→D8)</td></tr>
+<tr><td>3</td><td>A0</td><td>ENC A</td></tr>
+<tr><td>4</td><td>D11</td><td>풀업 고정</td></tr>
+<tr><td>5</td><td>A1</td><td>ENC B</td></tr>
+<tr><td>6</td><td><strong>D13</strong></td><td>SD CS <code>OUTPUT HIGH</code></td></tr>
+</tbody>
+</table>
+<p>정본 <code>docs/cronusfarm_hardware_pins.md</code> §5·§5.6. 테두리 <code>|</code> 안은 <strong>정확히 20글자</strong>. R4 대기 2행은 <code>snprintf("%s %s", "WiFi …", " MQTT …")</code> 때문에 <strong>WiFi 끝과 MQTT 사이에 공백 두 칸</strong>이 들어간다.</p>
+
+<h4>A. R3만 (I2C 마스터 없음)</h4>
+<h5>A-1 부팅 직후</h5>
+<div class="snap">+--------------------+
+|CronusFarm Panel    |
+|                    |
+|                    |
+|                    |
++--------------------+</div>
+<h5>A-2 약 10초 후 로컬 환영 (<code>BOOT_MSG_MS</code>)</h5>
+<div class="snap">+--------------------+
+|Welcome to CronusFar|
+|----.--.-- (---)    |
+|--:--:--            |
+|                    |
++--------------------+</div>
+<span class="cap">1행 21자 소스 → 20자만 표시. 2·3행은 플레이스홀더(R3 RTC 미갱신).</span>
+
+<h4>B. R4 스플래시 (I2C 링크 직후, 각 <strong>최소 5초</strong>)</h4>
+<h5>B-1 WiFi OK / MQTT OK</h5>
+<div class="snap">+--------------------+
+|CronusFarm          |
+|WiFi OK             |
+|MQTT OK             |
+|Dial/Push Ready     |
++--------------------+</div>
+<h5>B-2 WiFi OK / MQTT --</h5>
+<div class="snap">+--------------------+
+|CronusFarm          |
+|WiFi OK             |
+|MQTT --             |
+|Dial/Push Ready     |
++--------------------+</div>
+<p class="cap"><strong>B-3(구·이론)</strong> WiFi <code>--</code> + MQTT <code>OK</code> 조합은 WiFi 경로만 쓰면 나오지 않는 것이 맞다. <strong>현재 펌웨어</strong>는 표시상 WiFi 끊기면 MQTT 줄도 무조건 <code>MQTT --</code> 로 맞춘다.</p>
+<h5>B-3 WiFi -- / MQTT --</h5>
+<div class="snap">+--------------------+
+|CronusFarm          |
+|WiFi --             |
+|MQTT --             |
+|Dial/Push Ready     |
++--------------------+</div>
+
+<h4>C. R4 WiFi 대기 (<code>lcdRenderUi</code>, 환영 전, <strong>최소 5초</strong> 타이머 구간)</h4>
+<p>1행: 채널·핀(기본 <code>LED A1 D2</code>). 2행: WiFi 미연결 시 MQTT 표시도 <code>--</code> 로 통일 → 실질적으로 <strong>3종</strong>(WiFi 끔 / WiFi 켬·MQTT 끔 / 둘 다 켬).</p>
+<h5>C-1 WiFi 미연결</h5>
+<div class="snap">+--------------------+
+|LED A1 D2           |
+|WiFi --  MQTT --    |
+|Waiting link...     |
+|                    |
++--------------------+</div>
+<h5>C-2 WiFi 연결·MQTT 미연결</h5>
+<div class="snap">+--------------------+
+|LED A1 D2           |
+|WiFi OK  MQTT --    |
+|Waiting link...     |
+|                    |
++--------------------+</div>
+<h5>C-3 WiFi·MQTT 연결 (환영 전이면 잠깐만 보일 수 있음)</h5>
+<div class="snap">+--------------------+
+|LED A1 D2           |
+|WiFi OK  MQTT OK    |
+|Waiting link...     |
+|                    |
++--------------------+</div>
+
+<h4>D. R4 환영 (<code>lcdWelcomeIfOk</code>, <strong>최대 약 5초</strong>)</h4>
+<h5>D-1 RTC 정상 (예시)</h5>
+<div class="snap">+--------------------+
+|Welcome to          |
+|CronusFarm          |
+|2026.05.12 (Mon)    |
+|12:34:56 PM         |
++--------------------+</div>
+<h5>D-2 RTC 읽기 실패</h5>
+<div class="snap">+--------------------+
+|Welcome to          |
+|CronusFarm          |
+|RTC -- set time     |
+|--:--:--            |
++--------------------+</div>
+<h5>D-3 RTC 칩만 이상·무효일 때 부트 1회 기본값 (<code>rtcEnsureValidOnce</code>)</h5>
+<div class="snap">+--------------------+
+|Welcome to          |
+|CronusFarm          |
+|2025.12.22 (Mon)    |
+|09:00:00 AM         |
++--------------------+</div>
+<span class="cap">연·월·일 요일은 펌웨어 고정(2025-12-22). 이후 NTP·수동으로 교정. 칩에 이미 유효 연도가 있으면 이 블록은 적용 안 됨.</span>
+
+<h4>FAQ — R4 켜 둔 채 R3만 리셋</h4>
+<p>R4는 패널 살아 있다고 착각할 수 있어 I2C가 <strong>1.5초 이상</strong> 응답 없으면 링크 해제 후 다시 스플래시·동기한다. 스플래시는 <strong>이미 환영된 세션</strong>에서도 <code>lcdBrowseDraw</code>가 덮지 않도록 유지 시간을 존중한다. 다이얼 돌릴 때 빈 줄은 I2C에서 <strong>4행 매번 전송</strong>으로 완화.</p>
+
+<h4>E. 브라우즈 (<code>lcdBrowseDraw</code>, 환영 5초 후 또는 다이얼로 생략)</h4>
+<p>2행: <code>MODE:AUTO</code> 또는 <code>MODE:MAN </code>(끝 공백). 3행: <code>STATE:ON </code> 또는 <code>STATE:OFF</code> + 고정 공백 + <code>CH순번/15</code>.</p>
+<h5>E-1 CH1 LED A1 · MAN · OFF</h5>
+<div class="snap">+--------------------+
+|LED A1 (D2)         |
+|MODE:MAN            |
+|STATE:OFF    CH1/15 |
+|Dial:Next, Push:Edit|
++--------------------+</div>
+<h5>E-2 CH1 · AUTO · ON</h5>
+<div class="snap">+--------------------+
+|LED A1 (D2)         |
+|MODE:AUTO           |
+|STATE:ON     CH1/15 |
+|Dial:Next, Push:Edit|
++--------------------+</div>
+<h5>E-3 CH8 FAN A1 · MAN · OFF</h5>
+<div class="snap">+--------------------+
+|FAN A1 (D9)         |
+|MODE:MAN            |
+|STATE:OFF    CH8/15 |
+|Dial:Next, Push:Edit|
++--------------------+</div>
+<h5>E-4 CH15 PUMP D2 · MAN · OFF</h5>
+<div class="snap">+--------------------+
+|PUMP D2 (A3)        |
+|MODE:MAN            |
+|STATE:OFF    CH15/15|
+|Dial:Next, Push:Edit|
++--------------------+</div>
+<h5>E-5 이상: 2행만 비어 보임 (현장)</h5>
+<div class="snap">+--------------------+
+|LED A1 (D2)         |
+|                    |
+|STATE:OFF    CH1/15 |
+|Dial:Next, Push:Edit|
++--------------------+</div>
+<span class="cap">정상 코드는 2행에 항상 MODE를 보냄. I2C 실패·캐시·대비·잔상 → §5.4. 최신 펌웨어는 전송 실패 시 캐시 미갱신.</span>
+
+<h5>E-6 브라우즈 1행 — 채널 15개 (괄호·핀, 펌웨어 그대로)</h5>
+<table>
+<thead><tr><th>순번</th><th>1행 내용 (20열로 패딩됨)</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>LED A1 (D2)         </code></td></tr>
+<tr><td>2</td><td><code>LED A2 (D3)         </code></td></tr>
+<tr><td>3</td><td><code>LED B1 (D6)         </code></td></tr>
+<tr><td>4</td><td><code>PUMP A1 (D4)        </code></td></tr>
+<tr><td>5</td><td><code>PUMP A2 (D5)        </code></td></tr>
+<tr><td>6</td><td><code>PUMP B1 (D7)        </code></td></tr>
+<tr><td>7</td><td><code>PUMP B2 (D8)        </code></td></tr>
+<tr><td>8</td><td><code>FAN A1 (D9)         </code></td></tr>
+<tr><td>9</td><td><code>FAN A2 (D10)        </code></td></tr>
+<tr><td>10</td><td><code>FAN B1 (D11)        </code></td></tr>
+<tr><td>11</td><td><code>FAN B2 (D12)        </code></td></tr>
+<tr><td>12</td><td><code>PUMP C1 (A0)        </code></td></tr>
+<tr><td>13</td><td><code>PUMP C2 (A1)        </code></td></tr>
+<tr><td>14</td><td><code>PUMP D1 (A2)        </code></td></tr>
+<tr><td>15</td><td><code>PUMP D2 (A3)        </code></td></tr>
+</tbody>
+</table>
+
+<h4>F. EDIT (<code>lcdRenderUi</code> EDIT 분기)</h4>
+<h5>F-1 SET:OFF (CH1 예)</h5>
+<div class="snap">+--------------------+
+|Setting Mode (EDIT) |
+|LED A1 (D2)         |
+|SET:OFF             |
+|Dial:Sel Push:OK    |
++--------------------+</div>
+<h5>F-2 SET:ON</h5>
+<div class="snap">+--------------------+
+|Setting Mode (EDIT) |
+|LED A1 (D2)         |
+|SET:ON              |
+|Dial:Sel Push:OK    |
++--------------------+</div>
+<h5>F-3 SET:AUTO</h5>
+<div class="snap">+--------------------+
+|Setting Mode (EDIT) |
+|LED A1 (D2)         |
+|SET:AUTO            |
+|Dial:Sel Push:OK    |
++--------------------+</div>
+<span class="cap">2행(장치명)은 E-6과 동일. 다이얼은 <strong>OFF→ON→AUTO</strong> 순환. AUTO=<code>chAuto</code>(펌웨어 펌프 주기·Pi MQTT <code>auto_*</code>·스케줄 연동).</span>
+
+<h4>G. 다이얼</h4>
+<div class="dial">
+<strong>브라우즈</strong> — 회전: 채널 이전/다음(표 E-6 순서). 누름: EDIT. 환영 5초 안 첫 입력은 CH1부터.<br/>
+<strong>EDIT</strong> — 회전: <strong>OFF / ON / AUTO</strong> 순환. 누름: 적용 후 브라우즈.
+</div>
+
+<h4>Node-RED / 동기</h4>
+<p>노드 부착 위치는 위 §「이 문서가 붙는 Node-RED 위치」. Dashboard 2: <code>/nrdb2</code>. 배포 머지는 <code>merge_nodered_deploy.py --use-split</code> 등 <code>docs/cronusfarm_hardware_pins.md</code> §4.</p>
+
+<div class="note">R3가 <code>PANEL_CMD_CLEAR</code> 직후 잠깐 빈 화면이 나올 수 있음(즉시 다음 <code>SET_LINE</code>으로 채워짐).</div>
+</div>
+</div>

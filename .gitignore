@@ -27,6 +27,11 @@ node_modules/
 ._.tmp_known_hosts
 .nodered-local/
 
+# Hailo 모델(용량 큼 — 필요 시만 로컬에 두고 커밋하지 않음)
+Hailo/*.onnx
+Hailo/*.hef
+Hailo/*.har
+
 # Python
 __pycache__/
 *.pyc

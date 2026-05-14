@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CronusFarm 패널 LCD 부팅 표시</title>
+  <style>
+    body { font-family: system-ui, "Malgun Gothic", sans-serif; margin: 16px auto; max-width: 52rem; line-height: 1.45; color: #111; background: #fafafa; }
+    h1 { font-size: 1.15rem; margin: 0 0 12px; }
+    h2 { font-size: 0.95rem; margin: 18px 0 8px; border-bottom: 1px solid #ccc; padding-bottom: 4px; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; background: #fff; }
+    th, td { border: 1px solid #ddd; padding: 6px 8px; vertical-align: top; }
+    th { background: #eee; text-align: left; width: 7rem; }
+    code { font-size: 0.8rem; background: #f0f0f0; padding: 1px 4px; border-radius: 4px; }
+    .note { font-size: 0.8rem; color: #444; margin-top: 12px; }
+    ul { margin: 6px 0; padding-left: 1.2rem; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <h1>CronusFarm — R3/R4 부팅 시 2004A 패널 LCD 표시 순서</h1>
+  <p class="note">빌드 기준: R4→R3 <strong>UART</strong>(19200, <code>Serial1</code> / R3 <code>SoftwareSerial</code>). I2C 슬레이브는 백그라운드로 동작하나 LCD 본문은 UART가 우선입니다.</p>
+
+  <h2>① R3 전원 직후 (<code>CronusFarmPanel.ino</code> <code>setup</code>)</h2>
+  <table>
+    <tr><th>1행</th><td><code>CronusFarm Panel</code></td></tr>
+    <tr><th>2행</th><td>공백(빈 줄)</td></tr>
+    <tr><th>3·4행</th><td><code>lcd.clear()</code> 직후 빈 화면</td></tr>
+  </table>
+  <p class="note">부저 짧게 두 번. <code>BOOT_MSG_MS = 10초</code> 동안 R4가 LCD 명령을 안내면 이후 R3 로컬 환영으로 전환(아래 ②).</p>
+
+  <h2>② R3만 있고 R4 UART가 10초 이상 없을 때 (한 번만)</h2>
+  <table>
+    <tr><th>1행</th><td><code>Welcome 2 CronusFarm</code></td></tr>
+    <tr><th>2행</th><td><code>----.--.-- (---)</code> (R3 RTC 미연동 초기값)</td></tr>
+    <tr><th>3행</th><td><code>--:--:--</code></td></tr>
+    <tr><th>4행</th><td>공백</td></tr>
+  </table>
+  <p class="note">R4가 UART로 <code>L,</code>/<code>C</code>를내면 <code>masterOwnsLcd</code>가 되어 ②가 스킵될 수 있습니다.</p>
+
+  <h2>③ R4 동작 후 (일반)</h2>
+  <h2 style="margin-top:10px">③-a WiFi 연결 전 (<code>lcdRenderUi</code> 대기)</h2>
+  <table>
+    <tr><th>1행</th><td>첫 채널 예: <code>LED A1 D2</code> (<code>gUiCh=0</code>)</td></tr>
+    <tr><th>2행</th><td><code>WiFi --  MQTT --</code> 등(포맷 <code>%s %s</code>로 WiFi와 MQTT 사이 <strong>공백 두 칸</strong>)</td></tr>
+    <tr><th>3행</th><td><code>Waiting link...</code></td></tr>
+    <tr><th>4행</th><td>공백</td></tr>
+  </table>
+
+  <h2>③-b WiFi 연결 직후 (<code>lcdWelcomeIfOk</code> 1회)</h2>
+  <table>
+    <tr><th>1행</th><td><code>Welcome to</code></td></tr>
+    <tr><th>2행</th><td><code>CronusFarm</code></td></tr>
+    <tr><th>3행</th><td>RTC 날짜</td></tr>
+    <tr><th>4행</th><td>RTC 시각 + AM/PM</td></tr>
+  </table>
+
+  <h2>③-c 환영 후 5초 동안</h2>
+  <p>③-b와 동일. 1초마다 3·4행만 RTC로 갱신. 브라우즈 4줄은 아직 안 그림.</p>
+
+  <h2>③-d 환영 5초 경과 후 — 브라우즈</h2>
+  <table>
+    <tr><th>1행</th><td>채널명 + 핀 (예: <code>LED A1 (D2)</code>)</td></tr>
+    <tr><th>2행</th><td><code>MODE:AUTO</code> / <code>MODE:MAN </code></td></tr>
+    <tr><th>3행</th><td><code>STATE:… CHn/15</code></td></tr>
+    <tr><th>4행</th><td><code>DIAL Next PUSH Edit</code></td></tr>
+  </table>
+
+  <h2>③-e EDIT 모드</h2>
+  <ul>
+    <li><code>Setting Mode (EDIT)</code> / 채널·핀 / <code>SET:OFF|ON|AUTO</code> / <code>Dial:Sel Push:OK</code></li>
+  </ul>
+
+  <h2>참고</h2>
+  <ul>
+    <li>R3 환영 문구와 R4 환영 문구는 서로 다릅니다.</li>
+    <li>전원 순서(R3 먼저 / R4 먼저)에 따라 ①·②가 잠깐 보이다가 ③으로 바뀔 수 있습니다.</li>
+  </ul>
+</body>
+</html>

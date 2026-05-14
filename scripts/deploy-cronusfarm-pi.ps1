@@ -1,6 +1,6 @@
 param(
   [string] $PiHost = "",
-  [string] $PiHostLan = "",
+  [string] $PiHostLan = "192.168.0.222",
   [string] $PiHostWan = "ida.mango-larch.ts.net",
   [string] $PiUser = "dooly",
   [string] $RemoteCronusRoot = "/home/dooly/CronusFarm",
@@ -11,8 +11,15 @@ param(
   # 분할 JSON(mqtt+dashboard+devflow)만으로 병합 — 편집기 노드 위치는 CronusFarm_NodeRED_flow.json 과 무관
   [switch] $UseSplitFlows,
   [switch] $AutoPort,
-  [switch] $StopNodeRedDuringArduinoUpload
+  [switch] $StopNodeRedDuringArduinoUpload,
+  [switch] $SkipGrafana,
+  # nginx 사이트 설정 동기화·reload(비밀번호 sudo면 WARN만)
+  [switch] $SkipNginxDeploy,
+  # cronusfarm-camera-ai 복사·systemctl 재시작 생략(장시간 대기 회피)
+  [switch] $SkipAiCamera
 )
+# -SkipGrafana: Pi sudo(그래파나) 대기로 멈출 때 Node·아두이노만 빠르게 배포
+# -SkipAiCamera: AI 카메라 유닛 배포 스킵(원하면 NR 적용 후에도 동일 스위치로 생략)
 
 $ErrorActionPreference = "Stop"
 
@@ -35,6 +42,18 @@ function Assert-Command($name) {
 Assert-Command "ssh"
 Assert-Command "scp"
 
+# PSScriptRoot 이 비면 Join-Path / dot-source 가 실패하거나 $null 경로가 생김
+$scriptPathDeploy = $MyInvocation.MyCommand.Path
+$scriptDirDeploy = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $scriptPathDeploy }
+if (-not $scriptDirDeploy) {
+  throw "Cannot resolve script directory (PSScriptRoot empty and MyCommand.Path missing)."
+}
+# ScriptRoot 같은 일반 이름은 호스트별로 충돌할 수 있어 CronusDeployScriptDir 고정
+$CronusDeployScriptDir = $scriptDirDeploy
+$repoRoot = Split-Path $CronusDeployScriptDir -Parent
+
+. (Join-Path $CronusDeployScriptDir "pi-host-resolve.ps1")
+$PiHost = Get-CronusPiHost -PiHost $PiHost -PiHostLan $PiHostLan -PiHostWan $PiHostWan -PiUser $PiUser
 # 에이전트/백그라운드 환경에서 SSH 무한 대기 방지 + 비대화형
 # 원격 셸: -T(의사 TTY 끔) — Windows PowerShell에서 ssh가 멈추는 경우가 있어 ssh에만 사용
 $SshScpOpts = @(
@@ -53,10 +72,7 @@ $SshRemoteOpts = @(
   "-o", "StrictHostKeyChecking=accept-new"
 )
 
-. (Join-Path $PSScriptRoot "pi-host-resolve.ps1")
-$PiHost = Get-CronusPiHost -PiHost $PiHost -PiHostLan $PiHostLan -PiHostWan $PiHostWan -PiUser $PiUser
-
-$nrDir = Join-Path $PSScriptRoot "..\nodered"
+$nrDir = Join-Path $CronusDeployScriptDir "..\nodered"
 $mqttPath = Join-Path $nrDir "flows_cronusfarm_mqtt.json"
 $dashPath = Join-Path $nrDir "flows_cronusfarm_dashboard.json"
 $devFlowPath = Join-Path $nrDir "flows_cronusfarm_devflow_flow.json"
@@ -70,15 +86,16 @@ if (-not $SkipArduino) {
   if ($AutoPort) { $up.AutoPort = $true }
   if ($StopNodeRedDuringArduinoUpload) { $up.StopNodeRedDuringUpload = $true }
   # 1) R4 메인 스케치
-  & (Join-Path $PSScriptRoot "upcode.ps1") @up
+  & (Join-Path $CronusDeployScriptDir "upcode.ps1") @up
+  Write-Host "=== Arduino: R4 메인 upcode 완료 ===" -ForegroundColor Green
 
   # 2) R3 패널 스케치도 함께 업로드(연결되어 있을 때만). 포트는 AutoPort로 탐지.
   Write-Host "=== Arduino: upcode (R3 panel, if connected) ===" -ForegroundColor Cyan
-  $upR3 = @{ PiHost = $PiHost; PiUser = $PiUser; Fqbn = "arduino:avr:uno"; LocalSketchDir = (Join-Path $PSScriptRoot "..\\arduino\\CronusFarmPanel"); RemoteSketchDir = "$RemoteCronusRoot/arduino/CronusFarmPanel" }
+  $upR3 = @{ PiHost = $PiHost; PiUser = $PiUser; Fqbn = "arduino:avr:uno"; LocalSketchDir = (Join-Path $CronusDeployScriptDir "..\\arduino\\CronusFarmPanel"); RemoteSketchDir = "$RemoteCronusRoot/arduino/CronusFarmPanel" }
   if ($AutoPort) { $upR3.AutoPort = $true }
   if ($StopNodeRedDuringArduinoUpload) { $upR3.StopNodeRedDuringUpload = $true }
   try {
-    & (Join-Path $PSScriptRoot "upcode.ps1") @upR3
+    & (Join-Path $CronusDeployScriptDir "upcode.ps1") @upR3
   } catch {
     Write-Host "WARN: R3 panel upload failed (not connected / no port). You can run upcode for R3 only." -ForegroundColor Yellow
   }
@@ -94,75 +111,133 @@ Write-Host "=== Node-RED: sync flow JSON -> $remoteNodered ===" -ForegroundColor
 & scp @SshScpOpts "$mqttPath" "${PiUser}@${PiHost}:$remoteNodered/flows_cronusfarm_mqtt.json"
 & scp @SshScpOpts "$dashPath" "${PiUser}@${PiHost}:$remoteNodered/flows_cronusfarm_dashboard.json"
 & scp @SshScpOpts "$devFlowPath" "${PiUser}@${PiHost}:$remoteNodered/flows_cronusfarm_devflow_flow.json"
+$dashHtmlDir = Join-Path $nrDir "dashboard"
+if (Test-Path $dashHtmlDir) {
+  Write-Host "=== Node-RED: dashboard/*.html -> $remoteNodered/dashboard ===" -ForegroundColor Cyan
+  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteNodered/dashboard'"
+  Get-ChildItem -Path $dashHtmlDir -Filter "*.html" -File -ErrorAction SilentlyContinue | ForEach-Object {
+    & scp @SshScpOpts "$($_.FullName)" "${PiUser}@${PiHost}:$remoteNodered/dashboard/$($_.Name)"
+  }
+  $dashVendor = Join-Path $dashHtmlDir "vendor"
+  if (Test-Path $dashVendor) {
+    Write-Host "=== Node-RED: dashboard/vendor/*.js -> $remoteNodered/dashboard/vendor ===" -ForegroundColor Cyan
+    & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteNodered/dashboard/vendor'"
+    Get-ChildItem -Path $dashVendor -Filter "*.js" -File -ErrorAction SilentlyContinue | ForEach-Object {
+      & scp @SshScpOpts "$($_.FullName)" "${PiUser}@${PiHost}:$remoteNodered/dashboard/vendor/$($_.Name)"
+    }
+  }
+}
 $exportPath = Join-Path $nrDir "CronusFarm_NodeRED_flow.json"
 if (Test-Path $exportPath) {
   & scp @SshScpOpts "$exportPath" "${PiUser}@${PiHost}:$remoteNodered/CronusFarm_NodeRED_flow.json"
   Write-Host "Synced: CronusFarm_NodeRED_flow.json (export backup)" -ForegroundColor DarkGray
 }
 
-$applySettingsSh = Join-Path $PSScriptRoot "pi-nodered-apply-settings-farm.sh"
+$applySettingsSh = Join-Path $CronusDeployScriptDir "pi-nodered-apply-settings-farm.sh"
 if (-not (Test-Path $applySettingsSh)) {
   throw "pi-nodered-apply-settings-farm.sh 없음: $applySettingsSh"
 }
 & scp @SshScpOpts "$applySettingsSh" "${PiUser}@${PiHost}:$remoteScripts/pi-nodered-apply-settings-farm.sh"
 & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "chmod +x '$remoteScripts/pi-nodered-apply-settings-farm.sh'"
 
-$applySh = Join-Path $PSScriptRoot "pi-nodered-apply-merged.sh"
+# Dashboard 2 설치 스크립트는 Pi에 항상 복사(git pull 없이 수동 실행 가능). npm 실행은 -ApplyNodeRed 구간에서만.
+$dash2Sh = Join-Path $CronusDeployScriptDir "pi-nodered-install-dashboard2.sh"
+if (Test-Path $dash2Sh) {
+  & scp @SshScpOpts "$dash2Sh" "${PiUser}@${PiHost}:$remoteScripts/pi-nodered-install-dashboard2.sh"
+  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "chmod +x '$remoteScripts/pi-nodered-install-dashboard2.sh'; sed -i 's/\r$//' '$remoteScripts/pi-nodered-install-dashboard2.sh' 2>/dev/null || true"
+}
+
+$applySh = Join-Path $CronusDeployScriptDir "pi-nodered-apply-merged.sh"
 if (-not (Test-Path $applySh)) {
   throw "pi-nodered-apply-merged.sh 없음: $applySh"
 }
 & scp @SshScpOpts "$applySh" "${PiUser}@${PiHost}:$remoteScripts/pi-nodered-apply-merged.sh"
 & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "chmod +x '$remoteScripts/pi-nodered-apply-merged.sh'"
 
+$ensureUpstreamSh = Join-Path $CronusDeployScriptDir "pi-nodered-ensure-upstream-for-nginx.sh"
+if (Test-Path $ensureUpstreamSh) {
+  & scp @SshScpOpts "$ensureUpstreamSh" "${PiUser}@${PiHost}:$remoteScripts/pi-nodered-ensure-upstream-for-nginx.sh"
+  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "chmod +x '$remoteScripts/pi-nodered-ensure-upstream-for-nginx.sh'"
+}
+
 # Windows에서 git/autocrlf 등으로 .sh가 CRLF로 올라가면 Pi에서 "$'\r'" 오류가 납니다.
 # 복사 직후 원격에서 LF로 정리합니다(실패해도 계속).
 & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "sed -i 's/\r$//' $remoteScripts/*.sh 2>/dev/null || true"
 
+$nginxConfSrc = Join-Path $repoRoot "deploy\nginx\cronusfarm-nodered.conf"
+$nginxApplySh = Join-Path $CronusDeployScriptDir "pi-nginx-apply-cronusfarm.sh"
+if (-not $SkipNginxDeploy -and (Test-Path $nginxConfSrc)) {
+  Write-Host "=== nginx: cronusfarm-nodered.conf -> Pi (reload if sudo -n ok) ===" -ForegroundColor Cyan
+  $remoteDeployNginx = "$RemoteCronusRoot/deploy/nginx"
+  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteDeployNginx'"
+  & scp @SshScpOpts "$nginxConfSrc" "${PiUser}@${PiHost}:$remoteDeployNginx/cronusfarm-nodered.conf"
+  if (Test-Path $nginxApplySh) {
+    & scp @SshScpOpts "$nginxApplySh" "${PiUser}@${PiHost}:$remoteScripts/pi-nginx-apply-cronusfarm.sh"
+    & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "chmod +x '$remoteScripts/pi-nginx-apply-cronusfarm.sh'; sed -i 's/\r$//' '$remoteScripts/pi-nginx-apply-cronusfarm.sh' 2>/dev/null || true; bash '$remoteScripts/pi-nginx-apply-cronusfarm.sh' '$remoteDeployNginx/cronusfarm-nodered.conf'"
+  }
+} elseif (-not $SkipNginxDeploy) {
+  Write-Host "WARN: deploy/nginx/cronusfarm-nodered.conf 없음 — nginx 동기화 생략" -ForegroundColor Yellow
+}
+
 # SQLite 브리지·DDL(systemd §9) — Pi에서 직접 실행할 스크립트가 저장소와 동일하게 올라가도록 함
-# 일부 실행 환경에서 $PSScriptRoot 가 null인 케이스를 방어합니다.
-$scriptPath = $MyInvocation.MyCommand.Path
-$scriptDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $scriptPath }
-$repoRoot = Split-Path $scriptDir -Parent
-$sqlSchema = Join-Path $PSScriptRoot "sql\cronusfarm_record_v1.sql"
-$sqliteInit = Join-Path $PSScriptRoot "init_cronusfarm_sqlite.py"
-$sqliteBridge = Join-Path $PSScriptRoot "cronusfarm_sqlite_bridge.py"
+$sqlSchema = Join-Path $CronusDeployScriptDir "sql\cronusfarm_record_v1.sql"
+$sqliteInit = Join-Path $CronusDeployScriptDir "init_cronusfarm_sqlite.py"
+$sqliteBridge = Join-Path $CronusDeployScriptDir "cronusfarm_sqlite_bridge.py"
 $systemdBridge = Join-Path $repoRoot "deploy\systemd\cronusfarm-sqlite-bridge.service"
-if ((Test-Path $sqliteInit) -or (Test-Path $sqliteBridge) -or (Test-Path $sqlSchema) -or (Test-Path $systemdBridge)) {
+$haveSqlitePayload = ($null -ne $sqliteInit -and (Test-Path -LiteralPath $sqliteInit)) -or ($null -ne $sqliteBridge -and (Test-Path -LiteralPath $sqliteBridge)) -or ($null -ne $sqlSchema -and (Test-Path -LiteralPath $sqlSchema)) -or ($null -ne $systemdBridge -and (Test-Path -LiteralPath $systemdBridge))
+if ($haveSqlitePayload) {
   Write-Host "=== SQLite: sync bridge/schema -> $RemoteCronusRoot ===" -ForegroundColor Cyan
   $remoteDeploySystemd = "$RemoteCronusRoot/deploy/systemd"
   & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteScripts/sql' '$remoteDeploySystemd'"
-  if (Test-Path $sqliteInit) {
+  if ($null -ne $sqliteInit -and (Test-Path -LiteralPath $sqliteInit)) {
     & scp @SshScpOpts "$sqliteInit" "${PiUser}@${PiHost}:$remoteScripts/init_cronusfarm_sqlite.py"
   }
-  if (Test-Path $sqliteBridge) {
+  if ($null -ne $sqliteBridge -and (Test-Path -LiteralPath $sqliteBridge)) {
     & scp @SshScpOpts "$sqliteBridge" "${PiUser}@${PiHost}:$remoteScripts/cronusfarm_sqlite_bridge.py"
   }
-  if (Test-Path $sqlSchema) {
+  if ($null -ne $sqlSchema -and (Test-Path -LiteralPath $sqlSchema)) {
     & scp @SshScpOpts "$sqlSchema" "${PiUser}@${PiHost}:$remoteScripts/sql/cronusfarm_record_v1.sql"
   }
-  if (Test-Path $systemdBridge) {
+  if ($null -ne $systemdBridge -and (Test-Path -LiteralPath $systemdBridge)) {
     & scp @SshScpOpts "$systemdBridge" "${PiUser}@${PiHost}:$remoteDeploySystemd/cronusfarm-sqlite-bridge.service"
   }
-  $piCheckKv = Join-Path $PSScriptRoot "pi-check-sqlite-kv.sh"
+  $piCheckKv = Join-Path $CronusDeployScriptDir "pi-check-sqlite-kv.sh"
   if (Test-Path $piCheckKv) {
     & scp @SshScpOpts "$piCheckKv" "${PiUser}@${PiHost}:$remoteScripts/pi-check-sqlite-kv.sh"
     & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "chmod +x '$remoteScripts/pi-check-sqlite-kv.sh'"
   }
-  $piAiSetup = Join-Path $PSScriptRoot "pi-ai-setup.sh"
+  $piAiSetup = Join-Path $CronusDeployScriptDir "pi-ai-setup.sh"
   if (Test-Path $piAiSetup) {
     & scp @SshScpOpts "$piAiSetup" "${PiUser}@${PiHost}:$remoteScripts/pi-ai-setup.sh"
     & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "chmod +x '$remoteScripts/pi-ai-setup.sh'"
   }
-  if ((Test-Path $sqliteBridge) -or (Test-Path $sqliteInit)) {
+  if (($null -ne $sqliteBridge -and (Test-Path -LiteralPath $sqliteBridge)) -or ($null -ne $sqliteInit -and (Test-Path -LiteralPath $sqliteInit))) {
     # sudo/systemctl이 환경에 따라 멈추는 경우가 있어 timeout으로 보호
     & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "timeout 12s sudo systemctl restart cronusfarm-sqlite-bridge.service 2>/dev/null || true"
   }
 }
 
+# Hailo GStreamer: 스크립트 + ~/CronusFarm/Hailo (best.hef / best.onnx / yolov8.json)
+$hailoPy = Join-Path $CronusDeployScriptDir "cronusfarm_hailo_stream.py"
+if (Test-Path -LiteralPath $hailoPy) {
+  Write-Host "=== Hailo: cronusfarm_hailo_stream.py -> $remoteScripts ===" -ForegroundColor Cyan
+  & scp @SshScpOpts "$hailoPy" "${PiUser}@${PiHost}:$remoteScripts/cronusfarm_hailo_stream.py"
+}
+$hailoRepoDir = Join-Path $repoRoot "Hailo"
+if (Test-Path -LiteralPath $hailoRepoDir) {
+  Write-Host "=== Hailo: CronusFarm/Hailo -> $RemoteCronusRoot/Hailo ===" -ForegroundColor Cyan
+  $remoteHailo = "$RemoteCronusRoot/Hailo"
+  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteHailo'"
+  Get-ChildItem -Path $hailoRepoDir -File -ErrorAction SilentlyContinue | ForEach-Object {
+    & scp @SshScpOpts "$($_.FullName)" "${PiUser}@${PiHost}:$remoteHailo/$($_.Name)"
+  }
+}
+
 # 텔레그램 플로우용 systemd EnvironmentFile(비밀값은 Pi의 /etc/cronusfarm/nodered-telegram.env 만)
-$tgInstall = Join-Path $PSScriptRoot "pi-install-nodered-telegram-env.sh"
+$tgInstall = Join-Path $CronusDeployScriptDir "pi-install-nodered-telegram-env.sh"
 $tgDropIn = Join-Path $repoRoot "deploy\systemd\nodered.service.d\10-cronusfarm-telegram.conf"
 $tgEnvEx = Join-Path $repoRoot "deploy\env\nodered-telegram.env.example"
+$nrAiCamDropIn = Join-Path $repoRoot "deploy\systemd\nodered.service.d\20-cronusfarm-camera-ai.conf"
 if ((Test-Path $tgInstall) -and (Test-Path $tgDropIn) -and (Test-Path $tgEnvEx)) {
   Write-Host "=== Telegram: systemd drop-in/env example -> $RemoteCronusRoot ===" -ForegroundColor Cyan
   $remoteNrDrop = "$RemoteCronusRoot/deploy/systemd/nodered.service.d"
@@ -176,35 +251,75 @@ if ((Test-Path $tgInstall) -and (Test-Path $tgDropIn) -and (Test-Path $tgEnvEx))
   & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "sed -i 's/\r$//' '$remoteScripts/pi-install-nodered-telegram-env.sh' 2>/dev/null || true"
 }
 
-$grafanaDashDir = Join-Path $repoRoot "grafana\dashboards"
-if (Test-Path $grafanaDashDir) {
-  $gfJson = @(Get-ChildItem -Path $grafanaDashDir -Filter "*.json" -File -ErrorAction SilentlyContinue)
-  if ($gfJson.Count -gt 0) {
-    Write-Host "=== Grafana: dashboards JSON -> /var/lib/grafana/dashboards (sudo) ===" -ForegroundColor Cyan
-    foreach ($gf in $gfJson) {
-      & scp @SshScpOpts "$($gf.FullName)" "${PiUser}@${PiHost}:/tmp/$($gf.Name)"
-    }
-    $copyParts = @()
-    foreach ($gf in $gfJson) {
-      $bn = $gf.Name
-      $copyParts += "sudo cp /tmp/$bn /var/lib/grafana/dashboards/$bn"
-    }
-    $remoteGfCmd = ($copyParts -join " && ") + " && sudo chown grafana:grafana /var/lib/grafana/dashboards/*.json 2>/dev/null; sudo systemctl reload grafana-server 2>/dev/null || sudo systemctl restart grafana-server 2>/dev/null || true"
-    & ssh @SshRemoteOpts "${PiUser}@${PiHost}" $remoteGfCmd
-    if ($LASTEXITCODE -ne 0) {
-      Write-Host "WARN: Grafana copy/reload failed (sudo/path). Manual: sudo cp /tmp/*.json /var/lib/grafana/dashboards/" -ForegroundColor Yellow
-    }
-  }
+# Node-RED 기동 후 cronusfarm-camera-ai try-restart(drop-in). 텔레그램 블록과 독립.
+if (Test-Path $nrAiCamDropIn) {
+  Write-Host "=== Node-RED drop-in: NR 기동 후 cronusfarm-camera-ai restart ===" -ForegroundColor Cyan
+  $remoteNrDropOnly = "$RemoteCronusRoot/deploy/systemd/nodered.service.d"
+  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteNrDropOnly'"
+  & scp @SshScpOpts "$nrAiCamDropIn" "${PiUser}@${PiHost}:$remoteNrDropOnly/20-cronusfarm-camera-ai.conf"
+  $nrAiDropCmd = "sudo mkdir -p /etc/systemd/system/nodered.service.d && sudo cp '$remoteNrDropOnly/20-cronusfarm-camera-ai.conf' /etc/systemd/system/nodered.service.d/20-cronusfarm-camera-ai.conf && sudo systemctl daemon-reload"
+  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" $nrAiDropCmd
 }
 
-$gfDropIn = Join-Path $repoRoot "deploy\grafana\systemd\grafana-server.service.d\99-cronusfarm-panels.conf"
-if (Test-Path $gfDropIn) {
-  Write-Host "=== Grafana: allow Text panel iframe(systemd drop-in) ===" -ForegroundColor Cyan
-  & scp @SshScpOpts "$gfDropIn" "${PiUser}@${PiHost}:/tmp/99-cronusfarm-panels.conf"
-  $gfSysCmd = "sudo mkdir -p /etc/systemd/system/grafana-server.service.d && sudo cp /tmp/99-cronusfarm-panels.conf /etc/systemd/system/grafana-server.service.d/ && sudo systemctl daemon-reload && (sudo systemctl restart grafana-server 2>/dev/null || sudo systemctl restart grafana 2>/dev/null || true)"
-  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" $gfSysCmd
-  if ($LASTEXITCODE -ne 0) {
-    Write-Host "WARN: Grafana systemd drop-in failed. Check GF_PANELS_DISABLE_SANITIZE_HTML on Pi." -ForegroundColor Yellow
+if (-not $SkipGrafana) {
+  $grafanaDashDir = Join-Path $repoRoot "grafana\dashboards"
+  if (Test-Path $grafanaDashDir) {
+    $gfJson = @(Get-ChildItem -Path $grafanaDashDir -Filter "*.json" -File -ErrorAction SilentlyContinue)
+    if ($gfJson.Count -gt 0) {
+      Write-Host "=== Grafana: dashboards JSON -> /var/lib/grafana/dashboards (sudo) ===" -ForegroundColor Cyan
+      foreach ($gf in $gfJson) {
+        & scp @SshScpOpts "$($gf.FullName)" "${PiUser}@${PiHost}:/tmp/$($gf.Name)"
+      }
+      $copyParts = @()
+      foreach ($gf in $gfJson) {
+        $bn = $gf.Name
+        $copyParts += "sudo cp /tmp/$bn /var/lib/grafana/dashboards/$bn"
+      }
+      $remoteGfCmd = ($copyParts -join " && ") + " && sudo chown grafana:grafana /var/lib/grafana/dashboards/*.json 2>/dev/null; sudo systemctl reload grafana-server 2>/dev/null || sudo systemctl restart grafana-server 2>/dev/null || true"
+      & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "timeout 90 sh -c '$remoteGfCmd'" 2>$null
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host "WARN: Grafana copy/reload failed or timeout (sudo/path). Manual: sudo cp /tmp/*.json /var/lib/grafana/dashboards/" -ForegroundColor Yellow
+      }
+    }
+  }
+
+  $gfDropIn = Join-Path $repoRoot "deploy\grafana\systemd\grafana-server.service.d\99-cronusfarm-panels.conf"
+  if (Test-Path $gfDropIn) {
+    Write-Host "=== Grafana: allow Text panel iframe(systemd drop-in) ===" -ForegroundColor Cyan
+    & scp @SshScpOpts "$gfDropIn" "${PiUser}@${PiHost}:/tmp/99-cronusfarm-panels.conf"
+    $gfSysCmd = "sudo mkdir -p /etc/systemd/system/grafana-server.service.d && sudo cp /tmp/99-cronusfarm-panels.conf /etc/systemd/system/grafana-server.service.d/ && sudo systemctl daemon-reload && (sudo systemctl restart grafana-server 2>/dev/null || sudo systemctl restart grafana 2>/dev/null || true)"
+    & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "timeout 120 sh -c '$gfSysCmd'" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "WARN: Grafana systemd drop-in failed or timeout. Check GF_PANELS_DISABLE_SANITIZE_HTML on Pi." -ForegroundColor Yellow
+    }
+  }
+} else {
+  Write-Host "=== Grafana: skipped (-SkipGrafana) ===" -ForegroundColor Yellow
+}
+
+# -ApplyNodeRed 없이 종료하는 경우: NR merged 는 적용하지 않지만 카메라 유닛은 이 시점에서 반영
+if ((-not $ApplyNodeRed) -and (-not $SkipAiCamera)) {
+  $cameraSvc = Join-Path $repoRoot "deploy\systemd\cronusfarm-camera-ai.service"
+  $cameraPy = Join-Path $CronusDeployScriptDir "cronusfarm_camera_ai.py"
+  if ((Test-Path -LiteralPath $cameraSvc) -and (Test-Path -LiteralPath $cameraPy)) {
+    $ust = (& ssh @SshRemoteOpts "${PiUser}@${PiHost}" 'pgrep -x ustreamer >/dev/null 2>&1 && echo yes || echo no').Trim()
+    if ($ust -eq "yes") {
+      Write-Host "=== AI camera: ustreamer running - skip cronusfarm-camera-ai (UVC in use) ===" -ForegroundColor Yellow
+    } else {
+      Write-Host "=== AI camera: cronusfarm_camera_ai.py + systemd -> Pi ===" -ForegroundColor Cyan
+      $remoteDeploySd = "$RemoteCronusRoot/deploy/systemd"
+      & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteDeploySd'"
+      & scp @SshScpOpts "$cameraPy" "${PiUser}@${PiHost}:$remoteScripts/cronusfarm_camera_ai.py"
+      & scp @SshScpOpts "$cameraSvc" "${PiUser}@${PiHost}:$remoteDeploySd/cronusfarm-camera-ai.service"
+      $svcOnPi = "$remoteDeploySd/cronusfarm-camera-ai.service"
+      $q = [char]34
+      $inner = "cp $svcOnPi /etc/systemd/system/cronusfarm-camera-ai.service && systemctl daemon-reload && systemctl enable cronusfarm-camera-ai.service && systemctl restart cronusfarm-camera-ai.service"
+      $camRemote = "timeout 135s sudo -n bash -c ${q}${inner}${q}"
+      & ssh @SshRemoteOpts "${PiUser}@${PiHost}" $camRemote
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host "WARN: cronusfarm-camera-ai deploy/restart exit $LASTEXITCODE - Pi: journalctl -u cronusfarm-camera-ai -n 60" -ForegroundColor Yellow
+      }
+    }
   }
 }
 
@@ -214,7 +329,7 @@ if (-not $ApplyNodeRed) {
   exit 0
 }
 
-Write-Host "=== Node-RED: merge then POST via Admin API (backup flows.json) ===" -ForegroundColor Cyan
+Write-Host "=== Node-RED: merge then apply flows.json + restart ===" -ForegroundColor Cyan
 if ($UseSplitFlows) {
   Write-Host "Merge source: split 3 files only (editor layout may differ from CronusFarm_NodeRED_flow.json)" -ForegroundColor Yellow
 } elseif (Test-Path $exportPath) {
@@ -239,9 +354,18 @@ if ($LASTEXITCODE -ne 0) {
   Write-Host "WARN: nodered restart failed (continue). On Pi: sudo systemctl restart nodered.service" -ForegroundColor Yellow
 }
 
+Write-Host "=== Node-RED: nginx upstream (1882) vs 502 fix ===" -ForegroundColor Cyan
+& ssh @SshRemoteOpts "${PiUser}@${PiHost}" "if [[ -x '$remoteScripts/pi-nodered-ensure-upstream-for-nginx.sh' ]]; then bash '$remoteScripts/pi-nodered-ensure-upstream-for-nginx.sh'; else echo 'skip: pi-nodered-ensure-upstream-for-nginx.sh missing' >&2; fi"
+
 # 로컬에서 merge_nodered_deploy.py 실행 → 분할 dashboard → 내보내기 동기화 후 merged-deploy.json 생성
 # Windows에서는 PATH에 python 이 없고 py 런처만 있는 경우가 있어 둘 다 허용한다.
-$mergeScript = Join-Path $PSScriptRoot "merge_nodered_deploy.py"
+
+if (Test-Path $dash2Sh) {
+  Write-Host "=== Node-RED: Dashboard2 @flowfuse (/nrdb2) install check ===" -ForegroundColor Cyan
+  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "if [[ -x '$remoteScripts/pi-nodered-install-dashboard2.sh' ]]; then bash '$remoteScripts/pi-nodered-install-dashboard2.sh'; else echo 'WARN: pi-nodered-install-dashboard2.sh missing' >&2; fi"
+}
+
+$mergeScript = Join-Path $CronusDeployScriptDir "merge_nodered_deploy.py"
 $mergedLocal = Join-Path $nrDir "merged-deploy.json"
 $mergeArgs = @($mergeScript)
 if ($UseSplitFlows) {
@@ -266,7 +390,35 @@ $mergedRemote = "$remoteNodered/merged-deploy.json"
 & scp @SshScpOpts "$mergedLocal" "${PiUser}@${PiHost}:$mergedRemote"
 & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "bash '$remoteScripts/pi-nodered-apply-merged.sh' '$mergedRemote'"
 if ($LASTEXITCODE -ne 0) {
-  throw "Node-RED POST /flows 실패 (원격 종료 코드: $LASTEXITCODE). Pi에서 merged JSON·node-red-log 확인."
+  throw "Node-RED apply script failed (exit: $LASTEXITCODE). Pi: journalctl -u nodered -n 80; test -r ~/.node-red/flows.json"
+}
+
+# NR flows 반영 후에 실행: 재시작이 길어도 대시보드 배포는 이미 끝난 상태
+if (-not $SkipAiCamera) {
+  $cameraSvc = Join-Path $repoRoot "deploy\systemd\cronusfarm-camera-ai.service"
+  $cameraPy = Join-Path $CronusDeployScriptDir "cronusfarm_camera_ai.py"
+  if ((Test-Path -LiteralPath $cameraSvc) -and (Test-Path -LiteralPath $cameraPy)) {
+    $ust = (& ssh @SshRemoteOpts "${PiUser}@${PiHost}" 'pgrep -x ustreamer >/dev/null 2>&1 && echo yes || echo no').Trim()
+    if ($ust -eq "yes") {
+      Write-Host "=== AI camera: ustreamer running - skip cronusfarm-camera-ai (UVC in use) ===" -ForegroundColor Yellow
+    } else {
+      Write-Host "=== AI camera: cronusfarm_camera_ai.py + systemd -> Pi ===" -ForegroundColor Cyan
+      $remoteDeploySd = "$RemoteCronusRoot/deploy/systemd"
+      & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteDeploySd'"
+      & scp @SshScpOpts "$cameraPy" "${PiUser}@${PiHost}:$remoteScripts/cronusfarm_camera_ai.py"
+      & scp @SshScpOpts "$cameraSvc" "${PiUser}@${PiHost}:$remoteDeploySd/cronusfarm-camera-ai.service"
+      $svcOnPi = "$remoteDeploySd/cronusfarm-camera-ai.service"
+      $q = [char]34
+      $inner = "cp $svcOnPi /etc/systemd/system/cronusfarm-camera-ai.service && systemctl daemon-reload && systemctl enable cronusfarm-camera-ai.service && systemctl restart cronusfarm-camera-ai.service"
+      $camRemote = "timeout 135s sudo -n bash -c ${q}${inner}${q}"
+      & ssh @SshRemoteOpts "${PiUser}@${PiHost}" $camRemote
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host "WARN: cronusfarm-camera-ai deploy/restart exit $LASTEXITCODE - Pi: journalctl -u cronusfarm-camera-ai -n 60" -ForegroundColor Yellow
+      }
+    }
+  }
+} else {
+  Write-Host "=== AI camera: skipped (-SkipAiCamera) ===" -ForegroundColor Yellow
 }
 
 if ($SkipArduino) {

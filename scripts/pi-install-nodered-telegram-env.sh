@@ -24,6 +24,12 @@ fi
 sudo mkdir -p /etc/cronusfarm /etc/systemd/system/nodered.service.d
 sudo cp -f "$DROPIN_SRC" /etc/systemd/system/nodered.service.d/10-cronusfarm-telegram.conf
 
+# NR 기동 후 AI 카메라 재시작(저장소에 20-cronusfarm-camera-ai.conf 가 있을 때만 복사)
+CAM_DROPIN="${ROOT}/deploy/systemd/nodered.service.d/20-cronusfarm-camera-ai.conf"
+if [[ -f "$CAM_DROPIN" ]]; then
+  sudo cp -f "$CAM_DROPIN" /etc/systemd/system/nodered.service.d/20-cronusfarm-camera-ai.conf
+fi
+
 if [[ ! -f "$ENV_DST" ]]; then
   sudo cp "$ENV_EXAMPLE" "$ENV_DST"
   sudo chmod 600 "$ENV_DST"

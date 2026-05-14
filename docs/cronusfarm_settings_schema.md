@@ -30,8 +30,8 @@
 
 **채널 키 (`CH_KEY`)** — 펌웨어와 동일한 문자열만 유효하다.
 
-`led_a1`, `led_a2`, `led_b1`,  
-`pump_a1`, `pump_a2`, `pump_b1`, `pump_b2`,  
+`led_a1`, `led_a2`, `led_b1`, `led_b2`,
+`pump_a1`, `pump_a2`, `pump_b1`, `pump_b2`,
 `fan_a1`, `fan_a2`, `fan_b1`, `fan_b2`,  
 `pump_c1`, `pump_c2`, `pump_d1`, `pump_d2`
 

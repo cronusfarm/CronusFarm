@@ -11,6 +11,15 @@ CronusFarm 모니터/설정 탭의 **Dashboard(구 node-red-dashboard)** UI는 �
 
 레이아웃·타일 문구·`tele(요약)` / `tele(raw)` 박스 등은 대부분 **`flows_cronusfarm_dashboard.json`** 안의 `ui_template` 노드 `format` 필드다.
 
+## Dashboard 1(`/ui`) vs Dashboard 2(`/nrdb2`)
+
+| 구분 | 노드 타입 예 | 브라우저 경로 | Pi 패키지 |
+|------|----------------|---------------|-----------|
+| Dashboard 1(구) | `ui_base`, `ui_group`, `ui_template`(underscore) | `http://<호스트>:1880/ui/` | `node-red-dashboard` |
+| Dashboard 2(FlowFuse) | `ui-base`, `ui-group`, `ui-template`(하이픈), `ui_tab`+`ui-base` 자식 | `http://<호스트>:1880/nrdb2` | **`@flowfuse/node-red-dashboard`** |
+
+`@flowfuse/node-red-dashboard`가 없으면 플로우에 `ui-base`가 있어도 **HTTP에 `/nrdb2`가 등록되지 않아** 404·빈 화면·편집기에 “missing node”가 난다. Pi에서는 `scripts/pi-nodered-install-dashboard2.sh` 또는 배포 시 `deploy-cronusfarm-pi.ps1` 이 같은 스크립트를 실행한다. nginx가 1880을 받는 구성이면 `location /` 로 Node-RED 업스트림에 `/nrdb2`가 넘어가야 한다(별도 `location /nrdb2` 없이도 동작하는 경우가 많음).
+
 ## 로컬 개발환경(Windows / 저장소 루트) — 기본
 
 1. **`nodered/flows_cronusfarm_dashboard.json`** 등 분할 소스 수정.
@@ -29,6 +38,7 @@ CronusFarm 모니터/설정 탭의 **Dashboard(구 node-red-dashboard)** UI는 �
    ```
    - 첫 실행 전 `userDir`(기본 `.\.nodered-local`)에 스크립트가 안내하는 버전으로 `npm install` 이 필요할 수 있다.
    - 브라우저: `http://127.0.0.1:1881/ui/` (포트는 스크립트 기본값, `-Port` 로 변경 가능).
+   - **Dashboard 2(`/nrdb2`)** 를 로컬에서 보려면 `userDir`에서 `npm install @flowfuse/node-red-dashboard` 후 편집기에서 missing 노드가 없는지 확인한다(`run-nodered-local-ui.ps1` 기본 안내는 Dashboard 1 `/ui` 위주).
    - 편집기(`http://127.0.0.1:1881/`)에서 **메뉴 → Import** 로 **`nodered/merged-deploy.json`** 을 가져온 뒤 **Deploy** 한다.
 
 로컬은 MQTT 하드웨어가 없어도 대시보드 레이아웃·바인딩 구조 검증에는 쓸 수 있다(데이터 소스 노드는 빈 값·연결 오류가 날 수 있음).
@@ -39,6 +49,7 @@ CronusFarm 모니터/설정 탭의 **Dashboard(구 node-red-dashboard)** UI는 �
 
 - **권장(개발 PC에서)**: `scripts/deploy-cronusfarm-pi.ps1 -ApplyNodeRed` (Arduino 생략 시 `-SkipArduino`).
 - Pi 쉘만 있을 때: `scripts/pi-nodered-apply-merged.sh` 로 `merged-deploy.json` 적용.
+- **`/nrdb2`(개발환경·NRDB2)** 가 필요하면 Pi에서 `bash ~/CronusFarm/scripts/pi-nodered-install-dashboard2.sh` 로 `@flowfuse/node-red-dashboard` 설치 후 `nodered` 재시작.
 
 ## 하드웨어 핀·라벨을 UI에 맞출 때
 
@@ -52,6 +63,7 @@ CronusFarm 모니터/설정 탭의 **Dashboard(구 node-red-dashboard)** UI는 �
 
 ## 관련 문서
 
+- 패널 LCD 부팅 순서·RTC 플레이스홀더·브라우즈 2행 이슈: `docs/cronusfarm_hardware_pins.md` §5
 - Pi 전체: `docs/raspi_setup.md`
 - Git: `docs/git_workflow.md`
 - 에이전트 기본 동작: 저장소 루트 `AGENTS.md`, `.cursor/rules/pi-nodered-deploy.mdc`

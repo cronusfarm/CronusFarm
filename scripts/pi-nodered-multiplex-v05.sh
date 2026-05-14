@@ -168,6 +168,10 @@ server {
   listen 1880;
   server_name _;
 
+  client_max_body_size 20m;
+  proxy_read_timeout 600s;
+  proxy_send_timeout 600s;
+
   # 최신 Node-RED (1882) - 기본 경로(/admin, /ui)
   location / {
     proxy_pass http://127.0.0.1:1882;
@@ -176,6 +180,8 @@ server {
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 600s;
+    proxy_send_timeout 600s;
   }
 
   # 구버전 Editor/Admin: /admin/v0.5 -> 1881
