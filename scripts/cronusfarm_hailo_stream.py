@@ -57,6 +57,8 @@ HAILO_SOURCE = os.environ.get("CRONUSFARM_HAILO_SOURCE", "ustreamer").strip().lo
 app = Flask(__name__)
 _latest_jpeg: bytes | None = None
 _jpeg_lock = threading.Lock()
+_running = True
+_FRAME_DUR = None  # Gst.SECOND // 15, init in main
 
 
 def _hailo_dir() -> Path:
@@ -136,14 +138,37 @@ def _resolve_yolo_json_path() -> Path:
     sys.exit(1)
 
 
-def _build_source() -> str:
-    if HAILO_SOURCE == "v4l2":
-        dev = os.environ.get("CRONUSFARM_HAILO_VIDEO_DEVICE", "/dev/video0").strip()
-        return (
-            f"v4l2src device={dev} ! "
-            "image/jpeg,width=1280,height=720,framerate=15/1 ! jpegdec ! "
-        )
-    return f"souphttpsrc location={USTREAMER_URL} is-live=true ! jpegdec ! "
+def _build_v4l2_source() -> str:
+    dev = os.environ.get("CRONUSFARM_HAILO_VIDEO_DEVICE", "/dev/video0").strip()
+    return (
+        f"v4l2src device={dev} ! "
+        "image/jpeg,width=1280,height=720,framerate=15/1 ! jpegdec ! "
+        "videoscale ! videoconvert ! "
+    )
+
+
+def _opencv_feed_loop(appsrc: Gst.Element) -> None:
+    """ustreamer MJPEG는 souphttpsrc와 협상 실패 → OpenCV로 8080/stream 수신."""
+    cap = cv2.VideoCapture(USTREAMER_URL)
+    if not cap.isOpened():
+        print(f"ERROR: ustreamer URL 열기 실패: {USTREAMER_URL}", file=sys.stderr)
+        return
+    ts = 0
+    while _running:
+        ret, bgr = cap.read()
+        if not ret:
+            time.sleep(0.02)
+            continue
+        bgr = cv2.resize(bgr, (640, 640))
+        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        buf = Gst.Buffer.new_wrapped(rgb.tobytes())
+        buf.pts = ts
+        buf.duration = _FRAME_DUR
+        ts += _FRAME_DUR
+        if appsrc.emit("push-buffer", buf) != Gst.FlowReturn.OK:
+            break
+        time.sleep(1.0 / 15.0)
+    cap.release()
 
 
 mqtt_client = mqtt.Client()
@@ -245,7 +270,9 @@ def _run_flask():
 
 
 def main() -> None:
+    global _FRAME_DUR
     Gst.init(None)
+    _FRAME_DUR = Gst.SECOND // 15
 
     hef_path, yolo_json, label = resolve_hef_and_yolo_json()
     print(f"[hailo] {label}")
@@ -254,12 +281,8 @@ def main() -> None:
 
     hef_s = str(hef_path)
     json_s = str(yolo_json)
-    src = _build_source()
 
-    pipeline_str = (
-        f"{src}"
-        "videoscale ! videoconvert ! "
-        "video/x-raw, format=RGB, width=640, height=640, framerate=15/1 ! "
+    hailo_tail = (
         f"hailonet hef-path={hef_s} batch-size=1 ! "
         "hailofilter "
         "so-path=/usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes/libyolo_post.so "
@@ -269,7 +292,24 @@ def main() -> None:
         "appsink name=cf_appsink emit-signals=true max-buffers=1 drop=true sync=false"
     )
 
+    if HAILO_SOURCE == "v4l2":
+        pipeline_str = (
+            f"{_build_v4l2_source()}"
+            "video/x-raw, format=RGB, width=640, height=640, framerate=15/1 ! "
+            f"{hailo_tail}"
+        )
+    else:
+        pipeline_str = (
+            "appsrc name=cf_appsrc is-live=true do-timestamp=true format=GST_FORMAT_TIME "
+            "caps=video/x-raw,format=RGB,width=640,height=640,framerate=15/1 ! "
+            f"{hailo_tail}"
+        )
+
     pipeline = Gst.parse_launch(pipeline_str)
+
+    appsrc_elem = pipeline.get_by_name("cf_appsrc")
+    if appsrc_elem and HAILO_SOURCE != "v4l2":
+        threading.Thread(target=_opencv_feed_loop, args=(appsrc_elem,), daemon=True).start()
 
     appsink = pipeline.get_by_name("cf_appsink")
     if appsink:
@@ -295,6 +335,8 @@ def main() -> None:
     except KeyboardInterrupt:
         pass
     finally:
+        global _running
+        _running = False
         pipeline.set_state(Gst.State.NULL)
         mqtt_client.loop_stop()
 
