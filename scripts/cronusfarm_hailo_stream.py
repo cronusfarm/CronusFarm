@@ -3,31 +3,34 @@
 Hailo + GStreamer MJPEG 스트림 (YOLOv8 계열).
 
 커스텀 모델:
-  - 저장소 CronusFarm/Hailo/best.onnx 는 Pi에서 hailonet 에 직접 넣을 수 없고,
-    Hailo Dataflow Compiler 로 컴파일한 best.hef 가 필요합니다.
-  - 기본 탐색: ~/CronusFarm/Hailo/best.hef → 있으면 사용.
-  - best.onnx 만 있고 best.hef 가 없으면 오류 종료(CRONUSFARM_HAILO_FALLBACK_SYSTEM=1 이면 시스템 HEF 임시 사용).
+  - best.hef → ~/CronusFarm/Hailo/best.hef
+  - yolov8.json → libyolo_post 형식(anchors·labels)
 
-환경변수:
-  CRONUSFARM_HAILO_DIR      기본 ~/CronusFarm/Hailo
-  CRONUSFARM_HAILO_HEF     사용할 .hef 절대경로(지정 시 우선)
-  CRONUSFARM_HAILO_YOLO_JSON  hailofilter config (기본: Hailo 디렉터리의 yolov8.json 또는 시스템 yolov8.json)
-  CRONUSFARM_HAILO_VIDEO_DEVICE  기본 /dev/video0
-  CRONUSFARM_HAILO_FALLBACK_SYSTEM  1 이면 best.onnx 만 있을 때 시스템 yolov8s HEF 로 임시 동작
+입력(기본 ustreamer):
+  - ustreamer가 /dev/video0 점유 시 v4l2src 대신 http://127.0.0.1:8080/stream 사용
+  - CRONUSFARM_HAILO_SOURCE=v4l2 로 직접 UVC(MJPG 1280x720)
+
+출력:
+  - Flask HTTP MJPEG http://<pi>:8081/video_feed  (tcpserversink 대신 브라우저 호환)
 """
 from __future__ import annotations
 
 import json
 import os
 import sys
+import threading
 import time
 from pathlib import Path
 
+import cv2
 import gi
+import numpy as np
 import paho.mqtt.client as mqtt
+from flask import Flask, Response
 
 gi.require_version("Gst", "1.0")
-from gi.repository import Gst, GLib
+gi.require_version("GstApp", "1.0")
+from gi.repository import Gst, GLib, GstApp
 
 try:
     import hailo
@@ -38,13 +41,22 @@ except ImportError:
     )
     sys.exit(1)
 
-# MQTT Settings
 MQTT_HOST = "127.0.0.1"
 MQTT_PORT = 1883
 MQTT_TOPIC = "cronusfarm/hailo/count"
 
 DEFAULT_SYS_HEF = Path("/usr/share/hailo-models/yolov8s_h8l.hef")
 DEFAULT_SYS_YOLO_JSON = Path("/usr/share/hailo-models/yolov8.json")
+
+HTTP_PORT = int(os.environ.get("CRONUSFARM_HAILO_HTTP_PORT", "8081"))
+USTREAMER_URL = os.environ.get(
+    "CRONUSFARM_HAILO_USTREAMER_URL", "http://127.0.0.1:8080/stream"
+).strip()
+HAILO_SOURCE = os.environ.get("CRONUSFARM_HAILO_SOURCE", "ustreamer").strip().lower()
+
+app = Flask(__name__)
+_latest_jpeg: bytes | None = None
+_jpeg_lock = threading.Lock()
 
 
 def _hailo_dir() -> Path:
@@ -55,7 +67,6 @@ def _hailo_dir() -> Path:
 
 
 def resolve_hef_and_yolo_json() -> tuple[Path, Path, str]:
-    """(hef_path, yolo_json_path, human_label)"""
     explicit = os.environ.get("CRONUSFARM_HAILO_HEF", "").strip()
     if explicit:
         p = Path(explicit).expanduser().resolve()
@@ -79,7 +90,7 @@ def resolve_hef_and_yolo_json() -> tuple[Path, Path, str]:
             and DEFAULT_SYS_HEF.is_file()
         ):
             print(
-                f"WARN: {custom_hef.name} 없음 — CRONUSFARM_HAILO_FALLBACK_SYSTEM=1 로 시스템 YOLOv8s HEF 사용",
+                f"WARN: {custom_hef.name} 없음 — 시스템 YOLOv8s HEF 폴백",
                 file=sys.stderr,
             )
             yj = Path(
@@ -89,11 +100,9 @@ def resolve_hef_and_yolo_json() -> tuple[Path, Path, str]:
             ).expanduser()
             if not yj.is_file():
                 yj = DEFAULT_SYS_YOLO_JSON
-            return DEFAULT_SYS_HEF, yj, f"폴백 시스템 HEF(onnx만 존재): {DEFAULT_SYS_HEF}"
+            return DEFAULT_SYS_HEF, yj, f"폴백 시스템 HEF: {DEFAULT_SYS_HEF}"
         print(
-            f"ERROR: {custom_onnx} 는 있으나 Hailo GStreamer hailonet 은 .hef 만 로드합니다.\n"
-            f"  동일 폴더에 best.hef 를 생성해 두세요 (예: Hailo Dataflow Compiler 로 ONNX 컴파일).\n"
-            f"  디렉터리: {d}",
+            f"ERROR: {custom_onnx} 만 있고 {custom_hef.name} 없음. HEF 컴파일 후 배포하세요.",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -108,11 +117,7 @@ def resolve_hef_and_yolo_json() -> tuple[Path, Path, str]:
             yj = DEFAULT_SYS_YOLO_JSON
         return DEFAULT_SYS_HEF, yj, f"시스템 기본 HEF: {DEFAULT_SYS_HEF}"
 
-    print(
-        "ERROR: 사용할 .hef 를 찾을 수 없습니다. "
-        f"~/CronusFarm/Hailo/best.hef 또는 {DEFAULT_SYS_HEF} 를 확인하세요.",
-        file=sys.stderr,
-    )
+    print("ERROR: 사용할 .hef 없음.", file=sys.stderr)
     sys.exit(1)
 
 
@@ -122,7 +127,6 @@ def _resolve_yolo_json_path() -> Path:
         p = Path(env).expanduser().resolve()
         if p.is_file():
             return p
-        print(f"WARN: CRONUSFARM_HAILO_YOLO_JSON 없음, Hailo 디렉터리 탐색: {p}", file=sys.stderr)
     local = _hailo_dir() / "yolov8.json"
     if local.is_file():
         return local
@@ -130,6 +134,16 @@ def _resolve_yolo_json_path() -> Path:
         return DEFAULT_SYS_YOLO_JSON
     print("ERROR: yolov8.json (hailofilter config) 없음.", file=sys.stderr)
     sys.exit(1)
+
+
+def _build_source() -> str:
+    if HAILO_SOURCE == "v4l2":
+        dev = os.environ.get("CRONUSFARM_HAILO_VIDEO_DEVICE", "/dev/video0").strip()
+        return (
+            f"v4l2src device={dev} ! "
+            "image/jpeg,width=1280,height=720,framerate=15/1 ! jpegdec ! "
+        )
+    return f"souphttpsrc location={USTREAMER_URL} is-live=true ! jpegdec ! "
 
 
 mqtt_client = mqtt.Client()
@@ -151,7 +165,6 @@ def probe_callback(pad, info):
 
     roi = hailo.get_roi_from_buffer(buffer)
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
-
     count = len(detections)
 
     current_time = time.time()
@@ -167,49 +180,115 @@ def probe_callback(pad, info):
     return Gst.PadProbeReturn.OK
 
 
+def _on_new_sample(sink: GstApp.AppSink) -> Gst.FlowReturn:
+    global _latest_jpeg
+    sample = sink.emit("pull-sample")
+    if sample is None:
+        return Gst.FlowReturn.ERROR
+
+    buffer = sample.get_buffer()
+    caps = sample.get_caps()
+    if not buffer or not caps:
+        return Gst.FlowReturn.ERROR
+
+    structure = caps.get_structure(0)
+    ok, width = structure.get_int("width")
+    ok2, height = structure.get_int("height")
+    if not ok or not ok2:
+        return Gst.FlowReturn.ERROR
+
+    success, map_info = buffer.map(Gst.MapFlags.READ)
+    if not success:
+        return Gst.FlowReturn.ERROR
+    try:
+        arr = np.frombuffer(map_info.data, dtype=np.uint8).reshape((height, width, 3))
+        ret, enc = cv2.imencode(".jpg", arr, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
+        if ret:
+            with _jpeg_lock:
+                _latest_jpeg = enc.tobytes()
+    finally:
+        buffer.unmap(map_info)
+    return Gst.FlowReturn.OK
+
+
+def _generate_mjpeg():
+    while True:
+        with _jpeg_lock:
+            frame = _latest_jpeg
+        if frame:
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
+            )
+        time.sleep(0.05)
+
+
+@app.route("/video_feed")
+def video_feed():
+    return Response(
+        _generate_mjpeg(),
+        mimetype="multipart/x-mixed-replace; boundary=frame",
+    )
+
+
+@app.route("/")
+def index():
+    return (
+        "<h1>CronusFarm Hailo Stream</h1>"
+        "<img src='/video_feed' alt='Hailo overlay'/>"
+    )
+
+
+def _run_flask():
+    print(f"[hailo] HTTP MJPEG http://0.0.0.0:{HTTP_PORT}/video_feed")
+    app.run(host="0.0.0.0", port=HTTP_PORT, threaded=True, use_reloader=False)
+
+
 def main() -> None:
     Gst.init(None)
 
     hef_path, yolo_json, label = resolve_hef_and_yolo_json()
-    video_dev = os.environ.get("CRONUSFARM_HAILO_VIDEO_DEVICE", "/dev/video0").strip() or "/dev/video0"
-
     print(f"[hailo] {label}")
     print(f"[hailo] yolov8.json: {yolo_json}")
-    print(f"[hailo] video: {video_dev}")
+    print(f"[hailo] source: {HAILO_SOURCE} ({USTREAMER_URL if HAILO_SOURCE != 'v4l2' else 'v4l2'})")
 
     hef_s = str(hef_path)
     json_s = str(yolo_json)
+    src = _build_source()
 
     pipeline_str = (
-        f"v4l2src device={video_dev} ! "
-        "videoscale ! "
-        "videoconvert ! "
-        "video/x-raw, format=RGB, width=640, height=640, framerate=15/1 ! "
+        f"{src}"
+        "videoscale ! videoconvert ! "
+        "video/x-raw, format=BGR, width=640, height=640, framerate=15/1 ! "
         f"hailonet hef-path={hef_s} batch-size=1 ! "
         "hailofilter "
         "so-path=/usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes/libyolo_post.so "
         f"config-path={json_s} qos=false ! "
-        "queue ! "
-        "hailooverlay ! "
-        "videoconvert ! "
-        "jpegenc ! "
-        "multipartmux ! "
-        "tcpserversink host=0.0.0.0 port=8081"
+        "queue ! hailooverlay ! videoconvert ! "
+        "video/x-raw, format=BGR ! "
+        "appsink name=cf_appsink emit-signals=true max-buffers=1 drop=true sync=false"
     )
 
     pipeline = Gst.parse_launch(pipeline_str)
+
+    appsink = pipeline.get_by_name("cf_appsink")
+    if appsink:
+        appsink.set_property("emit-signals", True)
+        appsink.connect("new-sample", _on_new_sample)
+    else:
+        print("ERROR: cf_appsink 없음", file=sys.stderr)
+        sys.exit(1)
 
     hailofilter = pipeline.get_by_name("hailofilter0")
     if hailofilter:
         srcpad = hailofilter.get_static_pad("src")
         srcpad.add_probe(Gst.PadProbeType.BUFFER, probe_callback)
-    else:
-        print("Warning: Could not find hailofilter element in pipeline to attach probe.")
+
+    threading.Thread(target=_run_flask, daemon=True).start()
 
     loop = GLib.MainLoop()
     pipeline.set_state(Gst.State.PLAYING)
-
-    print("Hailo Streamer Started. Video at http://<pi-ip>:8081. Counts published to MQTT.")
+    print("[hailo] GStreamer pipeline PLAYING")
 
     try:
         loop.run()

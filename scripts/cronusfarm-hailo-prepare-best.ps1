@@ -4,7 +4,8 @@
 #   .\scripts\cronusfarm-hailo-prepare-best.ps1 -OnnxPath "D:\models\best.onnx"
 #   .\scripts\cronusfarm-hailo-prepare-best.ps1   # 자동 탐색(Hailo\best.onnx, runs\...\best.onnx, Downloads 등)
 #   .\scripts\cronusfarm-hailo-prepare-best.ps1 -OnnxPath "..." -RunCompileInWsl   # WSL에 hailo DFC 설치 후
-#   .\scripts\cronusfarm-hailo-prepare-best.ps1 -OnnxPath "..." -DeployToPi       # Pi에 Hailo/ 업로드만
+#   .\scripts\cronusfarm-hailo-prepare-best.ps1 -DeployToPi -HefOnly   # best.hef 만 Pi 업로드 + AI 설정
+#   .\scripts\cronusfarm-hailo-prepare-best.ps1 -DeployToPi -SetupOnPi # 업로드 후 pi-hailo-setup.sh 실행
 
 param(
   [string] $OnnxPath = "",
@@ -14,7 +15,9 @@ param(
   [string] $PiHostWan = "ida.mango-larch.ts.net",
   [string] $RemoteCronusRoot = "/home/dooly/CronusFarm",
   [switch] $DeployToPi,
-  [switch] $RunCompileInWsl
+  [switch] $RunCompileInWsl,
+  [switch] $HefOnly,
+  [switch] $SetupOnPi
 )
 
 $ErrorActionPreference = "Stop"
@@ -38,6 +41,12 @@ if (-not (Test-Path -LiteralPath $hailoDir)) {
   New-Item -ItemType Directory -Path $hailoDir -Force | Out-Null
 }
 
+$hefLocal = Join-Path $hailoDir "best.hef"
+if ($HefOnly -and -not (Test-Path -LiteralPath $hefLocal)) {
+  throw "Hailo\best.hef 가 없습니다."
+}
+
+if (-not $HefOnly) {
 if ([string]::IsNullOrWhiteSpace($OnnxPath)) {
   $candidates = @(
     (Join-Path $repoRoot "Hailo\best.onnx"),
@@ -70,6 +79,7 @@ if ($srcFull -ieq $dstFull) {
   Copy-Item -LiteralPath $OnnxPath -Destination $dest -Force
   Write-Host "OK: $dest" -ForegroundColor Green
 }
+}
 
 if ($RunCompileInWsl) {
   $shLinux = ConvertTo-WslPath (Join-Path $CronusDeployScriptDir "linux-x86-hailo-dfc-compile-best.sh")
@@ -93,15 +103,37 @@ if ($DeployToPi) {
   )
   $remoteHailo = "$RemoteCronusRoot/Hailo"
   $remoteScripts = "$RemoteCronusRoot/scripts"
-  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteHailo'"
-  Get-ChildItem -Path $hailoDir -File -ErrorAction SilentlyContinue | ForEach-Object {
-    & scp @SshScpOpts $_.FullName "${PiUser}@${PiHost}:$remoteHailo/$($_.Name)"
+  $remoteDeploySd = "$RemoteCronusRoot/deploy/systemd"
+  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteHailo' '$remoteScripts' '$remoteDeploySd'"
+  if ($HefOnly) {
+    & scp @SshScpOpts $hefLocal "${PiUser}@${PiHost}:$remoteHailo/best.hef"
+    Write-Host "OK: best.hef -> Pi $remoteHailo" -ForegroundColor Green
+  } else {
+    Get-ChildItem -Path $hailoDir -File -ErrorAction SilentlyContinue | ForEach-Object {
+      & scp @SshScpOpts $_.FullName "${PiUser}@${PiHost}:$remoteHailo/$($_.Name)"
+    }
+    Write-Host "OK: Pi $remoteHailo 동기화 완료" -ForegroundColor Green
   }
   $hailoPy = Join-Path $CronusDeployScriptDir "cronusfarm_hailo_stream.py"
+  $setupSh = Join-Path $CronusDeployScriptDir "pi-hailo-setup.sh"
+  $svcSrc = Join-Path $repoRoot "deploy\systemd\cronusfarm-hailo-stream.service"
   if (Test-Path -LiteralPath $hailoPy) {
     & scp @SshScpOpts $hailoPy "${PiUser}@${PiHost}:$remoteScripts/cronusfarm_hailo_stream.py"
   }
-  Write-Host "OK: Pi $remoteHailo 동기화 완료" -ForegroundColor Green
+  if (Test-Path -LiteralPath $setupSh) {
+    & scp @SshScpOpts $setupSh "${PiUser}@${PiHost}:$remoteScripts/pi-hailo-setup.sh"
+    & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "chmod +x '$remoteScripts/pi-hailo-setup.sh'; sed -i 's/\r$//' '$remoteScripts/pi-hailo-setup.sh' 2>/dev/null || true"
+  }
+  if (Test-Path -LiteralPath $svcSrc) {
+    & scp @SshScpOpts $svcSrc "${PiUser}@${PiHost}:$remoteDeploySd/cronusfarm-hailo-stream.service"
+  }
+  if ($SetupOnPi -or $HefOnly) {
+    Write-Host "=== Pi: pi-hailo-setup.sh (systemd + Hailo 스트림) ===" -ForegroundColor Cyan
+    & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "bash '$remoteScripts/pi-hailo-setup.sh'"
+    if ($LASTEXITCODE -ne 0) {
+      throw "pi-hailo-setup.sh 실패 (exit $LASTEXITCODE). Pi에서 journalctl -u cronusfarm-hailo-stream -n 80"
+    }
+  }
 }
 
 if (-not $RunCompileInWsl -and -not $DeployToPi) {

@@ -1,0 +1,22 @@
+[Unit]
+Description=CronusFarm Hailo YOLO MJPEG (8081, best.hef)
+After=network-online.target mosquitto.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dooly
+Group=dooly
+WorkingDirectory=/home/dooly/CronusFarm
+Environment=PYTHONUNBUFFERED=1
+Environment=CRONUSFARM_HAILO_DIR=/home/dooly/CronusFarm/Hailo
+Environment=CRONUSFARM_HAILO_SOURCE=ustreamer
+Environment=CRONUSFARM_HAILO_USTREAMER_URL=http://127.0.0.1:8080/stream
+Environment=CRONUSFARM_HAILO_HTTP_PORT=8081
+TimeoutStartSec=120
+ExecStart=/usr/bin/python3 /home/dooly/CronusFarm/scripts/cronusfarm_hailo_stream.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
