@@ -1,26 +1,17 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+  <link rel="stylesheet" href="/cronusfarm-static/cronusfarm_d1_shared.css"/>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>CronusFarm 설정 도구 (D1)</title>
   <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
   <style>
-    :root{
-      --g0:#040d07;--g1:#0a1a0f;--g2:#0f2415;
-      --accent:#2dff7a;--accent2:#00e5ff;--accent3:#ffb830;--warn:#ff6b35;
-      --muted:#3a5c42;--text:#c8e6c9;--text2:#6b9c73;
-      --border:rgba(45,255,122,.07);--border2:rgba(45,255,122,.16);
-      --card:rgba(10,26,15,.9);--glow:0 0 28px rgba(45,255,122,.07);
-      --cf-bg0:var(--g0);--cf-bg:var(--g1);--cf-card:var(--card);--cf-line:var(--border2);
-      --cf-text:var(--text);--cf-muted:var(--text2);--cf-accent:var(--accent);--cf-title:var(--accent3);
-      --cf-good:#34c759;--cf-bad:var(--warn);--cf-radius:14px;
-    }
-    html,body{height:100%;margin:0;}
+    html,body{min-height:100%;margin:0;overflow-x:hidden;overflow-y:visible;}
     body{padding:0;background:var(--g0);color:var(--cf-text);font-family:'Noto Sans KR','Malgun Gothic',system-ui,sans-serif;}
     .cf-settings-app{max-width:1120px;margin:0 auto;padding:12px;}
     .cf-settings-shell{
-      position:relative;border-radius:var(--cf-radius);border:1px solid var(--border);overflow:hidden;
+      position:relative;border-radius:var(--cf-radius);border:1px solid var(--border);overflow:visible;
       box-shadow:var(--glow);
       background:linear-gradient(180deg,var(--g0),var(--g1) 55%,var(--g0));
       padding:14px 16px 18px;
@@ -65,7 +56,7 @@
 .cf2-sch-panel { margin-bottom: 10px; }
 .cf2-sch-cap { font-size: 11px; color: #9db0cc; margin-bottom: 8px; line-height: 1.45; }
 .cf2-sch-cap em { color: #c8e6ff; font-style: normal; font-weight: 700; }
-.cf2-sch-tblwrap { overflow-x: auto; margin-bottom: 8px; }
+.cf2-sch-tblwrap { overflow: visible; margin-bottom: 8px; }
 .cf2-sch-tbl { width: 100%; border-collapse: collapse; font-size: 12px; color: #e6edf7; }
 .cf2-sch-tbl th { text-align: left; padding: 6px 8px; color: #9db0cc; border-bottom: 1px solid rgba(255,255,255,.12); white-space: nowrap; }
 .cf2-sch-tbl td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: middle; }
@@ -609,6 +600,12 @@ const CtlApp = {
 }
 CtlApp.template = '#tpl-ctl';
 Vue.createApp(CtlApp).mount('#mount-ctl');
+function cfIframeResizeNotify() {
+  const el = document.querySelector('.cf-settings-shell') || document.body;
+  const h = Math.max(el.scrollHeight, el.offsetHeight, document.documentElement.scrollHeight);
+  try { parent.postMessage({ type: 'cf-settings-iframe-resize', height: h }, '*'); } catch (e) {}
+}
+window.addEventListener('load', () => { cfIframeResizeNotify(); setInterval(cfIframeResizeNotify, 3000); });
 </script>
 </body>
 </html>

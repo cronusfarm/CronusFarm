@@ -24,6 +24,8 @@ POST /api/channel/backfill  JSON: { device_id, channel|channel_key, hours? } tel
 GET  /api/channel/status?device_id=...  JSON: 채널별 최신 state·auto_mode(마지막 tele 적재)
 GET  /api/audit_log?device_id=...&limit=100&channel=&since_ms=0  JSON: manual_switch_event 감사 로그(수동·스케줄 저장·자동 ON/OFF)
 POST /ingest/manual_event  JSON: UI 수동 조작 로그 → manual_switch_event (source: ui|system|…)
+POST /ingest/sensor  JSON: PHW3988 등 → sensor_reading (ph, ec, temp_c, zone, raw_json)
+GET  /api/sensor/latest?device_id=...&zone=phw3988  JSON: 최신 sensor_reading 1건
 OPTIONS  CORS 프리플라이트 (브라우저에서 dashboard→브리지 fetch용)
 """
 from __future__ import annotations
@@ -413,6 +415,89 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                 self.end_headers()
                 self.wfile.write(raw)
                 return
+
+            if path == "/api/sensor/series":
+                qs = parse_qs(parsed.query or "")
+                device_id = (qs.get("device_id") or ["cronusfarm-01"])[0].strip() or "cronusfarm-01"
+                zone = (qs.get("zone") or ["phw3988"])[0].strip() or "phw3988"
+                hours = int((qs.get("hours") or ["24"])[0] or 24)
+                if hours < 1 or hours > 168:
+                    hours = 24
+                cutoff = int(time.time() * 1000) - hours * 3600 * 1000
+                with lock:
+                    cur = conn.cursor()
+                    cur.execute(
+                        """SELECT ts_ms, ph, ec, temp_c FROM sensor_reading
+                        WHERE device_id=? AND zone=? AND ts_ms >= ? ORDER BY ts_ms ASC LIMIT 5000""",
+                        (device_id, zone, cutoff),
+                    )
+                    pts = [
+                        {
+                            "ts_ms": int(r[0]),
+                            "ph": r[1],
+                            "ec": r[2],
+                            "temp_c": r[3],
+                        }
+                        for r in cur.fetchall()
+                    ]
+                body = {
+                    "ok": True,
+                    "device_id": device_id,
+                    "zone": zone,
+                    "hours": hours,
+                    "points": pts,
+                }
+                raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+                self._cors_headers()
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+                return
+
+            if path == "/api/sensor/latest":
+                qs = parse_qs(parsed.query or "")
+                device_id = (qs.get("device_id") or ["cronusfarm-01"])[0].strip()
+                zone = (qs.get("zone") or ["phw3988"])[0].strip()
+                with lock:
+                    _ensure_device(conn, device_id)
+                    cur = conn.cursor()
+                    cur.execute(
+                        """SELECT ts_ms, zone, ph, ec, temp_c, humidity_pct, light_lux, co2_ppm, source, raw_json
+                        FROM sensor_reading
+                        WHERE device_id=? AND zone=?
+                        ORDER BY ts_ms DESC LIMIT 1""",
+                        (device_id, zone),
+                    )
+                    row = cur.fetchone()
+                if not row:
+                    body = {"ok": False, "device_id": device_id, "zone": zone}
+                    code = 404
+                else:
+                    body = {
+                        "ok": True,
+                        "device_id": device_id,
+                        "zone": row[1],
+                        "ts_ms": int(row[0]),
+                        "ph": row[2],
+                        "ec": row[3],
+                        "temp_c": row[4],
+                        "humidity_pct": row[5],
+                        "light_lux": row[6],
+                        "co2_ppm": row[7],
+                        "source": row[8],
+                        "raw_json": row[9],
+                    }
+                    code = 200
+                raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
+                self.send_response(code)
+                self._cors_headers()
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+                return
             if path == "/api/audit_log":
                 qs = parse_qs(parsed.query or "")
                 device_id = (qs.get("device_id") or [""])[0].strip()
@@ -544,7 +629,31 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                                 "auto_mode": points[0].get("auto_mode"),
                             },
                         )
-                    if points:
+                    # timeline_latest_fix: 창 끝 = DB 최신 state (tele 적재·수동/스케줄 반영)
+                    cur.execute(
+                        """SELECT ts_ms, state, auto_mode FROM tele_channel_fact
+                        WHERE device_id=? AND channel_key=? ORDER BY ts_ms DESC LIMIT 1""",
+                        (device_id, channel),
+                    )
+                    latest_row = cur.fetchone()
+                    if latest_row is not None:
+                        st_now = latest_row[1]
+                        au_now = latest_row[2]
+                        if points and int(points[-1]["ts_ms"]) >= now_ms - 5000:
+                            points[-1] = {
+                                "ts_ms": now_ms,
+                                "state": st_now,
+                                "auto_mode": au_now,
+                            }
+                        else:
+                            points.append(
+                                {
+                                    "ts_ms": now_ms,
+                                    "state": st_now,
+                                    "auto_mode": au_now,
+                                }
+                            )
+                    elif points:
                         last = points[-1]
                         last_ts = int(last["ts_ms"])
                         if last_ts < now_ms:
@@ -878,6 +987,8 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                         self._post_kv(conn, body)
                     elif path == "/ingest/manual_event":
                         self._post_manual_event(conn, body)
+                    elif path == "/ingest/sensor":
+                        self._post_sensor(conn, body)
                     else:
                         self.send_error(404)
                         return
@@ -1069,6 +1180,48 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                     ),
                 )
                 last_tele_ch[(device_id, channel_key)] = (int(new_st), int(new_au))
+
+        def _post_sensor(self, c: sqlite3.Connection, body: dict) -> None:
+            device_id = str(body.get("device_id") or "cronusfarm-01").strip()
+            ts_ms = int(body.get("ts_ms") or (time.time() * 1000))
+            zone = str(body.get("zone") or "phw3988").strip()[:64]
+            source = str(body.get("source") or "phw3988").strip()[:32]
+            raw_json = body.get("raw_json")
+            if raw_json is not None and not isinstance(raw_json, str):
+                raw_json = json.dumps(raw_json, ensure_ascii=False)
+            elif raw_json is not None:
+                raw_json = str(raw_json)
+            temp_c = body.get("temp_c")
+            if temp_c is None and body.get("temp") is not None:
+                temp_c = body.get("temp")
+
+            def _f(v: object) -> float | None:
+                if v is None or v == "":
+                    return None
+                try:
+                    return float(v)
+                except (TypeError, ValueError):
+                    return None
+
+            _ensure_device(c, device_id)
+            c.execute(
+                """INSERT INTO sensor_reading
+                (device_id, ts_ms, zone, ph, ec, temp_c, humidity_pct, light_lux, co2_ppm, source, raw_json)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    device_id,
+                    ts_ms,
+                    zone,
+                    _f(body.get("ph")),
+                    _f(body.get("ec")),
+                    _f(temp_c),
+                    _f(body.get("humidity_pct")),
+                    _f(body.get("light_lux")),
+                    _f(body.get("co2_ppm")),
+                    source,
+                    raw_json,
+                ),
+            )
 
         def _post_kv(self, c: sqlite3.Connection, body: dict) -> None:
             device_id = str(body.get("device_id") or "cronusfarm-01").strip()

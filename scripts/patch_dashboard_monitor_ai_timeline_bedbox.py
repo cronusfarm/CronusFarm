@@ -379,19 +379,19 @@ def main() -> None:
 
     ch_a = ["led_a1", "led_a2", "pump_a1", "pump_a2", "fan_a1", "fan_a2"]
     lb_a = ["LED A1", "LED A2", "Pump A1", "Pump A2", "Fan A1", "Fan A2"]
-    col_a = ["#5ac8fa", "#0a84ff", "#ffd60a", "#ff9f0a", "#34c759", "#30d158"]
+    col_a = ["#FFD54F", "#FFC107", "#42A5F5", "#1E88E5", "#66BB6A", "#43A047"]
 
     ch_b = ["led_b1", "led_b2", "pump_b1", "pump_b2", "fan_b1", "fan_b2"]
     lb_b = ["LED B1", "LED B2", "Pump B1", "Pump B2", "Fan B1", "Fan B2"]
-    col_b = ["#5ac8fa", "#bf5af2", "#ffd60a", "#ff9f0a", "#34c759", "#30d158"]
+    col_b = ["#FFD54F", "#FFC107", "#42A5F5", "#1E88E5", "#66BB6A", "#43A047"]
 
     ch_c = ["pump_c1", "pump_c2"]
     lb_c = ["Pump C1", "Pump C2"]
-    col_c = ["#ffd60a", "#ff9f0a"]
+    col_c = ["#42A5F5", "#1E88E5"]
 
     ch_d = ["pump_d1", "pump_d2"]
     lb_d = ["Pump D1", "Pump D2"]
-    col_d = ["#34c759", "#30d158"]
+    col_d = ["#42A5F5", "#1E88E5"]
 
     ha, hb, hc, hd = (
         _nr_bed_hist_height(len(ch_a)),

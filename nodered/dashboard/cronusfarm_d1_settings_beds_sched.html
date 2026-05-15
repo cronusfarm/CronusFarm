@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko">
 <head>
+  <link rel="stylesheet" href="/cronusfarm-static/cronusfarm_d1_shared.css"/>
 <!--
 CRONUSFARM-설정 (/ui 탭 iframe) 요구 체크리스트 — 미완 항목은 순차 구현
   [v] MQTT/SQLite: 저장 후 SCHED_JSON cmd·sch_ver 응답(브리지 기본 MQTT, 펌웨어 파싱·RTC 적용)
@@ -15,23 +16,11 @@ CRONUSFARM-설정 (/ui 탭 iframe) 요구 체크리스트 — 미완 항목은 �
   <title>CronusFarm Bed·스케줄</title>
   <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
   <style>
-    /* 모니터 #cf-shell 과 동일 토큰 — 설정 화면 전체 통일 */
-    :root{
-      --g0:#040d07;--g1:#0a1a0f;--g2:#0f2415;--g3:#152e1a;
-      --accent:#2dff7a;--accent2:#00e5ff;--accent3:#ffb830;--warn:#ff6b35;
-      --muted:#3a5c42;--text:#c8e6c9;--text2:#6b9c73;--text3:#3a5c42;
-      --border:rgba(45,255,122,.07);--border2:rgba(45,255,122,.16);
-      --card:rgba(10,26,15,.9);--glow:0 0 28px rgba(45,255,122,.07);
-      --fb:'Noto Sans KR','Malgun Gothic',system-ui,sans-serif;
-      --cf-bg0:var(--g0);--cf-bg:var(--g1);--cf-card:var(--card);--cf-line:var(--border2);
-      --cf-text:var(--text);--cf-muted:var(--text2);--cf-accent:var(--accent);--cf-title:var(--accent3);
-      --cf-on:#34c759;--cf-off:var(--warn);--cf-auto:var(--accent3);--cf-manual:#eaf7ee;
-      --r:14px;
-    }
-    html,body{height:100%;margin:0;background:var(--g0);color:var(--text);font-family:var(--fb);}
+    /* 페이지 전용 — 토큰은 cronusfarm_d1_shared.css */
+    html,body{min-height:100%;margin:0;background:var(--g0);color:var(--text);font-family:var(--fb);overflow-x:hidden;overflow-y:visible;}
     .cf-settings-app{max-width:1120px;margin:0 auto;padding:12px;}
     .cf-settings-shell{
-      position:relative;border-radius:var(--r);border:1px solid var(--border);overflow:hidden;
+      position:relative;border-radius:var(--r);border:1px solid var(--border);overflow:visible;
       box-shadow:var(--glow);
       background:linear-gradient(180deg,var(--g0),var(--g1) 55%,var(--g0));
       padding:14px 16px 18px;
@@ -75,6 +64,7 @@ CRONUSFARM-설정 (/ui 탭 iframe) 요구 체크리스트 — 미완 항목은 �
     .ok{color:#9ccc65;font-size:12px;margin:6px 0;}
     .hint{font-size:11px;color:var(--text2);line-height:1.45;margin-top:8px;}
     .audit-tbl td:last-child{max-width:280px;word-break:break-all;}
+    .cf-audit-box{margin-top:8px;border-radius:12px;border:1px solid var(--cf-line);overflow:visible;}
   </style>
 </head>
 <body>
@@ -180,7 +170,7 @@ CRONUSFARM-설정 (/ui 탭 iframe) 요구 체크리스트 — 미완 항목은 �
     </div>
     <div v-if="auditErr" class="err">{{ auditErr }}</div>
     <div v-if="auditOk" class="ok" style="font-size:11px">{{ auditOk }}</div>
-    <div style="overflow-x:auto;max-height:380px;overflow-y:auto;margin-top:8px;border-radius:12px;border:1px solid var(--cf-line);">
+    <div class="cf-audit-box">
       <table class="tbl audit-tbl">
         <thead><tr><th>시간</th><th>채널</th><th>출처</th><th>자동</th><th>출력</th><th>비고</th></tr></thead>
         <tbody>
@@ -202,6 +192,11 @@ CRONUSFARM-설정 (/ui 탭 iframe) 요구 체크리스트 — 미완 항목은 �
 <script>
 const { createApp } = Vue;
 const API = '/farm/cronusfarm-sqlite';
+function cfIframeResizeNotify() {
+  const el = document.getElementById('app') || document.documentElement;
+  const h = Math.max(el.scrollHeight, el.offsetHeight, document.body.scrollHeight);
+  try { parent.postMessage({ type: 'cf-settings-iframe-resize', height: h }, '*'); } catch (e) {}
+}
 
 function apiOrigin() {
   return (typeof location !== 'undefined' && location.origin) ? location.origin : '';
@@ -235,6 +230,14 @@ createApp({
           { key: 'pump_b2', label: 'Pump B2', pin: 'R4-D8', kind: 'pump' },
           { key: 'fan_b1', label: 'Fan B1', pin: 'R4-D11', kind: 'fan' },
           { key: 'fan_b2', label: 'Fan B2', pin: 'R4-D12', kind: 'fan' },
+        ]},
+        { id: 'C', title: 'C Bed', channels: [
+          { key: 'pump_c1', label: 'Pump C1', pin: 'R4-A0', kind: 'pump' },
+          { key: 'pump_c2', label: 'Pump C2', pin: 'R4-A1', kind: 'pump' },
+        ]},
+        { id: 'D', title: 'D Bed', channels: [
+          { key: 'pump_d1', label: 'Pump D1', pin: 'R4-A2', kind: 'pump' },
+          { key: 'pump_d2', label: 'Pump D2', pin: 'R4-A3', kind: 'pump' },
         ]},
       ],
       schChannel: 'led_a1',
@@ -270,8 +273,11 @@ createApp({
     this.pollTimer = setInterval(() => this.poll(), 5000);
     this.loadSch();
     this.loadAudit();
+    this.$nextTick(() => { cfIframeResizeNotify(); });
+    this._iframeResizeTimer = setInterval(cfIframeResizeNotify, 3000);
   },
   unmounted() {
+    if (this._iframeResizeTimer) clearInterval(this._iframeResizeTimer);
     if (this.pollTimer) clearInterval(this.pollTimer);
   },
   methods: {
@@ -528,6 +534,7 @@ createApp({
         const j = await r.json();
         this.auditRows = j.rows || [];
         this.auditOk = (this.auditRows.length) + '건';
+        this.$nextTick(() => { cfIframeResizeNotify(); });
       } catch (e) {
         this.auditErr = e.message || String(e);
       }
