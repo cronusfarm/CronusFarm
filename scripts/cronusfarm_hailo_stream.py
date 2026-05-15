@@ -259,7 +259,7 @@ def main() -> None:
     pipeline_str = (
         f"{src}"
         "videoscale ! videoconvert ! "
-        "video/x-raw, format=BGR, width=640, height=640, framerate=15/1 ! "
+        "video/x-raw, format=RGB, width=640, height=640, framerate=15/1 ! "
         f"hailonet hef-path={hef_s} batch-size=1 ! "
         "hailofilter "
         "so-path=/usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes/libyolo_post.so "
