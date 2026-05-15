@@ -161,7 +161,9 @@ def _opencv_feed_loop(appsrc: Gst.Element) -> None:
             continue
         bgr = cv2.resize(bgr, (640, 640))
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-        buf = Gst.Buffer.new_wrapped(rgb.tobytes())
+        data = rgb.tobytes()
+        buf = Gst.Buffer.new_allocate(None, len(data), None)
+        buf.fill(0, data)
         buf.pts = ts
         buf.duration = _FRAME_DUR
         ts += _FRAME_DUR
@@ -302,6 +304,7 @@ def main() -> None:
         pipeline_str = (
             "appsrc name=cf_appsrc is-live=true do-timestamp=true format=GST_FORMAT_TIME "
             "caps=video/x-raw,format=RGB,width=640,height=640,framerate=15/1 ! "
+            "queue max-size-buffers=2 leaky=downstream ! "
             f"{hailo_tail}"
         )
 
