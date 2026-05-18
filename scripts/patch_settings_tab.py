@@ -31,7 +31,7 @@ body.nr-dashboard-theme md-content{
 
 SETTINGS_ARCH = f"""<link rel="stylesheet" href="{SHARED_CSS_HREF}">
 <div class="cf-settings-arch">
-<h4>CronusFarm-설정 (Dashboard 1)</h4>
+<h4>설정 흐름(축약)</h4>
 <p>아래 <strong>Bed·스케줄</strong>에서 채널 수동/자동·스케줄 저장 → SQLite <code>schedule_rule</code> → MQTT <code>SCHED_JSON</code> → Arduino → tele → <code>tele_channel_fact</code> → <strong>모니터 타임라인</strong>에 반영됩니다.</p>
 <p><strong>스케줄 API·관제</strong> 그룹: REST 디버그·KV·감사 로그 조회. cmd·tele 로직은 MQTT 탭 단일 경로(이중 Function 금지).</p>
 </div>"""
@@ -59,8 +59,13 @@ IFRAME_RESIZE_JS = """<script type="text/javascript">
   window.addEventListener('message',function(ev){
     var d=ev.data;
     if(!d||d.type!=='cf-settings-iframe-resize'||!d.height)return;
-    document.querySelectorAll('.cf-settings-iframe-wrap iframe').forEach(function(ifr){
-      ifr.style.height=(Math.max(400,parseInt(d.height,10)+24))+'px';
+    var h=Math.max(320,parseInt(d.height,10)+24)+'px';
+    var id=d.iframe||'';
+    document.querySelectorAll('.cf-settings-iframe-wrap').forEach(function(wrap){
+      var ifr=wrap.querySelector('iframe');
+      if(!ifr)return;
+      if(id){ if(wrap.getAttribute('data-cf-iframe')===id) ifr.style.height=h; return; }
+      if(ev.source&&ifr.contentWindow===ev.source) ifr.style.height=h;
     });
   },false);
 })();

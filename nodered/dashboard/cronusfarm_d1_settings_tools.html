@@ -114,6 +114,8 @@
     .cf2-slrow{ background: rgba(255,255,255,.03) !important; border-color: var(--cf-line) !important; }
     .cf2-sllab{ color: var(--cf-text) !important; }
     .cf2-sl{ accent-color: var(--cf-accent); }
+
+
   </style>
 </head>
 <body>
@@ -121,9 +123,10 @@
 <div class="cf-settings-shell">
 <div class="cf-d1-tools-wrap">
   <p class="cf-d1-note">Dashboard 1 전용: NRDB2 없이 스케줄·관제 UI. 오프라인이면 Vue CDN 미러 또는 로컬 번들을 쓰세요.</p>
+
   <script type="text/x-template" id="tpl-schedule">
 <div class="cf2-schedule">
-    <div class="cf2-sch-hd">스케줄 변경하기</div>
+    <div class="cf2-sch-hd">채널별 스케줄 편집</div>
     <div class="cf2-sch-sub">
       API는 Node-RED와 <strong>같은 주소</strong>의
       <code class="cf2-sch-code">{{ apiBase }}/api/schedule</code> 로 요청합니다 (CORS·혼합콘텐츠 회피).
@@ -559,8 +562,17 @@ const ScheduleApp = {
     }
   }
 }
+
+
+window.addEventListener('message', function(ev) {
+  var d = ev.data;
+  if (!d || d.type !== 'cf-sch-goto' || !d.channel || !window.__cfScheduleVm) return;
+  window.__cfScheduleVm.channel = d.channel;
+  window.__cfScheduleVm.loadSch();
+  try { document.getElementById('cf-sch-device-id').value = window.__cfScheduleVm.deviceId; } catch (e) {}
+});
 ScheduleApp.template = '#tpl-schedule';
-Vue.createApp(ScheduleApp).mount('#mount-schedule');
+window.__cfScheduleVm = Vue.createApp(ScheduleApp).mount('#mount-schedule');
 const CtlApp = {
   data () {
     return {
@@ -603,7 +615,7 @@ Vue.createApp(CtlApp).mount('#mount-ctl');
 function cfIframeResizeNotify() {
   const el = document.querySelector('.cf-settings-shell') || document.body;
   const h = Math.max(el.scrollHeight, el.offsetHeight, document.documentElement.scrollHeight);
-  try { parent.postMessage({ type: 'cf-settings-iframe-resize', height: h }, '*'); } catch (e) {}
+  try { parent.postMessage({ type: 'cf-settings-iframe-resize', height: h, iframe: 'tools' }, '*'); } catch (e) {}
 }
 window.addEventListener('load', () => { cfIframeResizeNotify(); setInterval(cfIframeResizeNotify, 3000); });
 </script>

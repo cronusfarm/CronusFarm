@@ -95,65 +95,7 @@ CRONUSFARM-설정 (/ui 탭 iframe) 요구 체크리스트 — 미완 항목은 �
     </div>
   </div>
 
-  <div class="sched">
-    <h2>채널별 스케줄</h2>
-    <div class="row2">
-      <label>채널
-        <select v-model="schChannel">
-          <option v-for="c in allChannels" :key="c" :value="c">{{ c }}</option>
-        </select>
-      </label>
-      <label><input type="radio" value="window" v-model="topKind"/> 시간대</label>
-      <label><input type="radio" value="cycle" v-model="topKind"/> 주기</label>
-      <button type="button" class="btn" @click="loadSch">불러오기</button>
-      <button type="button" class="btn btn-prim" @click="saveSch">저장</button>
-    </div>
-    <div v-if="schErr" class="err">{{ schErr }}</div>
-    <div v-if="schOk" class="ok">{{ schOk }}</div>
-
-    <div v-if="topKind==='window'">
-      <table class="tbl">
-        <thead><tr><th>요일(월~일)</th><th>켜짐</th><th>꺼짐</th><th>사용</th><th></th></tr></thead>
-        <tbody>
-          <tr v-for="(s,idx) in winSlots" :key="'w'+idx">
-            <td>
-              <label v-for="(d,i) in dayLabels" :key="i" style="margin-right:4px;font-size:10px;">
-                <input type="checkbox" v-model="s.days[i]"/>{{ d }}
-              </label>
-            </td>
-            <td><input type="time" v-model="s.onStr" step="60"/></td>
-            <td><input type="time" v-model="s.offStr" step="60"/></td>
-            <td><input type="checkbox" v-model="s.enabled" :true-value="1" :false-value="0"/></td>
-            <td><button type="button" class="btn" @click="dropWin(idx)" :disabled="winSlots.length<=1">삭제</button></td>
-          </tr>
-        </tbody>
-      </table>
-      <button type="button" class="btn" @click="addWin">+ 구간</button>
-    </div>
-
-    <div v-else>
-      <table class="tbl">
-        <thead><tr><th>요일</th><th>ON분</th><th>ON초</th><th>OFF분</th><th>OFF초</th><th>사용</th><th></th></tr></thead>
-        <tbody>
-          <tr v-for="(c,idx) in cycSlots" :key="'c'+idx">
-            <td>
-              <label v-for="(d,i) in dayLabels" :key="i" style="margin-right:4px;font-size:10px;">
-                <input type="checkbox" v-model="c.days[i]"/>{{ d }}
-              </label>
-            </td>
-            <td><input type="number" min="0" max="1440" v-model.number="c.onM" style="width:52px"/></td>
-            <td><input type="number" min="0" max="59" v-model.number="c.onS" style="width:44px"/></td>
-            <td><input type="number" min="0" max="1440" v-model.number="c.offM" style="width:52px"/></td>
-            <td><input type="number" min="0" max="59" v-model.number="c.offS" style="width:44px"/></td>
-            <td><input type="checkbox" v-model="c.enabled" :true-value="1" :false-value="0"/></td>
-            <td><button type="button" class="btn" @click="dropCyc(idx)" :disabled="cycSlots.length<=1">삭제</button></td>
-          </tr>
-        </tbody>
-      </table>
-      <button type="button" class="btn" @click="addCyc">+ 주기</button>
-    </div>
-    <p class="hint">저장은 SQLite schedule_rule에 반영되고, Pi에 mosquitto_pub이 있으면 기본으로 MQTT cmd에 SCHED_JSON이 나갑니다(끄려면 환경변수 CRONUSFARM_SCHEDULE_MQTT=off). Arduino는 SCHED_JSON을 수신하면 해당 채널 자동 모드로 RTC 기준 스케줄을 적용합니다.</p>
-  </div>
+  <p class="hint" style="margin:12px 0 4px">채널별 스케줄·24h 그래프는 <strong>오른쪽 카드</strong>(스케줄 API·관제)에서 편집합니다.</p>
 
   <div class="sched audit">
     <h2>감사 로그 <span style="font-weight:600;color:var(--cf-muted);font-size:12px">(수동 UI · 스케줄 저장 · 자동 출력)</span></h2>
@@ -195,7 +137,7 @@ const API = '/farm/cronusfarm-sqlite';
 function cfIframeResizeNotify() {
   const el = document.getElementById('app') || document.documentElement;
   const h = Math.max(el.scrollHeight, el.offsetHeight, document.body.scrollHeight);
-  try { parent.postMessage({ type: 'cf-settings-iframe-resize', height: h }, '*'); } catch (e) {}
+  try { parent.postMessage({ type: 'cf-settings-iframe-resize', height: h, iframe: 'beds' }, '*'); } catch (e) {}
 }
 
 function apiOrigin() {
@@ -240,12 +182,6 @@ createApp({
           { key: 'pump_d2', label: 'Pump D2', pin: 'R4-A3', kind: 'pump' },
         ]},
       ],
-      schChannel: 'led_a1',
-      topKind: 'window',
-      winSlots: [{ days: days7(), onStr: '06:00', offStr: '22:00', enabled: 1 }],
-      cycSlots: [{ days: days7(), onM: 0, onS: 30, offM: 0, offS: 30, enabled: 1 }],
-      schErr: '',
-      schOk: '',
       auditRows: [],
       auditErr: '',
       auditOk: '',
@@ -258,11 +194,6 @@ createApp({
       return this.beds.flatMap(b => b.channels.map(c => c.key));
     },
   },
-  watch: {
-    schChannel() {
-      this.loadSch();
-    },
-  },
   mounted() {
     try {
       const s = localStorage.getItem('cfDeviceId');
@@ -271,7 +202,6 @@ createApp({
     this.allChannels.forEach(k => { if (this.holdMin[k] == null) this.holdMin[k] = 30; });
     this.poll();
     this.pollTimer = setInterval(() => this.poll(), 5000);
-    this.loadSch();
     this.loadAudit();
     this.$nextTick(() => { cfIframeResizeNotify(); });
     this._iframeResizeTimer = setInterval(cfIframeResizeNotify, 3000);
@@ -364,164 +294,6 @@ createApp({
         new_auto: 0,
       });
     },
-    daysArrToMask(arr) {
-      const bits = [1, 2, 4, 8, 16, 32, 64];
-      let m = 0;
-      for (let i = 0; i < 7; i++) if (arr[i]) m |= bits[i];
-      return m;
-    },
-    maskToDays(m) {
-      const bits = [1, 2, 4, 8, 16, 32, 64];
-      return bits.map(b => !!(m & b));
-    },
-    timeStrToMin(s) {
-      const p = (s || '00:00').split(':');
-      let hh = parseInt(p[0], 10), mm = parseInt(p[1], 10);
-      if (isNaN(hh)) hh = 0;
-      if (isNaN(mm)) mm = 0;
-      return Math.min(1439, hh * 60 + mm);
-    },
-    minToStr(n) {
-      n = Math.max(0, Math.min(1439, n | 0));
-      const hh = String(Math.floor(n / 60)).padStart(2, '0');
-      const mm = String(n % 60).padStart(2, '0');
-      return hh + ':' + mm;
-    },
-    addWin() {
-      const days7 = () => [true, true, true, true, true, true, true];
-      this.winSlots.push({ days: days7(), onStr: '06:00', offStr: '22:00', enabled: 1 });
-    },
-    dropWin(i) {
-      if (this.winSlots.length <= 1) return;
-      this.winSlots.splice(i, 1);
-    },
-    addCyc() {
-      const days7 = () => [true, true, true, true, true, true, true];
-      this.cycSlots.push({ days: days7(), onM: 0, onS: 30, offM: 0, offS: 30, enabled: 1 });
-    },
-    dropCyc(i) {
-      if (this.cycSlots.length <= 1) return;
-      this.cycSlots.splice(i, 1);
-    },
-    applyRules(list) {
-      const win = list.filter(r => (r.rule_kind || 'window') === 'window');
-      const cyc = list.filter(r => r.rule_kind === 'cycle');
-      if (cyc.length) {
-        this.topKind = 'cycle';
-        this.cycSlots = cyc.map(r => {
-          const on = parseInt(r.on_sec, 10) || 0, off = parseInt(r.off_sec, 10) || 0;
-          return {
-            days: this.maskToDays(parseInt(r.dow_mask, 10) || 0),
-            onM: Math.floor(on / 60), onS: on % 60,
-            offM: Math.floor(off / 60), offS: off % 60,
-            enabled: r.enabled ? 1 : 0,
-          };
-        });
-        return;
-      }
-      this.topKind = 'window';
-      this.winSlots = win.length ? win.map(r => ({
-        days: this.maskToDays(parseInt(r.dow_mask, 10) || 0),
-        onStr: this.minToStr(parseInt(r.on_min, 10) || 0),
-        offStr: this.minToStr(parseInt(r.off_min, 10) || 0),
-        enabled: r.enabled ? 1 : 0,
-      })) : [{ days: [true, true, true, true, true, true, true], onStr: '06:00', offStr: '22:00', enabled: 1 }];
-    },
-    async loadSch() {
-      this.schErr = '';
-      this.schOk = '';
-      try {
-        const u = apiOrigin() + API + '/api/schedule?device_id=' + encodeURIComponent(this.deviceId) + '&channel=' + encodeURIComponent(this.schChannel);
-        const r = await fetch(u, { credentials: 'same-origin' });
-        if (!r.ok) throw new Error('불러오기 실패 ' + r.status);
-        const j = await r.json();
-        this.applyRules(j.rules || []);
-        this.schOk = '불러옴';
-      } catch (e) {
-        this.schErr = e.message || String(e);
-      }
-    },
-    buildPayload() {
-      if (this.topKind === 'cycle') {
-        const out = [];
-        let si = 0;
-        for (const c of this.cycSlots) {
-          if (!c.enabled) continue;
-          const mask = this.daysArrToMask(c.days);
-          if (!mask) throw new Error('주기: 요일 선택');
-          const onT = Math.min(86400, (c.onM | 0) * 60 + (c.onS | 0));
-          const offT = Math.min(86400, (c.offM | 0) * 60 + (c.offS | 0));
-          if (onT + offT === 0) throw new Error('주기: ON+OFF 길이');
-          out.push({
-            rule_kind: 'cycle', dow_mask: mask, slot_index: si++,
-            on_min: 0, off_min: 0, on_sec: onT, off_sec: offT, enabled: 1,
-          });
-        }
-        return out;
-      }
-      const out = [];
-      let si = 0;
-      for (const s of this.winSlots) {
-        if (!s.enabled) continue;
-        const mask = this.daysArrToMask(s.days);
-        if (!mask) throw new Error('시간대: 요일 선택');
-        out.push({
-          rule_kind: 'window', dow_mask: mask, slot_index: si++,
-          on_min: this.timeStrToMin(s.onStr), off_min: this.timeStrToMin(s.offStr),
-          enabled: 1,
-        });
-      }
-      return out;
-    },
-    async saveSch() {
-      this.schErr = '';
-      this.schOk = '';
-      try {
-        const rules = this.buildPayload();
-        const u = apiOrigin() + API + '/api/schedule?device_id=' + encodeURIComponent(this.deviceId) + '&channel=' + encodeURIComponent(this.schChannel);
-        const res = await fetch(u, {
-          method: 'PUT',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json; charset=utf-8' },
-          body: JSON.stringify({ rules }),
-        });
-        const j = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(j.error || ('저장 실패 ' + res.status));
-        let tail = '';
-        if (j.sch_ver != null && j.sch_ver !== '') tail += ' sch_ver=' + j.sch_ver;
-        if (j.mqtt) tail += ' mqtt:' + j.mqtt;
-        this.schOk = '저장됨 (' + rules.length + '건)' + tail;
-        await this.loadAudit();
-      } catch (e) {
-        this.schErr = e.message || String(e);
-      }
-    },
-    fmtTs(ms) {
-      const n = Number(ms);
-      if (!n) return '—';
-      const d = new Date(n);
-      return d.toLocaleString('ko-KR', { hour12: false });
-    },
-    fmtAut(pa, na) {
-      if (pa == null || na == null) return '—';
-      if (pa < 0 && na < 0) return '—';
-      return String(pa) + '→' + String(na);
-    },
-    fmtOut(ps, ns) {
-      if (ps == null || ns == null) return '—';
-      if (ps < 0 && ns < 0) return '—';
-      return String(ps) + '→' + String(ns);
-    },
-    metaBrief(meta) {
-      if (!meta || typeof meta !== 'object') return '';
-      const a = meta.action;
-      if (a === 'schedule_save') {
-        return '스케줄저장 sch_ver=' + (meta.sch_ver != null ? meta.sch_ver : '') + ' ' + (meta.mqtt != null ? meta.mqtt : '');
-      }
-      if (a === 'output_change_auto') return '자동 출력 변화';
-      if (meta.mqtt_payload) return String(meta.mqtt_payload);
-      return a ? String(a) : '';
-    },
     async loadAudit() {
       this.auditErr = '';
       this.auditOk = '';
@@ -550,13 +322,13 @@ createApp({
           headers: { 'Content-Type': 'application/json; charset=utf-8' },
           body: JSON.stringify({
             device_id: this.deviceId,
-            channel: this.schChannel,
+            channel: this.auditCh || this.allChannels[0] || 'led_a1',
             hours: 72,
           }),
         });
         const j = await r.json().catch(() => ({}));
         if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
-        this.auditOk = '백필 삽입 ' + (j.inserted != null ? j.inserted : '?') + '건 (' + (this.schChannel || '') + ')';
+        this.auditOk = '백필 삽입 ' + (j.inserted != null ? j.inserted : '?') + '건 (' + (this.auditCh || '') + ')';
         await this.loadAudit();
       } catch (e) {
         this.auditErr = e.message || String(e);

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <link rel="stylesheet" href="/cronusfarm-static/cronusfarm_d1_shared.css"/>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>CronusFarm 스케줄 24h 전체</title>
+  <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    html,body{min-height:100%;margin:0;background:var(--g0);color:var(--text);font-family:var(--fb);overflow-x:hidden;}
+    .cf-settings-app{max-width:1120px;margin:0 auto;padding:12px;}
+    .cf-settings-shell{
+      position:relative;border-radius:var(--r);border:1px solid var(--border);overflow:visible;
+      box-shadow:var(--glow);
+      background:linear-gradient(180deg,var(--g0),var(--g1) 55%,var(--g0));
+      padding:14px 16px 18px;
+    }
+    .cf-settings-shell>*{position:relative;z-index:1;}
+    .cf-sch-overview-bar{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:10px;font-size:12px;}
+    .cf-sch-overview-bar input{padding:6px 10px;border-radius:10px;border:1px solid var(--border2);background:rgba(0,0,0,.35);color:var(--text);}
+    .cf-sch-overview-bar .btn{padding:7px 12px;border-radius:12px;border:1px solid var(--border2);background:rgba(255,255,255,.06);color:var(--text);font-weight:800;cursor:pointer;font-size:12px;}
+    .cf-sch-overview-list{display:flex;flex-direction:column;gap:4px;}
+    .cf-sch-overview-row{display:grid;grid-template-columns:92px 1fr;gap:8px;align-items:center;padding:3px 6px;border-radius:8px;cursor:pointer;border:1px solid transparent;}
+    .cf-sch-overview-row:hover{background:rgba(45,255,122,.08);border-color:rgba(45,255,122,.2);}
+    .cf-sch-overview-lbl{font-size:11px;font-weight:800;color:var(--text);word-break:break-all;}
+    .cf-sch-overview-row canvas{width:100%;height:34px;display:block;border-radius:6px;background:rgba(0,0,0,.35);}
+    .cf-sch-overview-foot{font-size:10px;color:var(--text2);margin:8px 0 0;line-height:1.4;}
+  </style>
+</head>
+<body>
+<div id="app" class="cf-settings-app">
+  <div class="cf-settings-shell">
+    <div class="cf-sch-overview-bar">
+      <label>장치 ID <input v-model="deviceId" type="text" spellcheck="false" @change="onDevChange"/></label>
+      <button type="button" class="btn" :disabled="loading" @click="loadAll">새로고침</button>
+    </div>
+    <div class="cf-sch-overview-list">
+      <div v-for="row in rows" :key="row.key" class="cf-sch-overview-row" @click="pickChannel(row.key)">
+        <span class="cf-sch-overview-lbl">{{ row.key }}</span>
+        <canvas :ref="'cv_' + row.key" width="720" height="34"></canvas>
+      </div>
+    </div>
+    <p class="cf-sch-overview-foot">행 클릭 → 「스케줄 API · 관제 허브」 카드에서 해당 채널 편집 · 녹색=스케줄 켜짐 · 노란=실제 동작(tele)</p>
+  </div>
+</div>
+<script>
+const { createApp } = Vue;
+const CF_SCH_CHANNELS = ['led_a1','led_a2','pump_a1','pump_a2','led_b1','led_b2','pump_b1','pump_b2','fan_a1','fan_a2','fan_b1','fan_b2','pump_c1','pump_c2','pump_d1','pump_d2'];
+const API = '/farm/cronusfarm-sqlite';
+
+function cfIframeResizeNotify() {
+  const el = document.getElementById('app') || document.documentElement;
+  const h = Math.max(el.scrollHeight, el.offsetHeight, document.body.scrollHeight);
+  try { parent.postMessage({ type: 'cf-settings-iframe-resize', height: h, iframe: 'sched_ov' }, '*'); } catch (e) {}
+}
+
+function cfDrawTimelineExec(ctx, padL, plotW, plotH, padT, anchorMs, nowMs, points) {
+  if (!points || points.length < 2) return;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i], p1 = points[i + 1];
+    if (Number(p0.state) !== 1) continue;
+    const t0 = Math.max(anchorMs, Number(p0.ts_ms));
+    const t1 = Math.min(nowMs, Number(p1.ts_ms));
+    if (t1 <= t0) continue;
+    const x1 = padL + ((t0 - anchorMs) / (nowMs - anchorMs)) * plotW;
+    const x2 = padL + ((t1 - anchorMs) / (nowMs - anchorMs)) * plotW;
+    const w = Math.max(1, x2 - x1);
+    ctx.fillStyle = 'rgba(255,214,10,.55)';
+    ctx.fillRect(x1, padT + 1, w, plotH - 2);
+    ctx.strokeStyle = '#ffd60a';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x1, padT + 1, w, plotH - 2);
+  }
+}
+
+function cfDrawSch24h(canvas, rules, execData) {
+  if (!canvas || !canvas.getContext) return;
+  const ctx = canvas.getContext('2d');
+  const padL = 28, padR = 4, padT = 4, padB = 12;
+  const W = canvas.width, H = canvas.height;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = 'rgba(0,0,0,.35)';
+  ctx.fillRect(padL, padT, plotW, plotH);
+  ctx.strokeStyle = 'rgba(45,255,122,.15)';
+  ctx.fillStyle = '#6b9c73';
+  ctx.font = '9px system-ui,sans-serif';
+  const drawSeg = (onMin, offMin, color) => {
+    const x1 = padL + (onMin / 1440) * plotW;
+    const x2 = padL + (offMin / 1440) * plotW;
+    const w = Math.max(1, x2 - x1);
+    ctx.fillStyle = color + '55';
+    ctx.fillRect(x1, padT + 2, w, plotH - 4);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x1, padT + 2, w, plotH - 4);
+  };
+  for (let h = 0; h <= 24; h += 12) {
+    const x = padL + (h / 24) * plotW;
+    ctx.beginPath();
+    ctx.moveTo(x, padT);
+    ctx.lineTo(x, padT + plotH);
+    ctx.stroke();
+    if (h === 0 || h === 24) ctx.fillText(String(h).padStart(2, '0'), x, H - 2);
+  }
+  const colors = ['#2dff7a', '#4fc3f7', '#ffb830'];
+  const list = rules || [];
+  const cyc = list.filter(r => r.rule_kind === 'cycle');
+  const win = list.filter(r => (r.rule_kind || 'window') === 'window');
+  if (cyc.length) {
+    const r = cyc.find(x => x.enabled) || cyc[0];
+    const onSec = parseInt(r.on_sec, 10) || 0, offSec = parseInt(r.off_sec, 10) || 0;
+    const period = onSec + offSec;
+    if (period) {
+      let t = 0, on = true;
+      while (t < 86400) {
+        const dur = on ? onSec : offSec;
+        const end = Math.min(86400, t + dur);
+        if (on) drawSeg(t / 60, end / 60, colors[0]);
+        t = end;
+        on = !on;
+      }
+    }
+  } else {
+  let idx = 0;
+  for (const r of win) {
+    if (!r.enabled) continue;
+    const on = parseInt(r.on_min, 10) || 0;
+    const off = parseInt(r.off_min, 10) || 0;
+    const color = colors[idx % colors.length];
+    idx += 1;
+    if (off > on) drawSeg(on, off, color);
+    else {
+      drawSeg(on, 1440, color);
+      if (off > 0) drawSeg(0, off, color);
+    }
+  }
+  }
+  if (execData && execData.points && execData.points.length) {
+    cfDrawTimelineExec(ctx, padL, plotW, plotH, padT, execData.anchor_ts_ms || (Date.now() - 86400000), Date.now(), execData.points);
+  }
+}
+
+createApp({
+  data() {
+    return {
+      deviceId: 'cronusfarm-01',
+      rows: CF_SCH_CHANNELS.map(k => ({ key: k, rules: [] })),
+      loading: false,
+    };
+  },
+  mounted() {
+    try {
+      const s = localStorage.getItem('cfDeviceId');
+      if (s && s.trim()) this.deviceId = s.trim();
+    } catch (e) {}
+    this.loadAll();
+    this._devTimer = setInterval(() => this.syncDev(), 5000);
+    this._resizeTimer = setInterval(cfIframeResizeNotify, 3000);
+  },
+  unmounted() {
+    if (this._devTimer) clearInterval(this._devTimer);
+    if (this._resizeTimer) clearInterval(this._resizeTimer);
+  },
+  methods: {
+    onDevChange() {
+      try { localStorage.setItem('cfDeviceId', (this.deviceId || '').trim()); } catch (e) {}
+      this.loadAll();
+    },
+    syncDev() {
+      try {
+        const s = localStorage.getItem('cfDeviceId');
+        if (s && s.trim() && s.trim() !== this.deviceId) {
+          this.deviceId = s.trim();
+          this.loadAll();
+        }
+      } catch (e) {}
+    },
+    pickChannel(ch) {
+      try { parent.postMessage({ type: 'cf-sch-goto', channel: ch }, '*'); } catch (e) {}
+    },
+    async loadAll() {
+      this.loading = true;
+      const o = location.origin || '';
+      const tlUrl = o + API + '/api/channel/timeline/batch?device_id=' + encodeURIComponent(this.deviceId) + '&channels=' + encodeURIComponent(CF_SCH_CHANNELS.join(',')) + '&hours=24';
+      let tlMap = {};
+      try {
+        const tr = await fetch(tlUrl, { credentials: 'same-origin' });
+        if (tr.ok) tlMap = (await tr.json()).channels || {};
+      } catch (e) { console.warn(e); }
+      await Promise.all(this.rows.map(async row => {
+        try {
+          const u = o + API + '/api/schedule?device_id=' + encodeURIComponent(this.deviceId) + '&channel=' + encodeURIComponent(row.key);
+          const r = await fetch(u, { credentials: 'same-origin' });
+          row.rules = r.ok ? ((await r.json()).rules || []) : [];
+        } catch (e) {
+          row.rules = [];
+        }
+      }));
+      this.loading = false;
+      this.$nextTick(() => {
+        this.rows.forEach(row => {
+          const ref = this.$refs['cv_' + row.key];
+          const canvas = Array.isArray(ref) ? ref[0] : ref;
+          if (canvas) cfDrawSch24h(canvas, row.rules, tlMap[row.key]);
+        });
+        cfIframeResizeNotify();
+      });
+    },
+  },
+}).mount('#app');
+</script>
+</body>
+</html>
