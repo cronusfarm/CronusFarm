@@ -4,7 +4,7 @@
     {
       "label": "upcode (copy->compile->upload Pi)",
       "type": "shell",
-      "command": "powershell",
+      "command": "pwsh",
       "args": [
         "-NoProfile",
         "-ExecutionPolicy",
@@ -17,7 +17,7 @@
     {
       "label": "deploy Pi: arduino + nodered JSON 동기화",
       "type": "shell",
-      "command": "powershell",
+      "command": "pwsh",
       "args": [
         "-NoProfile",
         "-ExecutionPolicy",
@@ -30,7 +30,7 @@
     {
       "label": "deploy Pi: 전체(Arduino + Node-RED POST 적용)",
       "type": "shell",
-      "command": "powershell",
+      "command": "pwsh",
       "args": [
         "-NoProfile",
         "-ExecutionPolicy",
@@ -44,7 +44,7 @@
     {
       "label": "Git: push + 원격 백업 태그(git-push-with-backup)",
       "type": "shell",
-      "command": "powershell",
+      "command": "pwsh",
       "args": [
         "-NoProfile",
         "-ExecutionPolicy",

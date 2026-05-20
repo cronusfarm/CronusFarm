@@ -1,0 +1,23 @@
+[Unit]
+Description=CronusFarm MQTT watch → Telegram alert on disconnect
+After=network-online.target mosquitto.service cronusfarm-sqlite-bridge.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/cronusfarm/nodered-telegram.env
+Environment=CRONUSFARM_MQTT_HOST=127.0.0.1
+Environment=CRONUSFARM_MQTT_PORT=1883
+Environment=CRONUSFARM_DEVICE_ID=cronusfarm-01
+Environment=CRONUSFARM_SQLITE_BRIDGE_URL=http://127.0.0.1:18766
+Environment=CRONUSFARM_MQTT_WATCH_SEC=10
+Environment=CRONUSFARM_MQTT_TELE_STALE_SEC=45
+Environment=CRONUSFARM_MQTT_WATCH_GRACE_SEC=45
+Environment=CRONUSFARM_MQTT_ALERT_COOLDOWN_SEC=300
+Environment=CRONUSFARM_MQTT_RECOVER_NOTIFY=1
+ExecStart=/bin/bash -lc 'set -a; [ -f /etc/cronusfarm/nodered-telegram.env ] && . /etc/cronusfarm/nodered-telegram.env; set +a; exec /usr/bin/python3 /home/dooly/CronusFarm/scripts/cronusfarm_mqtt_watch.py'
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

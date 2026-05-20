@@ -8,10 +8,11 @@
 
 ## Pi(ida) 접속 (고정)
 
-- **내부 LAN:** `192.168.0.222` — 예: `http://192.168.0.222:1880/ui/`
-- **Tailscale:** `ida.mango-larch.ts.net`
-- **SSH:** `dooly@192.168.0.222` 또는 `dooly@ida.mango-larch.ts.net`. 호스트명만 `ida`로 두면 DNS가 다른 대역으로 잡힐 수 있음 → **`scripts/pi-host-resolve.ps1`** 의 `Get-CronusPiHost` 사용(또는 위 주소 직접).
-- **IP/웹이 안 될 때:** PC와 Pi가 **같은 LAN 대역(192.168.0.x)** 인지, 주소는 **`http://`**, Pi `ufw`/라우터 AP 격리 확인. 외부에서는 **Tailscale**만 통할 수 있음.
+- **호스트 우선순위:** LAN `192.168.60.222` → Tailscale `ida.mango-larch.ts.net` → DuckDNS `cronusfarm.duckdns.org` (`scripts/cronusfarm-network.ps1`). **로컬 개발**은 Tailscale 고정(`run-nodered-local-ui.ps1`).
+- **포트(라우터 포워딩 정합):** nginx `1880`, NR `51880`~`51882`, CCTV `8080`~`8081`, MQTT `51883`, SQLite `18766`. 설정: `scripts/cronusfarm-network.json`.
+- **내부 LAN(폴백):** `192.168.60.222` (ida 고정)
+- **SSH:** `dooly@ida.mango-larch.ts.net` 우선(Tailscale). LAN만 쓸 때 `dooly@192.168.60.222`. 배포 스크립트는 기본으로 Tailscale SSH를 먼저 시도합니다.
+- **IP/웹이 안 될 때:** PC와 Pi가 **같은 LAN 대역(예: 192.168.60.x)** 인지, 주소는 **`http://`**, Pi `ufw`/라우터 AP 격리 확인. 외부에서는 **Tailscale**만 통할 수 있음.
 - **`pi-diagnose-ui.sh`가 Pi에 없으면:** 클론이 오래됐거나 스크립트가 아직 원격에 없음 → `git pull` 또는 레포 루트에서 `bash scripts/pi-install-diagnose-to-home.sh`.
 
 ## 반드시 지킬 것

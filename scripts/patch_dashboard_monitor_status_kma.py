@@ -79,7 +79,7 @@ def main() -> None:
             n["func"] = FN_SEEN_STATUS
         elif nid == "fn_calc_online":
             n["func"] = FN_CALC_ONLINE
-            n["wires"] = [["ui_tpl_conn_line", "ui_tpl_status_line", "ui_txt_status_raw"]]
+            n["wires"] = [["ui_tpl_conn_line", "ui_tpl_status_line"]]
         elif nid == "mqtt_in_status":
             n["wires"] = [["fn_seen_status"]]
         elif nid == "ui_txt_status_raw":

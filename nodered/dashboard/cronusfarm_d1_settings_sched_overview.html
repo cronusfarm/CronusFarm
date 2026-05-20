@@ -45,8 +45,23 @@
 </div>
 <script>
 const { createApp } = Vue;
-const CF_SCH_CHANNELS = ['led_a1','led_a2','pump_a1','pump_a2','led_b1','led_b2','pump_b1','pump_b2','fan_a1','fan_a2','fan_b1','fan_b2','pump_c1','pump_c2','pump_d1','pump_d2'];
+const CF_SCH_CHANNELS = ['led_a1','led_a2','pump_a1','pump_a2','fan_a1','fan_a2','led_b1','led_b2','pump_b1','pump_b2','fan_b1','fan_b2','pump_c1','pump_c2','pump_d1','pump_d2'];
 const API = '/farm/cronusfarm-sqlite';
+const CF_TZ = 'Asia/Seoul';
+
+/** 오늘 0:00~24:00 (KST) — 스케줄·tele 동일 x축 */
+function cfKstDayWindow(refMs) {
+  const ms = refMs != null && Number.isFinite(Number(refMs)) ? Number(refMs) : Date.now();
+  const ymd = new Intl.DateTimeFormat('en-CA', {
+    timeZone: CF_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date(ms));
+  const tStart = Date.parse(ymd + 'T00:00:00+09:00');
+  const tEnd = tStart + 86400000;
+  return { tStart, tEnd, nowMs: ms };
+}
 
 function cfIframeResizeNotify() {
   const el = document.getElementById('app') || document.documentElement;
@@ -54,16 +69,19 @@ function cfIframeResizeNotify() {
   try { parent.postMessage({ type: 'cf-settings-iframe-resize', height: h, iframe: 'sched_ov' }, '*'); } catch (e) {}
 }
 
-function cfDrawTimelineExec(ctx, padL, plotW, plotH, padT, anchorMs, nowMs, points) {
+function cfDrawTimelineExec(ctx, padL, plotW, plotH, padT, tStart, tEnd, nowMs, points) {
   if (!points || points.length < 2) return;
+  const span = tEnd - tStart;
+  if (span <= 0) return;
+  const clipEnd = Math.min(nowMs, tEnd);
   for (let i = 0; i < points.length - 1; i++) {
     const p0 = points[i], p1 = points[i + 1];
     if (Number(p0.state) !== 1) continue;
-    const t0 = Math.max(anchorMs, Number(p0.ts_ms));
-    const t1 = Math.min(nowMs, Number(p1.ts_ms));
-    if (t1 <= t0) continue;
-    const x1 = padL + ((t0 - anchorMs) / (nowMs - anchorMs)) * plotW;
-    const x2 = padL + ((t1 - anchorMs) / (nowMs - anchorMs)) * plotW;
+    const t0 = Math.max(tStart, Number(p0.ts_ms));
+    const t1 = Math.min(clipEnd, Number(p1.ts_ms));
+    if (t1 <= t0 || t0 >= clipEnd) continue;
+    const x1 = padL + ((t0 - tStart) / span) * plotW;
+    const x2 = padL + ((t1 - tStart) / span) * plotW;
     const w = Math.max(1, x2 - x1);
     ctx.fillStyle = 'rgba(255,214,10,.55)';
     ctx.fillRect(x1, padT + 1, w, plotH - 2);
@@ -73,8 +91,22 @@ function cfDrawTimelineExec(ctx, padL, plotW, plotH, padT, anchorMs, nowMs, poin
   }
 }
 
+function cfKstMinutesOfDay(tsMs) {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: CF_TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(tsMs));
+  const h = parseInt(parts.find((p) => p.type === 'hour')?.value || '0', 10) || 0;
+  const m = parseInt(parts.find((p) => p.type === 'minute')?.value || '0', 10) || 0;
+  return h * 60 + m;
+}
+
 function cfDrawSch24h(canvas, rules, execData) {
   if (!canvas || !canvas.getContext) return;
+  const win = cfKstDayWindow(Date.now());
+  const nowMin = cfKstMinutesOfDay(win.nowMs);
   const ctx = canvas.getContext('2d');
   const padL = 28, padR = 4, padT = 4, padB = 12;
   const W = canvas.width, H = canvas.height;
@@ -86,8 +118,11 @@ function cfDrawSch24h(canvas, rules, execData) {
   ctx.fillStyle = '#6b9c73';
   ctx.font = '9px system-ui,sans-serif';
   const drawSeg = (onMin, offMin, color) => {
+    if (onMin >= nowMin) return;
+    const offCap = Math.min(offMin, nowMin);
+    if (offCap <= onMin) return;
     const x1 = padL + (onMin / 1440) * plotW;
-    const x2 = padL + (offMin / 1440) * plotW;
+    const x2 = padL + (offCap / 1440) * plotW;
     const w = Math.max(1, x2 - x1);
     ctx.fillStyle = color + '55';
     ctx.fillRect(x1, padT + 2, w, plotH - 4);
@@ -137,7 +172,7 @@ function cfDrawSch24h(canvas, rules, execData) {
   }
   }
   if (execData && execData.points && execData.points.length) {
-    cfDrawTimelineExec(ctx, padL, plotW, plotH, padT, execData.anchor_ts_ms || (Date.now() - 86400000), Date.now(), execData.points);
+    cfDrawTimelineExec(ctx, padL, plotW, plotH, padT, win.tStart, win.tEnd, win.nowMs, execData.points);
   }
 }
 
@@ -146,6 +181,7 @@ createApp({
     return {
       deviceId: 'cronusfarm-01',
       rows: CF_SCH_CHANNELS.map(k => ({ key: k, rules: [] })),
+      tlMap: {},
       loading: false,
     };
   },
@@ -157,10 +193,12 @@ createApp({
     this.loadAll();
     this._devTimer = setInterval(() => this.syncDev(), 5000);
     this._resizeTimer = setInterval(cfIframeResizeNotify, 3000);
+    this._clipTimer = setInterval(() => this.redrawCharts(), 1000);
   },
   unmounted() {
     if (this._devTimer) clearInterval(this._devTimer);
     if (this._resizeTimer) clearInterval(this._resizeTimer);
+    if (this._clipTimer) clearInterval(this._clipTimer);
   },
   methods: {
     onDevChange() {
@@ -178,6 +216,15 @@ createApp({
     },
     pickChannel(ch) {
       try { parent.postMessage({ type: 'cf-sch-goto', channel: ch }, '*'); } catch (e) {}
+    },
+    redrawCharts() {
+      this.$nextTick(() => {
+        this.rows.forEach(row => {
+          const ref = this.$refs['cv_' + row.key];
+          const canvas = Array.isArray(ref) ? ref[0] : ref;
+          if (canvas) cfDrawSch24h(canvas, row.rules, this.tlMap[row.key]);
+        });
+      });
     },
     async loadAll() {
       this.loading = true;
@@ -197,13 +244,10 @@ createApp({
           row.rules = [];
         }
       }));
+      this.tlMap = tlMap;
       this.loading = false;
       this.$nextTick(() => {
-        this.rows.forEach(row => {
-          const ref = this.$refs['cv_' + row.key];
-          const canvas = Array.isArray(ref) ? ref[0] : ref;
-          if (canvas) cfDrawSch24h(canvas, row.rules, tlMap[row.key]);
-        });
+        this.redrawCharts();
         cfIframeResizeNotify();
       });
     },

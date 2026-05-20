@@ -1,0 +1,19 @@
+<div class="cf-r4-status-bar cf-arduino-conn-tile">
+  <div class="cf-label">R4 연결</div>
+  <div class="cf-r4-status-right">
+    <div class="cf-dot" ng-class="msg.connLineOk ? 'cf-dot-on' : 'cf-dot-off'"></div>
+    <span class="cf-r4-st">{{msg.connLineOk ? 'online' : 'offline'}}</span>
+    <span class="cf-muted">· tele {{msg.teleAge}}s · status 수신 {{msg.statusAge}}s</span>
+  </div>
+</div>
+<p class="cf-ar-hint-bar">내장 매트릭스: 위 = WiFi · 아래 = MQTT (메인 R4)</p>
+<style>
+.cf-r4-status-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:6px 10px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:10px;color:var(--cf-text,#e6edf7);width:100%;box-sizing:border-box}
+.cf-r4-status-bar .cf-label{font-size:13px;font-weight:700;color:var(--cf-text,#e6edf7);margin:0}
+.cf-r4-status-right{display:flex;align-items:center;gap:8px;flex-shrink:0;white-space:nowrap;font-size:12px;color:var(--cf-text,#e6edf7)}
+.cf-r4-st{font-weight:700}
+.cf-arduino-conn-tile{margin:0;padding:0;line-height:1.25}
+.cf-ar-hint-bar{margin:4px 0 0;padding:5px 10px;font-size:10px;line-height:1.35;color:#e6edf7;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06);border-radius:8px;box-sizing:border-box}
+.nr-dashboard-theme .nr-dashboard-template:has(.cf-r4-status-bar) md-card,
+.nr-dashboard-theme .nr-dashboard-template:has(.cf-r4-status-bar) md-card-content{background:transparent!important;color:var(--cf-text,#e6edf7)!important}
+</style>

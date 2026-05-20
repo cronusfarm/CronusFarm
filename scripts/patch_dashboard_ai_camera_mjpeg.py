@@ -33,11 +33,23 @@ FMT = r"""<div class="cf-ai-cam-outer">
   }
   var el=document.getElementById("cf-ai-mjpeg-img");
   if(!el)return;
-  var h=location.hostname||"127.0.0.1";
-  var pr=location.protocol||"http:";
-  var p=String(location.port||"");
-  if(p==="1882"||p==="1884"){el.src=pr+"//"+h+":8080/stream";}
-  else{el.src=(location.origin||"")+"/farm/ai-mjpeg/video_feed";}
+  function piHost(){
+    if(typeof window.cfPiHost==="function") return window.cfPiHost();
+    return "ida.mango-larch.ts.net";
+  }
+  function cfCamSrc(){
+    var h=location.hostname||"127.0.0.1";
+    var pr=location.protocol||"http:";
+    var p=String(location.port||"");
+    if(p==="1881"||h==="127.0.0.1"||h==="localhost") return pr+"//"+piHost()+":8080/stream";
+    if(p==="1880"||p==="80"||p==="") return (location.origin||"")+"/farm/ai-mjpeg/video_feed";
+    if(/^(5188[0-2]|188[0-4])$/.test(p)) return pr+"//"+piHost()+":8080/stream";
+    return (location.origin||"")+"/farm/ai-mjpeg/video_feed";
+  }
+  function apply(){ el.src=cfCamSrc(); }
+  apply();
+  window.addEventListener("cf-pi-host", apply);
+  el.onerror=function(){ apply(); };
 })(scope);
 </script>"""
 

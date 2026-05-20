@@ -8,13 +8,14 @@
 
   목표
   - Node-RED(UI/자동화) ↔ Arduino 통신을 **MQTT(WiFi)** 로 전환
-  - USB Serial은 업로드/디버그 용도로만 사용(포트 점유 충돌 최소화)
+  - USB Serial: 업로드/디버그 + Pi USB 프로비저닝(wifi_set / wifi_clear / wifi_status)
 
   토픽 규약(DEVICE_ID=cronusfarm-01 예시)
   - 명령 수신:   cronusfarm/cronusfarm-01/cmd
   - 상태 발행:   cronusfarm/cronusfarm-01/tele
   - 온라인 발행: cronusfarm/cronusfarm-01/status  (online/offline)
   - Pi SSID 동기: MQTT_TOPIC_PI_WIFI_SSID — `SSID` 또는 `SSID 비밀번호`(첫 공백 기준, 목록 외 등록)
+  - Pi USB 시리얼(115200): `wifi_set <SSID> <비밀번호>` / `wifi_clear` / `wifi_status` — scripts/pi-serial-wifi-provision.sh
   - Pi→R4 RTC 동기: cmd `rtc_local=YYYYMMDDHHmmss` (Pi `date` 로컬 시각 14자리, scripts/pi-mqtt-publish-rtc-to-r4.sh)
 
   페이로드(간단/라이브러리 최소화)
@@ -49,6 +50,8 @@
 #include "panel_i2c_protocol.h"
 // `secrets.h.example`을 복사해서 `secrets.h`를 만든 뒤 값을 채우세요.
 #include "secrets.h"
+#include "cf_schedule_types.h"
+#include "cf_builtin_schedule.h"
 
 static const uint32_t BAUD = 115200;
 
@@ -97,6 +100,9 @@ static uint32_t gLastBrowseDrawMs = 0;
 // 실제로 브라우즈 화면(4줄)이 한 번이라도 그려졌는지 추적합니다.
 static bool gPanelBrowseShown = false;
 static const uint32_t PANEL_WELCOME_MS = 5000;
+// 채널 브라우즈에서 엔코더·푸시 없음 → 환영 화면 복귀
+static const uint32_t PANEL_BROWSE_IDLE_MS = 600000ul;
+static uint32_t gPanelLastUserInputMs = 0;
 // I2C 링크 직후 스플래시(CronusFarm/WiFi/MQTT)가 같은 루프에서 대기 화면에 덮이지 않게 최소 표시
 static const uint32_t PANEL_LINK_SPLASH_MIN_MS = 5000;
 // WiFi 미연결 대기 화면(Waiting link) 최소 유지 — 다음 화면(환영) 전에 눈으로 확인 가능
@@ -131,6 +137,7 @@ static uint32_t gLastPanelI2cPingMs = 0;
 static uint8_t gPanelI2cLastEndTxRc = 255;
 static int gPanelI2cLastReqGot = -1;
 static uint32_t gPanelI2cLastRxMs = 0;
+static uint8_t gPanelI2cMissStreak = 0;
 
 static bool panelI2cPing(uint32_t nowMs) {
   // 너무 자주 두드리면 버스가 지저분해질 수 있어 간격을 둡니다.
@@ -179,6 +186,9 @@ static void panelBeepLong();
 static void panelSetBlink(uint8_t row, uint8_t col, bool on);
 static void panelPollEvents(uint32_t nowMs);
 static void lcdWelcomeIfOk(uint32_t nowMs, bool wifiOk, bool mqttOk);
+static void panelNoteUserInput(uint32_t nowMs);
+static void panelReturnToWelcome(uint32_t nowMs);
+static void panelBrowseIdleCheck(uint32_t nowMs);
 static void lcdBrowseDraw(uint32_t nowMs);
 
 // ============================================================
@@ -225,14 +235,14 @@ enum Channel : uint8_t {
 static const uint8_t UI_CH_ORDER[CH_COUNT] = {
   CH_LED_A1,   // CH1
   CH_LED_A2,   // CH2
-  CH_LED_B1,   // CH3
-  CH_LED_B2,   // CH4 (B 여분 LED, D13)
-  CH_PUMP_A1,  // CH5
-  CH_PUMP_A2,  // CH6
-  CH_PUMP_B1,  // CH7
-  CH_PUMP_B2,  // CH8
-  CH_FAN_A1,   // CH9
-  CH_FAN_A2,   // CH10
+  CH_PUMP_A1,  // CH3
+  CH_PUMP_A2,  // CH4
+  CH_FAN_A1,   // CH5
+  CH_FAN_A2,   // CH6
+  CH_LED_B1,   // CH7
+  CH_LED_B2,   // CH8
+  CH_PUMP_B1,  // CH9
+  CH_PUMP_B2,  // CH10
   CH_FAN_B1,   // CH11
   CH_FAN_B2,   // CH12
   CH_PUMP_C1,  // CH13
@@ -312,13 +322,10 @@ static const char* const CH_LABEL_KO[CH_COUNT] = {
   "LED B2",
 };
 
-// 채널별 AUTO(1)/수동(0) — 부팅 초기는 전부 수동·OFF(아래 chManual/chState·setup 후처리와 일치)
+// 채널별 AUTO(1)/수동(0) — 기본 자동(스케줄 적용). 부팅 60초 유예 후 출력만 OFF 유지.
 static bool chAuto[CH_COUNT] = {
-  false, false, false,
-  false, false, false, false,
-  false, false, false, false,
-  false, false, false, false,
-  false
+  true, true, true, true, true, true, true, true,
+  true, true, true, true, true, true, true, true,
 };
 
 static const char* chPinLabel(uint8_t ch) {
@@ -356,6 +363,11 @@ static uint32_t gUiLocalOverrideAtMs[CH_COUNT] = {
   0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 };
 static const uint32_t UI_LOCAL_OVERRIDE_HOLD_MS = 3000;
+// 패널 2004A 엔코더 MAN(OFF/ON) 후 자동 복귀 상한 — Pi channel_manual_hold(60분)와 맞춤
+static const uint32_t PANEL_MANUAL_HOLD_MS = 3600000UL;
+static uint32_t chPanelManualUntilMs[CH_COUNT] = {
+  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
 static uint32_t chOnMs[CH_COUNT]  = {
   0, 0, 0,                 // LED A1,A2,B1
   30000, 30000,            // PUMP A
@@ -381,6 +393,11 @@ static uint32_t chPrevMs[CH_COUNT] = {
   0,0,0,0,
   0
 };
+
+// 리셋/재부팅 후 1분간 전 채널 OFF 유지 → 이후 Pi 스케줄(SCHED_JSON)·AUTO 적용
+static uint32_t gBootAtMs = 0;
+static const uint32_t BOOT_SCHED_GRACE_MS = 60000UL;
+static bool gBootBuiltinSchedDone = false;
 static bool chState[CH_COUNT] = {
   false, false, false,
   false, false, false, false,
@@ -390,20 +407,6 @@ static bool chState[CH_COUNT] = {
 };
 
 // ---------- Pi 스케줄(SCHED_JSON) — SQLite 브리지가 MQTT cmd로 전달 ----------
-#ifndef CF_SCH_MAX_RULES
-#define CF_SCH_MAX_RULES 4
-#endif
-
-struct CfSchRule {
-  uint8_t kind;  // 0=window(on_min/off_min 분), 1=cycle(on_sec/off_sec)
-  uint8_t dow_mask;
-  uint16_t on_min;
-  uint16_t off_min;
-  uint32_t on_sec;
-  uint32_t off_sec;
-  uint8_t enabled;
-};
-
 static CfSchRule gSchRules[CH_COUNT][CF_SCH_MAX_RULES];
 static uint8_t gSchRuleCount[CH_COUNT];
 static uint32_t gSchVer[CH_COUNT];
@@ -478,6 +481,10 @@ static bool cfParseOneRule(const char* s, CfSchRule* out) {
     p = strstr(s, "\"off_sec\":");
     if (!p) return false;
     out->off_sec = (uint32_t)strtoul(p + 10, nullptr, 10);
+    p = strstr(s, "\"on_min\":");
+    if (p) out->on_min = (uint16_t)strtoul(p + 9, nullptr, 10);
+    p = strstr(s, "\"off_min\":");
+    if (p) out->off_min = (uint16_t)strtoul(p + 10, nullptr, 10);
   } else {
     p = strstr(s, "\"on_min\":");
     if (!p) return false;
@@ -515,6 +522,9 @@ static bool cfSchWant(uint8_t ch) {
     if (r.kind == 0) {
       if (cfMinuteInWindow((uint16_t)nowMin, r.on_min, r.off_min)) return true;
     } else {
+      if (r.on_min != 0 || r.off_min != 0) {
+        if (!cfMinuteInWindow((uint16_t)nowMin, r.on_min, r.off_min)) continue;
+      }
       if (cfCycleWantOn(r.on_sec, r.off_sec, secDay)) return true;
     }
   }
@@ -597,6 +607,55 @@ static void forceStartFromCh1() {
   gLastBrowseDrawMs = 0;
   gPanelBrowseShown = false;
   gLcdWelcomeBypass = true;
+}
+
+static void panelNoteUserInput(uint32_t nowMs) {
+  gPanelLastUserInputMs = nowMs;
+}
+
+static void panelReturnToWelcome(uint32_t nowMs) {
+  if (!gPanelReady || !gLcdWelcomed) {
+    return;
+  }
+  if (gUiMode != UI_BROWSE || !gLcdWelcomeBypass) {
+    return;
+  }
+  gLcdWelcomeBypass = false;
+  gLcdWelcomeAtMs = nowMs;
+  gLastLcdRtcMs = nowMs;
+  gPanelBrowseShown = false;
+  gPanelBrowseDirty = true;
+  panelSetBlink(0, 0, false);
+  for (uint8_t r = 0; r < 4; r++) {
+    gPanelLineInit[r] = false;
+  }
+  panelClear();
+#if CF_PANEL_LINK_I2C
+  delayMicroseconds(4500);
+#endif
+  lcdWelcomeSplashPaint();
+}
+
+static void panelBrowseIdleCheck(uint32_t nowMs) {
+  if (!gPanelReady || !gLcdWelcomed) {
+    return;
+  }
+  if (gUiMode != UI_BROWSE || !gLcdWelcomeBypass) {
+    return;
+  }
+  if (gPanelLinkSplashUntilMs != 0 && (int32_t)(nowMs - gPanelLinkSplashUntilMs) < 0) {
+    return;
+  }
+  if (!gPanelBrowseShown) {
+    return;
+  }
+  if (gPanelLastUserInputMs == 0) {
+    gPanelLastUserInputMs = nowMs;
+    return;
+  }
+  if ((uint32_t)(nowMs - gPanelLastUserInputMs) >= PANEL_BROWSE_IDLE_MS) {
+    panelReturnToWelcome(nowMs);
+  }
 }
 
 // ---------- 패널 링크 (현장: R4↔R3 UART 권장) ----------
@@ -730,6 +789,18 @@ static void panelBeepLong() {
 }
 
 static void allOff();
+
+static bool bootSchedGraceActive(uint32_t nowMs) {
+  if (gBootAtMs == 0) return false;
+  return (int32_t)(nowMs - gBootAtMs) < (int32_t)BOOT_SCHED_GRACE_MS;
+}
+
+static void bootSchedGraceHoldOff() {
+  for (uint8_t i = 0; i < CH_COUNT; i++) {
+    digitalWrite(CH_PIN[i], LOW);
+    chState[i] = false;
+  }
+}
 static void publishTelemetry();
 
 static void panelPollEvents(uint32_t nowMs) {
@@ -740,22 +811,27 @@ static void panelPollEvents(uint32_t nowMs) {
   const int got = Wire.requestFrom((int)PANEL_I2C_ADDR, (int)want);
   gPanelI2cLastReqGot = got;
   if (got <= 0 || Wire.available() <= 0) {
-    // R3 리셋·버스 끊김: 응답이 잠깐이라도 없으면 링크 해제 → 재 ping·스플래시 경로
-    if (gPanelReady && gPanelI2cLastRxMs != 0 &&
-        (uint32_t)(nowMs - gPanelI2cLastRxMs) > 1500u) {
-      gPanelReady = false;
-      gPanelI2cLastRxMs = 0;
-      for (uint8_t r = 0; r < 4; r++) {
-        gPanelLineInit[r] = false;
+    // WiFi/MQTT 재연결 등으로 루프가 잠깐 막혀도 I2C를 바로 끊지 않음(다이얼 무반응 완화)
+    if (gPanelReady && gPanelI2cLastRxMs != 0) {
+      gPanelI2cMissStreak++;
+      const uint32_t silentMs = nowMs - gPanelI2cLastRxMs;
+      if (gPanelI2cMissStreak >= 40u || silentMs > 6000u) {
+        gPanelReady = false;
+        gPanelI2cLastRxMs = 0;
+        gPanelI2cMissStreak = 0;
+        for (uint8_t r = 0; r < 4; r++) {
+          gPanelLineInit[r] = false;
+        }
+        gPanelBrowseShown = false;
+        gPanelBrowseDirty = true;
       }
-      gPanelBrowseShown = false;
-      gPanelBrowseDirty = true;
     }
     return;
   }
   // 이벤트가 0개(n==0)여도, I2C 응답이 왔다는 것 자체로 패널 링크는 살아있다고 판단합니다.
   gPanelReady = true;
   gPanelI2cLastRxMs = nowMs;
+  gPanelI2cMissStreak = 0;
   const uint8_t n = (uint8_t)Wire.read();
   uint8_t useN = (n > 14) ? 14 : n;
   // 슬레이브가 보낸 길이와 n 불일치 시 잘못 파싱되어 CH 2칸·클릭 무시처럼 보일 수 있음
@@ -806,15 +882,21 @@ static void panelPollEvents(uint32_t nowMs) {
   }
   if (sawClick) {
     encNet = 0;
+    panelNoteUserInput(nowMs);
     panelHandleClick(nowMs);
   }
   // I2C만 BROWSE에서 엔코더를 넣었던 버그 → EDIT에서 다이얼이 무시되고 SET 행도 안 갱신됨
   if (encNet != 0 && (gUiMode == UI_BROWSE || gUiMode == UI_EDIT)) {
-    const uint32_t encGapMs = 110u;
-    if (gLastEncBrowseApplyMs == 0u ||
-        (uint32_t)(nowMs - gLastEncBrowseApplyMs) >= encGapMs) {
-      gLastEncBrowseApplyMs = nowMs;
+    panelNoteUserInput(nowMs);
+    if (gUiMode == UI_EDIT) {
       encoderDelta(encNet > 0 ? 1 : -1);
+    } else {
+      const uint32_t encGapMs = 80u;
+      if (gLastEncBrowseApplyMs == 0u ||
+          (uint32_t)(nowMs - gLastEncBrowseApplyMs) >= encGapMs) {
+        gLastEncBrowseApplyMs = nowMs;
+        encoderDelta(encNet > 0 ? 1 : -1);
+      }
     }
   }
 #elif CF_PANEL_LINK_UART
@@ -838,16 +920,19 @@ static void panelPollEvents(uint32_t nowMs) {
           case PANEL_EVT_ENC_CW:
             gPanelLastEvtMs = nowMs;
             gPanelEvtCount++;
+            panelNoteUserInput(nowMs);
             encoderDelta(+1);
             break;
           case PANEL_EVT_ENC_CCW:
             gPanelLastEvtMs = nowMs;
             gPanelEvtCount++;
+            panelNoteUserInput(nowMs);
             encoderDelta(-1);
             break;
           case PANEL_EVT_CLICK:
             gPanelLastEvtMs = nowMs;
             gPanelEvtCount++;
+            panelNoteUserInput(nowMs);
             panelHandleClick(nowMs);
             break;
           case PANEL_EVT_KILL:
@@ -903,7 +988,7 @@ static DayOfWeek dowFromYmd(int y, int m, int d) {
 }
 
 static void rtcEnsureValidOnce() {
-  // RTC가 유효하지 않을 때 1회 기본값(현장 합의: 2025-12-22 09:00)
+  // RTC 무효 시 가짜 시각(09:00) 기록하지 않음 — Pi rtc_local MQTT 대기
   static bool sDid = false;
   if (sDid) return;
   sDid = true;
@@ -915,19 +1000,7 @@ static void rtcEnsureValidOnce() {
       return;
     }
   }
-
-  DayOfWeek dow = dowFromYmd(2025, 12, 22);
-  struct tm tm1;
-  memset(&tm1, 0, sizeof(tm1));
-  tm1.tm_year = 2025 - 1900;
-  tm1.tm_mon = 12 - 1;
-  tm1.tm_mday = 22;
-  tm1.tm_hour = 9;
-  tm1.tm_min = 0;
-  tm1.tm_sec = 0;
-  tm1.tm_wday = (int)dow;
-  RTCTime ct(tm1);
-  RTC.setTime(ct);
+  Serial.println(F("RTC invalid — waiting rtc_local from Pi"));
 }
 
 static void lcdRefreshRtcDateTime() {
@@ -950,13 +1023,7 @@ static void lcdRefreshRtcDateTime() {
   int h24 = t.getHour();
   int mi = t.getMinutes();
   int s = t.getSeconds();
-  bool pm = (h24 >= 12);
-  int h12 = h24 % 12;
-  if (h12 == 0) {
-    h12 = 12;
-  }
-  snprintf(lineTime, sizeof(lineTime), "%02d:%02d:%02d %s",
-           h12, mi, s, pm ? "PM" : "AM");
+  snprintf(lineTime, sizeof(lineTime), "%02d:%02d:%02d", h24, mi, s);
   // I2C에서 2·3행만 간헐적으로 NACK/유실되는 케이스가 있어(웰컴에서 날짜가 비는 증상),
   // 전송 실패(gPanelLineInit=false) 시 재시도합니다.
   for (uint8_t attempt = 0; attempt < 8; attempt++) {
@@ -1045,6 +1112,9 @@ static void lcdBrowseDraw(uint32_t nowMs) {
     return;
   }
   if ((uint32_t)(nowMs - gLcdWelcomeAtMs) >= (uint32_t)PANEL_WELCOME_MS) {
+    if (!gLcdWelcomeBypass) {
+      panelNoteUserInput(nowMs);
+    }
     gLcdWelcomeBypass = true;
   }
 
@@ -1168,6 +1238,9 @@ static void lcdBrowseDraw(uint32_t nowMs) {
 
   gPanelBrowseDirty = false;
   gLastBrowseDrawMs = nowMs;
+  if (!gPanelBrowseShown) {
+    panelNoteUserInput(nowMs);
+  }
   gPanelBrowseShown = true;
 }
 
@@ -1189,25 +1262,18 @@ static void uiApplyEditSelection(uint8_t ch, uint8_t setVal) {
 
   if (setVal == 2) {
     chAuto[ch] = true;
+    chPanelManualUntilMs[ch] = 0;
     const bool isPump =
       (ch == CH_PUMP_A1 || ch == CH_PUMP_A2 || ch == CH_PUMP_B1 || ch == CH_PUMP_B2 ||
        ch == CH_PUMP_C1 || ch == CH_PUMP_C2 || ch == CH_PUMP_D1 || ch == CH_PUMP_D2);
-    const bool isFan =
-      (ch == CH_FAN_A1 || ch == CH_FAN_A2 || ch == CH_FAN_B1 || ch == CH_FAN_B2);
     if (isPump) {
       chPrevMs[ch] = millis();
-    } else if (isFan) {
-      digitalWrite(CH_PIN[ch], LOW);
-      chState[ch] = false;
-    } else {
-      // LED 등: AUTO 시 펌웨어 루프가 LOW 고정 — Pi 스케줄은 MQTT(auto_·cmd)와 연동
-      digitalWrite(CH_PIN[ch], LOW);
-      chState[ch] = false;
     }
     return;
   }
 
   chAuto[ch] = false;
+  chPanelManualUntilMs[ch] = millis() + PANEL_MANUAL_HOLD_MS;
   const bool on = (setVal == 1);
   chManual[ch] = on;
   digitalWrite(CH_PIN[ch], on ? HIGH : LOW);
@@ -1363,6 +1429,7 @@ static void panelHandleClick(uint32_t nowMs) {
     return;
   }
   gBtnLastMs = nowMs;
+  panelNoteUserInput(nowMs);
   if (gUiMode == UI_BROWSE) {
     if (!gLcdWelcomed) {
       forceStartFromCh1();
@@ -1883,6 +1950,22 @@ static void publishTelemetry() {
       off = tele_append_v(payload, sizeof(payload), off, "ssid= ip=0.0.0.0");
     }
   }
+  if (off < sizeof(payload) - 1) {
+    RTCTime rt;
+    if (RTC.getTime(rt)) {
+      const int y = rt.getYear();
+      const int mo = Month2int(rt.getMonth());
+      const int day = rt.getDayOfMonth();
+      const int h24 = rt.getHour();
+      const int mi = rt.getMinutes();
+      const int s = rt.getSeconds();
+      if (y >= 2024 && y <= 2099) {
+        off = tele_append_v(payload, sizeof(payload), off,
+                            " | R:%04d%02d%02d%02d%02d%02d",
+                            y, mo, day, h24, mi, s);
+      }
+    }
+  }
   // 패널(I2C) 링크 진단: 배선/주소 문제로 LCD가 갱신 안 될 때 원인 파악용
   if (off < sizeof(payload) - 1) {
 #if CF_PANEL_LINK_I2C
@@ -2052,6 +2135,17 @@ static bool connectByTryingAllAps() {
   return false;
 }
 
+static void clearWifiEepromCredentials() {
+  EEPROM.write(EEPROM_ADDR_MAGIC, 0);
+  EEPROM.write(EEPROM_ADDR_LEN, 0);
+  for (uint8_t i = 0; i < EEPROM_MAX_SSID_LEN; i++) {
+    EEPROM.write(EEPROM_ADDR_SSID + (int)i, 0);
+  }
+  EEPROM.write(EEPROM_ADDR_DYN_MAGIC, 0);
+  EEPROM.write(EEPROM_ADDR_DYN_SSID_LEN, 0);
+  EEPROM.write(EEPROM_ADDR_DYN_PASS_LEN, 0);
+}
+
 static void handlePiWifiSsid(char* payload) {
   trimPayload(payload);
   if (!*payload) return;
@@ -2096,6 +2190,67 @@ static void handlePiWifiSsid(char* payload) {
     Serial.println(WiFi.localIP());
   }
   mqtt.stop();
+  gNextMqttAttemptMs = 0;
+}
+
+// ---------- USB 시리얼 WiFi 프로비저닝 (Pi scripts/pi-serial-wifi-provision.sh) ----------
+static char gSerialLine[96];
+static uint8_t gSerialLineLen = 0;
+
+static void printWifiStatusLine() {
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.print(F("OK wifi_status connected ip="));
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println(F("OK wifi_status disconnected"));
+  }
+}
+
+static void handleSerialWifiCommand(char* line) {
+  trimPayload(line);
+  if (!line || !*line) return;
+
+  if (strcmp(line, "wifi_clear") == 0) {
+    clearWifiEepromCredentials();
+    WiFi.disconnect();
+    delay(200);
+    Serial.println(F("OK wifi_clear"));
+    return;
+  }
+  if (strcmp(line, "wifi_status") == 0) {
+    printWifiStatusLine();
+    return;
+  }
+  if (strncmp(line, "wifi_set ", 9) == 0) {
+    char* payload = line + 9;
+    while (*payload == ' ') payload++;
+    if (!*payload) {
+      Serial.println(F("ERR wifi_set empty"));
+      return;
+    }
+    Serial.print(F("OK wifi_set applying "));
+    Serial.println(payload);
+    handlePiWifiSsid(payload);
+    printWifiStatusLine();
+    return;
+  }
+}
+
+static void pollSerialLine() {
+  while (Serial.available() > 0) {
+    const char c = (char)Serial.read();
+    if (c == '\r' || c == '\n') {
+      if (gSerialLineLen > 0) {
+        gSerialLine[gSerialLineLen] = '\0';
+        handleSerialWifiCommand(gSerialLine);
+        gSerialLineLen = 0;
+      }
+      continue;
+    }
+    if (gSerialLineLen < (sizeof(gSerialLine) - 1)) {
+      gSerialLine[gSerialLineLen++] = c;
+    }
+  }
 }
 
 static void connectWiFi() {
@@ -2153,20 +2308,32 @@ static void connectMqtt() {
     mqtt.setUsernamePassword(MQTT_USER, MQTT_PASS);
   }
 
-  Serial.print("MQTT 연결: ");
-  Serial.print(MQTT_HOST);
-  Serial.print(":");
-  Serial.println(MQTT_PORT);
-
   // 무한 재시도하면 setup/loop가 막혀 매트릭스가 갱신되지 않음 → loop에서 재시도
   // 브로커 비정상 단절 시에도 status retain이 offline으로 바뀌도록 LWT 등록
   mqtt.beginWill(topicStatus, true, 1);
   mqtt.print("offline");
   mqtt.endWill();
 
-  if (!mqtt.connect(MQTT_HOST, MQTT_PORT)) {
-    Serial.print(F("MQTT 연결 실패: "));
+  bool mqttOk = false;
+  for (int i = 0; i < MQTT_BROKER_COUNT; i++) {
+    const char* host = MQTT_BROKERS[i].host;
+    const uint16_t port = MQTT_BROKERS[i].port;
+    Serial.print(F("MQTT 연결 시도 "));
+    Serial.print(i + 1);
+    Serial.print(F("/"));
+    Serial.print(MQTT_BROKER_COUNT);
+    Serial.print(F(": "));
+    Serial.print(host);
+    Serial.print(F(":"));
+    Serial.println(port);
+    if (mqtt.connect(host, port)) {
+      mqttOk = true;
+      break;
+    }
+    Serial.print(F("  실패: "));
     Serial.println(mqtt.connectError());
+  }
+  if (!mqttOk) {
     gNextMqttAttemptMs = now + MQTT_RECONNECT_INTERVAL_MS;
     return;
   }
@@ -2245,16 +2412,21 @@ static void applyKeyValue(const char* key, const char* value) {
     return;
   }
 
-  // 1) 채널 수동 상태: led_a1=0/1 ...
+  // 1) 채널 출력: led_a1=0/1 — 자동 모드에서는 무시(수동은 auto_=0 또는 패널에서만)
   for (uint8_t i = 0; i < CH_COUNT; i++) {
     if (strcmp(key, CH_KEY[i]) == 0) {
-      // 패널에서 막 바꾼 값은 잠깐 MQTT로 덮어쓰지 않게 합니다.
       const uint32_t now = millis();
       if (gUiLocalOverrideAtMs[i] != 0 &&
           (int32_t)(now - gUiLocalOverrideAtMs[i]) < (int32_t)UI_LOCAL_OVERRIDE_HOLD_MS) {
         return;
       }
-      chManual[i] = parseBool(value);
+      if (chAuto[i]) {
+        return;
+      }
+      const bool on = parseBool(value);
+      chManual[i] = on;
+      chState[i] = on;
+      digitalWrite(CH_PIN[i], on ? HIGH : LOW);
       return;
     }
   }
@@ -2350,6 +2522,7 @@ static void pollMqtt() {
 }
 
 void setup() {
+  gBootAtMs = millis();
   for (uint8_t i = 0; i < CH_COUNT; i++) {
     const int p = CH_PIN[i];
     if (p >= 0) {
@@ -2391,7 +2564,7 @@ void setup() {
 
   RTC.begin();
   rtcEnsureValidOnce();
-  // RTC 무효 시에만 1회 2025-12-22 09:00 기록(rtcEnsureValidOnce). 이후 NTP·수동으로 교정.
+  // RTC 무효 시 가짜 시각 기록 안 함 — Pi rtc_local·패널 표시 RTC -- 로 대기.
 
   buildTopics();
   connectWiFi();
@@ -2402,6 +2575,10 @@ void setup() {
 }
 
 void loop() {
+  uint32_t now = millis();
+  // 패널 I2C는 WiFi/MQTT 블로킹보다 먼저 폴링(연결 대기 중에도 다이얼 유지)
+  panelPollEvents(now);
+
   if (WiFi.status() != WL_CONNECTED) {
     connectWiFi();
   }
@@ -2410,8 +2587,7 @@ void loop() {
   }
 
   pollMqtt();
-
-  uint32_t now = millis();
+  pollSerialLine();
 
 #if CF_PANEL_LINK_I2C
   // I2C 슬레이브(R3)가 살아있으면, 이벤트가 0개여도 LCD를 R4가 소유하도록 전환합니다.
@@ -2420,6 +2596,7 @@ void loop() {
     if (panelI2cPing(now)) {
       gPanelReady = true;
       gPanelI2cLastRxMs = now;
+      gPanelI2cMissStreak = 0;
       for (uint8_t r = 0; r < 4; r++) gPanelLineInit[r] = false;
       gPanelLinkSplashUntilMs = now + PANEL_LINK_SPLASH_MIN_MS;
       gPanelWaitMinUntilMs = 0;
@@ -2433,10 +2610,28 @@ void loop() {
     }
   }
 #endif
-  // UART 이벤트가 들어오면 panelPollEvents에서 gPanelReady=true로 유지됩니다.
-  // 링크 순간 끊김이 있어도 화면/로직이 멈추지 않도록 여기서는 강제로 false로 내리지 않습니다.
-  panelPollEvents(now);
-
+  // 부팅 1분 유예: 리셋 직후 전 채널 OFF(스케줄·EEPROM 복원도 출력에 반영하지 않음)
+  if (bootSchedGraceActive(now)) {
+    bootSchedGraceHoldOff();
+  } else {
+  if (!gBootBuiltinSchedDone) {
+    cfApplyBuiltinSchedulesIfEmpty(gSchRuleCount, gSchRules, CH_COUNT);
+    for (uint8_t bi = 0; bi < CH_COUNT; ++bi) {
+      chAuto[bi] = true;
+    }
+    gBootBuiltinSchedDone = true;
+    Serial.println(F("SCHED builtin applied; all AUTO"));
+  }
+  // 패널 MAN 홀드 만료 → AUTO(스케줄) 복귀
+  for (uint8_t i = 0; i < CH_COUNT; i++) {
+    if (!chAuto[i] && chPanelManualUntilMs[i] != 0 &&
+        (int32_t)(now - chPanelManualUntilMs[i]) >= 0) {
+      chAuto[i] = true;
+      chPanelManualUntilMs[i] = 0;
+      Serial.print(F("panel MAN 1h -> AUTO "));
+      Serial.println(CH_KEY[i]);
+    }
+  }
   // 채널별 AUTO/수동 처리
   // - AUTO=1 + SCHED_JSON 스케줄 있음: RTC 기준 window/cycle로 출력(LED·펌프·팬)
   // - AUTO=1 + 스케줄 없음: 펌프는 on_/off_ 주기, LED는 LOW, 팬은 LOW
@@ -2495,6 +2690,7 @@ void loop() {
       digitalWrite(CH_PIN[i], chState[i] ? HIGH : LOW);
     }
   }
+  } // bootSchedGraceActive else
 
   pumpGuardLoop(now);
 
@@ -2525,6 +2721,7 @@ void loop() {
     lcdRenderUi(now, wifiOk, mqttOk);
   } else {
     lcdBrowseDraw(now);
+    panelBrowseIdleCheck(now);
   }
 
 #if CF_PANEL_LINK_I2C

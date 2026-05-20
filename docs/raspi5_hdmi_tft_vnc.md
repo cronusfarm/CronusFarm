@@ -190,7 +190,7 @@ systemctl --user status tigervnc.service --no-pager
 ```
 
 #### (8) 접속 방법(PC)
-- RealVNC Viewer에서: **`192.168.0.222:5901`**
+- RealVNC Viewer에서: **`192.168.60.222:5901`**
 - 비밀번호: `tigervncpasswd`로 설정한 비밀번호
 
 #### (9) 재부팅 후에도 유저 서비스 자동 기동(linger)

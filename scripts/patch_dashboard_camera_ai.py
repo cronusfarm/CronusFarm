@@ -103,7 +103,7 @@ def patch_dashboard():
         "order": 1,
         "width": "12",
         "height": "9",
-        "format": "<div style=\"display: flex; justify-content: center; align-items: center; width: 100%; height: 100%;\">\n    <img src=\"http://192.168.0.222:8081/video_feed\" style=\"max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px;\" alt=\"AI Camera Stream Offline\">\n</div>",
+        "format": "<div style=\"display: flex; justify-content: center; align-items: center; width: 100%; height: 100%;\">\n    <img src=\"http://ida.mango-larch.ts.net:8081/video_feed\" style=\"max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 8px;\" alt=\"AI Camera Stream Offline\">\n</div>",
         "storeOutMessages": True,
         "fwdInMessages": True,
         "resendOnRefresh": True,

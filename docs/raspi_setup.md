@@ -1,17 +1,48 @@
 ## 라즈베리파이 설정 요약 (MQTT + 업로드)
 
-Pi LAN IP는 WiFi AP마다 달라질 수 있으므로, **SSH·MQTT·Arduino `MQTT_HOST`** 는 Tailscale MagicDNS 호스트 **`ida.mango-larch.ts.net`** 로 통일합니다.
+Pi LAN IP는 환경마다 다르지만, **ida** 는 현재 **`192.168.60.222`** 로 고정했다고 가정합니다. **SSH·MQTT·Arduino `MQTT_HOST`** 는 Tailscale MagicDNS 호스트 **`ida.mango-larch.ts.net`** 로도 통일할 수 있습니다.
 
-### 1) Mosquitto 설치/실행
+### 1) Mosquitto 설치/실행·외부 수신(0.0.0.0:1883)
+
 ```bash
 sudo apt update
 sudo apt install -y mosquitto mosquitto-clients
+```
+
+**LAN·Tailscale 등 모든 인터페이스에서** 브로커를 받으려면 저장소를 Pi에 둔 뒤:
+
+```bash
+cd ~/CronusFarm   # 클론 경로에 맞출 것
+sudo bash scripts/pi-mosquitto-apply-cronusfarm-conf.sh
+```
+
+수동으로 넣을 경우 `/etc/mosquitto/conf.d/cronusfarm.conf` 예시는 `deploy/mosquitto/conf.d/cronusfarm.conf` 를 참고합니다.  
+Debian 기본 설정과 **listener 포트가 겹치면** `journalctl -u mosquitto` 로 오류를 보고, `/etc/mosquitto/` 아래 중복 `listener 1883` 를 정리합니다.
+
+```bash
 sudo systemctl enable --now mosquitto
 ```
 
 동작 확인:
 ```bash
 mosquitto_sub -h localhost -t 'cronusfarm/#' -v
+```
+
+### 1b) SQLite HTTP 브리지(18766) — PC(Tailscale)에서 호출할 때
+
+**Windows에서 SSH 한 번에 적용:** 저장소 루트에서  
+`.\scripts\pi-apply-mosquitto-sqlite-bridge.ps1`  
+(Mosquitto `0.0.0.0:1883` drop-in, systemd 브리지 `0.0.0.0:18766`, `ufw` 18766, 원격 스크립트는 `scripts\pi-apply-mosquitto-sqlite-bridge-remote.sh`)
+
+수동으로 넣을 때는 아래를 참고합니다.
+
+`deploy/systemd/cronusfarm-sqlite-bridge.service` 에서 **`CRONUSFARM_BRIDGE_HOST=0.0.0.0`** 로 두면 LAN·Tailscale 로 들어오는 HTTP 요청을 받습니다.  
+유닛 파일의 **`/home/dooly/`·CronusFarm 경로**는 실제 Pi 계정에 맞게 수정한 뒤 `/etc/systemd/system/` 에 두고 `sudo systemctl daemon-reload && sudo systemctl enable --now cronusfarm-sqlite-bridge` 하세요.
+
+`ufw` 사용 시:
+
+```bash
+sudo ufw allow 18766/tcp comment 'cronusfarm-sqlite-bridge'
 ```
 
 ### 2) arduino-cli 준비(보드 코어 포함)

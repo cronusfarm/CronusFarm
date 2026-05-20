@@ -1560,7 +1560,7 @@
       },
       "options": {
         "mode": "html",
-        "content": "<div style=\"display:flex;flex-direction:column;gap:10px;\">\n  <div style=\"font-size:12px;opacity:.8;\">최신 사진 URL: <code>http://192.168.0.222:1880/cctv/cam01/latest.jpg</code></div>\n  <img src=\"http://192.168.0.222:1880/cctv/cam01/latest.jpg?t=${__unixEpochNow}\" style=\"max-width:100%;height:auto;border-radius:10px;border:1px solid rgba(255,255,255,.08);\" />\n</div>"
+        "content": "<div style=\"display:flex;flex-direction:column;gap:10px;\">\n  <div style=\"font-size:12px;opacity:.8;\">최신 사진 URL: <code>http://ida.mango-larch.ts.net:1880/cctv/cam01/latest.jpg</code></div>\n  <img src=\"http://ida.mango-larch.ts.net:1880/cctv/cam01/latest.jpg?t=${__unixEpochNow}\" style=\"max-width:100%;height:auto;border-radius:10px;border:1px solid rgba(255,255,255,.08);\" />\n</div>"
       },
       "transparent": true,
       "id": 21

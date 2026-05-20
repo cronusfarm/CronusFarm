@@ -20,6 +20,8 @@ node_modules/
 *.log
 *.tmp
 *.bak
+*.bak.
+nodered/*.bak.
 
 # 에이전트/로컬 임시(JSON·노드레드 스냅샷 등 — 저장소 백업 대상 아님)
 .tmp_*
@@ -38,4 +40,26 @@ __pycache__/
 
 # macOS 리소스 포크
 ._*
+
+# 에이전트/진단 임시(루트 스크래치)
+/_*.txt
+/_t_*
+/_fn_*
+/_nrdb2_inv.json
+/_patch_dump.txt
+/_verify_settings.txt
+/_ui_none_z.txt
+/_hw_panel.txt
+/_tele_guard.txt
+/_aphrodite_sync_log.txt
+
+# 대용량 Python wheel(로컬만)
+torch-*.whl
+
+# farm-ui 빌드·의존성
+farm-ui/dist/
+farm-ui/node_modules/
+
+# 개인 워크스페이스
+*.code-workspace-baofu*
 

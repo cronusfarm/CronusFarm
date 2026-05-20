@@ -2,7 +2,7 @@
 
   [string] $PiHost = "",
 
-  [string] $PiHostLan = "192.168.0.222",
+  [string] $PiHostLan = "",
 
   [string] $PiHostWan = "ida.mango-larch.ts.net",
 

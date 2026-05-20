@@ -58,7 +58,7 @@ DOC_HTML = r"""<motion.div class="cf-df-paths" layout>
 <li class="pi">저장소 복사: <code>/home/dooly/CronusFarm/nodered/merged-deploy.json</code></li>
 <li class="pi">Node-RED 실행: <code>/home/dooly/.node-red/flows.json</code></li>
 </ul>
-<p>배포: <code>.\scripts\deploy-cronusfarm-pi.ps1 -PiHost 192.168.0.222 -ApplyNodeRed -UseSplitFlows -SkipArduino</code></p>
+<p>배포: <code>.\scripts\deploy-cronusfarm-pi.ps1 -PiHost 192.168.60.222 -ApplyNodeRed -UseSplitFlows -SkipArduino</code></p>
 </motion.div>"""
 
 

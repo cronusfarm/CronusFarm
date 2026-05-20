@@ -51,12 +51,9 @@ apt-get install -y mosquitto mosquitto-clients
 MOSQUITTO_CONF="/etc/mosquitto/conf.d/cronusfarm.conf"
 if [[ ! -f "$MOSQUITTO_CONF" ]]; then
     cat > "$MOSQUITTO_CONF" << 'MQTT_EOF'
-listener 1883
+# 모든 IPv4 인터페이스(LAN·Tailscale 등)에서 수신 — log_* 는 mosquitto.conf 에만
+listener 1883 0.0.0.0
 allow_anonymous true
-log_dest file /var/log/mosquitto/mosquitto.log
-log_type error
-log_type warning
-log_type notice
 MQTT_EOF
     systemctl enable --now mosquitto
     log "Mosquitto 설치 완료 (포트 1883)"

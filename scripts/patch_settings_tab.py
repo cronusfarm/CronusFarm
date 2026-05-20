@@ -46,10 +46,13 @@ IFRAME_CSS = (
     ".nr-dashboard-theme .nr-dashboard-group:has(.cf-settings-iframe-wrap) md-card,\n"
     ".nr-dashboard-theme .nr-dashboard-group:has(.cf-settings-iframe-wrap) md-card-content{\n"
     "  overflow:visible!important;}\n"
-    ".cf-settings-iframe-wrap{width:100%;box-sizing:border-box;border-radius:12px;overflow:visible;\n"
-    "  border:1px solid rgba(45,255,122,.12);background:rgba(0,0,0,.2);}\n"
-    ".cf-settings-iframe-wrap iframe{display:block;width:100%;min-height:400px;height:400px;border:0;"
+    ".cf-settings-iframe-wrap{display:block!important;width:100%;box-sizing:border-box;border-radius:12px;overflow:visible;\n"
+    "  position:relative;border:1px solid rgba(45,255,122,.12);background:rgba(0,0,0,.2);}\n"
+    ".cf-settings-iframe-wrap iframe{display:block;width:100%;min-height:420px;height:420px;border:0;"
     "background:var(--g0,#040d07);overflow:hidden;}\n"
+    ".nr-dashboard-theme .nr-dashboard-group:has([data-cf-iframe='beds']){position:relative;z-index:3;}\n"
+    ".nr-dashboard-theme .nr-dashboard-group:has([data-cf-iframe='sched_ov']){position:relative;z-index:2;}\n"
+    ".nr-dashboard-theme .nr-dashboard-group:has([data-cf-iframe='tools']){position:relative;z-index:1;}\n"
     + SETTINGS_TAB_CSS
     + "\n</style>"
 )
@@ -111,7 +114,7 @@ def _alias_dashboard_root_tokens(fmt: str) -> str:
 
 def patch_settings_groups(by: dict[str, dict]) -> None:
     """설정 탭 ui_group → 모니터와 동일 cf-monitor-grp (제목줄 CSS 공유)."""
-    for gid in ("ui_grp_settings_beds", "ui_grp_settings_tools"):
+    for gid in ("ui_grp_settings_beds", "ui_grp_settings_sched_ov", "ui_grp_settings_tools"):
         g = by.get(gid)
         if not isinstance(g, dict):
             continue
@@ -213,7 +216,7 @@ def ensure_settings_nodes(by: dict[str, dict]) -> None:
         ),
     ):
         fmt = (
-            f'<div class="cf-settings-iframe-wrap"><iframe title="{title}" loading="lazy" '
+            f'<div class="cf-settings-iframe-wrap" data-cf-iframe="{"beds" if "beds" in tid else "tools"}"><iframe title="{title}" loading="lazy" '
             f'scrolling="no" sandbox="allow-scripts allow-same-origin allow-forms allow-popups" '
             f'src="{src}"></iframe></div>'
             + IFRAME_CSS

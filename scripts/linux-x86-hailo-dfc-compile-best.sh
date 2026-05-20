@@ -49,12 +49,29 @@ if [[ -z "$HAR" ]]; then
 fi
 echo "[hailo-dfc] HAR=$HAR"
 
+HAR_BASE="$(basename "$HAR" .har)"
+ALLS=""
+if [[ -f "${HAR_BASE}.alls" ]]; then
+  ALLS="${HAR_BASE}.alls"
+elif [[ -f yolov8_crops.alls ]]; then
+  ALLS="yolov8_crops.alls"
+fi
+if [[ -n "$ALLS" ]]; then
+  echo "[hailo-dfc] model-script=$ALLS (NMS·sigmoid — Pi 오버레이용)"
+else
+  echo "WARN: .alls 없음 — HEF에 nms_postprocess가 없으면 hailooverlay 박스가 나오지 않습니다." >&2
+fi
+
 echo "[2/3] hailo optimize … (임의 캘리브레이션 — 운영 정확도는 캘리브 이미지 세트로 다시 하세요)"
 set +e
+OPT_ARGS=("$HAR" --hw-arch "$ARCH")
+if [[ -n "$ALLS" ]]; then
+  OPT_ARGS+=(--model-script "$ALLS")
+fi
 if hailo optimize --help 2>&1 | grep -q use-random-calib-set; then
-  hailo optimize "$HAR" --hw-arch "$ARCH" --use-random-calib-set 2>&1 | tee /tmp/cf-hailo-opt.log
+  hailo optimize "${OPT_ARGS[@]}" --use-random-calib-set 2>&1 | tee /tmp/cf-hailo-opt.log
 else
-  hailo optimize "$HAR" --hw-arch "$ARCH" 2>&1 | tee /tmp/cf-hailo-opt.log
+  hailo optimize "${OPT_ARGS[@]}" 2>&1 | tee /tmp/cf-hailo-opt.log
 fi
 RC=${PIPESTATUS[0]}
 set -e

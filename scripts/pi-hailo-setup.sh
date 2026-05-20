@@ -33,16 +33,12 @@ if [[ ! -f "$HAILO_DIR/yolov8.json" ]]; then
   else
   cat >"$HAILO_DIR/yolov8.json" <<'JSON'
 {
-  "iou_threshold": 0.5,
   "detection_threshold": 0.35,
-  "output_activation": "none",
-  "label_offset": 1,
-  "max_boxes": 100,
-  "anchors": [[116,90,156,198,373,326],[30,61,62,45,59,119],[10,13,16,30,33,23]],
-  "labels": ["unlabeled", "cherry_tomato"]
+  "max_boxes": 50,
+  "labels": ["tomato", "fig", "butterhead", "basil"]
 }
 JSON
-    echo "OK: 기본 yolov8.json 생성 (libyolo_post 형식)"
+    echo "OK: 기본 yolov8.json 생성 (libyolo_hailortpp — best.hef NMS 포함)"
   fi
 fi
 

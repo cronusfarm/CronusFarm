@@ -1,0 +1,6 @@
+normalization1 = normalization([0.0, 0.0, 0.0], [255.0, 255.0, 255.0])
+change_output_activation(yolov8_crops/conv42, sigmoid)
+change_output_activation(yolov8_crops/conv53, sigmoid)
+change_output_activation(yolov8_crops/conv63, sigmoid)
+nms_postprocess("yolov8_crops_nms_config.json", meta_arch=yolov8, engine=cpu)
+allocator_param(width_splitter_defuse=disabled, spatial_defuse_legacy=True)

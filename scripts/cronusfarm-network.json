@@ -1,0 +1,19 @@
+{
+  "hosts": {
+    "lan": "192.168.60.222",
+    "tailscale": "ida.mango-larch.ts.net",
+    "duckdns": "cronusfarm.duckdns.org"
+  },
+  "ports": {
+    "nginx": 1880,
+    "nrLatest": 51882,
+    "nrV05": 51881,
+    "nrV07": 51880,
+    "mqtt": 1883,
+    "mqttWan": 51883,
+    "sqliteBridge": 18766,
+    "cctvStream": 8080,
+    "hailoMjpeg": 8081
+  },
+  "probePortOrder": ["mqtt", "nginx"]
+}

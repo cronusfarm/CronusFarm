@@ -100,13 +100,23 @@ def patch_raw(fmt: str) -> str:
 
 def patch_iframe_node(fmt: str, iframe_id: str) -> str:
     fmt = re.sub(r"<script type=\"text/javascript\">[\s\S]*?</script>\s*$", "", fmt).rstrip()
+    fmt = re.sub(r"<motion\s", "<div ", fmt, flags=re.I)
+    fmt = re.sub(r"</motion>", "</div>", fmt, flags=re.I)
     if 'data-cf-iframe="' not in fmt:
         fmt = fmt.replace(
-            '<motion class="cf-settings-iframe-wrap">',
+            '<div class="cf-settings-iframe-wrap">',
             f'<div class="cf-settings-iframe-wrap" data-cf-iframe="{iframe_id}">',
+            1,
         )
-        fmt = fmt.replace('<div class="cf-settings-iframe-wrap">', f'<motion class="cf-settings-iframe-wrap" data-cf-iframe="{iframe_id}">', 1)
     fmt = re.sub(r'data-cf-iframe="[^"]*"', f'data-cf-iframe="{iframe_id}"', fmt, count=1)
+    stack_css = (
+        ".cf-settings-iframe-wrap{display:block!important;position:relative;width:100%;box-sizing:border-box;}\n"
+        ".nr-dashboard-theme .nr-dashboard-group:has([data-cf-iframe='beds']){position:relative;z-index:3;}\n"
+        ".nr-dashboard-theme .nr-dashboard-group:has([data-cf-iframe='sched_ov']){position:relative;z-index:2;}\n"
+        ".nr-dashboard-theme .nr-dashboard-group:has([data-cf-iframe='tools']){position:relative;z-index:1;}\n"
+    )
+    if "display:block!important" not in fmt and "</style>" in fmt:
+        fmt = fmt.replace("</style>", stack_css + "</style>", 1)
     return fmt + IFRAME_RESIZE_JS
 
 

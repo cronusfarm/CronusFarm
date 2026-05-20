@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <link rel="stylesheet" href="/cronusfarm-static/cronusfarm_d1_shared.css"/>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>CronusFarm 설정 도구 (D1)</title>
+  <script src="https://cdn.jsdelivr.net/npm/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    html,body{min-height:100%;margin:0;overflow-x:hidden;overflow-y:visible;}
+    body{padding:0;background:var(--g0);color:var(--cf-text);font-family:'Noto Sans KR','Malgun Gothic',system-ui,sans-serif;}
+    .cf-settings-app{max-width:1120px;margin:0 auto;padding:12px;}
+    .cf-settings-shell{
+      position:relative;border-radius:var(--cf-radius);border:1px solid var(--border);overflow:visible;
+      box-shadow:var(--glow);
+      background:linear-gradient(180deg,var(--g0),var(--g1) 55%,var(--g0));
+      padding:14px 16px 18px;
+    }
+    .cf-settings-shell::before{
+      content:'';position:absolute;inset:0;z-index:0;pointer-events:none;
+      background-image:linear-gradient(rgba(45,255,122,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(45,255,122,.022) 1px,transparent 1px);
+      background-size:48px 48px;
+    }
+    .cf-settings-shell>*{position:relative;z-index:1;}
+    .cf-d1-tools-wrap{max-width:100%;margin:0;}
+    .cf-d1-note { font-size:11px;color:var(--cf-muted);margin-bottom:12px;line-height:1.5; }
+    .cf-card {
+      background: var(--cf-card);
+      border-radius: var(--cf-radius);
+      border: 1px solid var(--cf-line);
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+    .cf2-schedule { padding: 12px 14px; border-radius: 16px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.04); font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; }
+.cf2-sch-hd { font-size: 16px; font-weight: 900; color: #e6edf7; margin-bottom: 6px; }
+.cf2-sch-sub { font-size: 11px; color: #9db0cc; margin-bottom: 8px; line-height: 1.45; }
+.cf2-sch-code { font-size: 10px; background: rgba(0,0,0,.3); padding: 2px 6px; border-radius: 6px; color: #c8d6ee; }
+.cf2-sch-devbox { margin-bottom: 12px; padding: 10px 12px; border-radius: 12px; background: rgba(0,0,0,.18); border: 1px solid rgba(255,255,255,.08); }
+.cf2-sch-tag { font-size: 10px; font-weight: 600; color: #9db0cc; margin-left: 8px; }
+.cf2-sch-hint { font-size: 11px; color: #b0c4e8; margin: 8px 0 0; line-height: 1.5; }
+.cf2-sch-hint strong { color: #e6edf7; }
+.cf2-sch-bar { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: flex-end; margin-bottom: 8px; }
+.cf2-sch-lab { font-size: 11px; font-weight: 700; color: #9db0cc; display: flex; flex-direction: column; gap: 4px; }
+.cf2-sch-inp, .cf2-sch-sel { min-width: 200px; padding: 6px 8px; border-radius: 10px; border: 1px solid rgba(255,255,255,.15); background: rgba(0,0,0,.25); color: #e6edf7; font-size: 13px; }
+.cf2-sch-topm { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin: 10px 0; padding: 8px 10px; border-radius: 12px; background: rgba(0,0,0,.15); }
+.cf2-sch-cap2 { font-size: 12px; font-weight: 800; color: #9db0cc; margin-right: 8px; }
+.cf2-sch-subm { margin-bottom: 8px; }
+.cf2-sch-mode { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.cf2-sch-radio { font-size: 12px; color: #c8d6ee; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+.cf2-sch-radio em { color: #b8e0ff; font-style: normal; font-weight: 700; }
+.cf2-sch-actions { display: flex; gap: 10px; margin-bottom: 10px; }
+.cf2-sch-btn { padding: 8px 14px; border-radius: 12px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.08); color: #e6edf7; font-weight: 800; font-size: 12px; cursor: pointer; }
+.cf2-sch-btn:disabled { opacity: .45; cursor: default; }
+.cf2-sch-prim { border-color: rgba(52,199,89,.5); background: linear-gradient(165deg, rgba(34,120,60,.5), rgba(20,70,40,.45)); }
+.cf2-sch-err { font-size: 12px; color: #ff8a80; margin-bottom: 8px; }
+.cf2-sch-msg { font-size: 12px; color: #8bc34a; margin-bottom: 8px; }
+.cf2-sch-panel { margin-bottom: 10px; }
+.cf2-sch-cap { font-size: 11px; color: #9db0cc; margin-bottom: 8px; line-height: 1.45; }
+.cf2-sch-cap em { color: #c8e6ff; font-style: normal; font-weight: 700; }
+.cf2-sch-tblwrap { overflow: visible; margin-bottom: 8px; }
+.cf2-sch-tbl { width: 100%; border-collapse: collapse; font-size: 12px; color: #e6edf7; }
+.cf2-sch-tbl th { text-align: left; padding: 6px 8px; color: #9db0cc; border-bottom: 1px solid rgba(255,255,255,.12); white-space: nowrap; }
+.cf2-sch-tbl td { padding: 8px; border-bottom: 1px solid rgba(255,255,255,.06); vertical-align: middle; }
+.cf2-sch-days { min-width: 200px; }
+.cf2-sch-daycb { display: inline-flex; align-items: center; gap: 3px; margin-right: 8px; margin-bottom: 4px; font-size: 11px; color: #d6e3fb; }
+.cf2-sch-mini { display: inline-block; margin-left: 6px; padding: 2px 8px; font-size: 10px; border-radius: 8px; border: 1px solid rgba(255,255,255,.2); background: rgba(255,255,255,.06); color: #9db0cc; cursor: pointer; }
+.cf2-sch-time { min-width: 7rem; padding: 4px 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,.15); background: rgba(0,0,0,.35); color: #e6edf7; font-size: 13px; }
+.cf2-sch-num { width: 56px; padding: 4px 6px; border-radius: 8px; border: 1px solid rgba(255,255,255,.15); background: rgba(0,0,0,.3); color: #fff; font-size: 13px; }
+.cf2-sch-dname { font-weight: 800; color: #c8d6ee; white-space: nowrap; }
+.cf2-sch-cen { text-align: center; }
+.cf2-sch-x { padding: 4px 8px; border-radius: 8px; border: 1px solid rgba(255,255,255,.15); background: rgba(255,80,60,.25); color: #ffcdd2; font-size: 11px; cursor: pointer; }
+.cf2-sch-add { padding: 6px 12px; border-radius: 10px; border: 1px dashed rgba(255,255,255,.25); background: transparent; color: #9db0cc; font-size: 12px; cursor: pointer; margin-bottom: 8px; }
+.cf2-sch-foot { font-size: 10px; color: #7a8bad; line-height: 1.45; margin-top: 8px; }
+    .cf2-ctlhub { display: flex; flex-direction: column; gap: 10px; padding: 4px 2px 8px; }
+.cf-ctl-hub {
+  font-family: 'Noto Sans KR', system-ui, sans-serif;
+  color: #e6edf7;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, rgba(46,125,50,.28), rgba(13,71,161,.22));
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.1);
+}
+.cf-ctl-hub .t { font-size: 15px; font-weight: 800; margin-bottom: 6px; color: #b9f6ca; }
+.cf-ctl-hub .s { font-size: 12px; line-height: 1.45; color: #c8d6ee; }
+.cf-ctl-hub code { font-size: 11px; background: rgba(0,0,0,.25); padding: 1px 6px; border-radius: 6px; color: #e1f5fe; }
+.cf-ctl-hub .badges { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.cf-ctl-hub .bd { font-size: 11px; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); }
+.cf2-slrow {
+  display: grid;
+  grid-template-columns: minmax(0, 8.5rem) 1fr 4.2rem;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.09);
+}
+.cf2-sllab { font-size: 12px; font-weight: 800; color: #e6edf7; }
+.cf2-sl { width: 100%; accent-color: var(--cf-accent); }
+.cf2-slval { font-size: 13px; font-weight: 800; color: #fff; text-align: right; font-variant-numeric: tabular-nums; }
+.cf2-hint { font-size: 10px; color: #90a4ae; padding: 0 4px; }
+
+    /* ---- 디자인 통일 오버라이드 (D1 iframe) ---- */
+    .cf2-schedule{ background: var(--cf-card) !important; border-color: var(--cf-line) !important; border-radius: var(--cf-radius) !important; }
+    .cf2-sch-hd{ color: var(--cf-title) !important; }
+    .cf2-sch-sub,.cf2-sch-cap,.cf2-sch-tag,.cf2-sch-foot,.cf2-hint{ color: var(--cf-muted) !important; }
+    .cf2-sch-devbox,.cf2-sch-topm{ background: rgba(255,255,255,.03) !important; border-color: var(--cf-line) !important; }
+    .cf2-sch-inp,.cf2-sch-sel,.cf2-sch-time,.cf2-sch-num{ background: rgba(0,0,0,.22) !important; border-color: rgba(255,255,255,.14) !important; color: var(--cf-text) !important; }
+    .cf2-sch-btn{ background: rgba(255,255,255,.06) !important; border-color: rgba(255,255,255,.14) !important; }
+    .cf2-sch-prim{ border-color: rgba(45,255,122,.45) !important; }
+    .cf2-sch-x{ background: rgba(255,90,74,.20) !important; border-color: rgba(255,90,74,.35) !important; }
+    .cf2-sch-add{ border-color: rgba(255,255,255,.20) !important; color: var(--cf-muted) !important; }
+    .cf-ctl-hub{ background: rgba(255,255,255,.03) !important; border-color: var(--cf-line) !important; }
+    .cf-ctl-hub .t{ color: var(--cf-title) !important; }
+    .cf2-slrow{ background: rgba(255,255,255,.03) !important; border-color: var(--cf-line) !important; }
+    .cf2-sllab{ color: var(--cf-text) !important; }
+    .cf2-sl{ accent-color: var(--cf-accent); }
+  </style>
+</head>
+<body>
+<div class="cf-settings-app">
+<div class="cf-settings-shell">
+<div class="cf-d1-tools-wrap">
+  <p class="cf-d1-note">Dashboard 1 전용: NRDB2 없이 스케줄·관제 UI. 오프라인이면 Vue CDN 미러 또는 로컬 번들을 쓰세요.</p>
+  <script type="text/x-template" id="tpl-schedule">
+<div class="cf2-schedule">
+    <div class="cf2-sch-hd">스케줄 변경하기</div>
+    <div class="cf2-sch-sub">
+      API는 Node-RED와 <strong>같은 주소</strong>의
+      <code class="cf2-sch-code">{{ apiBase }}/api/schedule</code> 로 요청합니다 (CORS·혼합콘텐츠 회피).
+    </div>
+
+    <div class="cf2-sch-devbox">
+      <div class="cf2-sch-lab">장치 ID <span class="cf2-sch-tag">토픽 cronusfarm/<b>{{ deviceId }}</b>/…</span></div>
+      <input id="cf-sch-device-id" v-model="deviceId" class="cf2-sch-inp" type="text" spellcheck="false" placeholder="cronusfarm-01" />
+      <p class="cf2-sch-hint">
+        정해 둔 별칭이 아니라 <strong>MQTT/플로우 기본 ID</strong>입니다. 한 농장이면 <code class="cf2-sch-code">cronusfarm-01</code> 을 그대로 쓰면 됩니다.
+      </p>
+    </div>
+
+    <div class="cf2-sch-bar">
+      <label class="cf2-sch-lab">채널
+        <select v-model="channel" class="cf2-sch-sel">
+          <option v-for="c in channels" :key="c" :value="c">{{ c }}</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="cf2-sch-topm">
+      <span class="cf2-sch-cap2">스케줄 종류</span>
+      <label class="cf2-sch-radio"><input type="radio" value="window" v-model="topKind" /> 시간대 (하루 중 켜짐~꺼짐 시각)</label>
+      <label class="cf2-sch-radio"><input type="radio" value="cycle" v-model="topKind" /> 주기 (켜짐·꺼짐 <em>길이</em>를 분·초로 반복)</label>
+    </div>
+
+    <div v-if="topKind === 'window'" class="cf2-sch-subm">
+      <div class="cf2-sch-mode">
+        <label class="cf2-sch-radio"><input type="radio" value="together" v-model="scheduleKind" /> 요일·시간 함께</label>
+        <label class="cf2-sch-radio"><input type="radio" value="eachDay" v-model="scheduleKind" /> 요일마다 다르게</label>
+      </div>
+    </div>
+
+    <div class="cf2-sch-actions">
+      <button type="button" class="cf2-sch-btn" :disabled="loading" @click="loadSch">불러오기</button>
+      <button type="button" class="cf2-sch-btn cf2-sch-prim" :disabled="loading" @click="saveSch">저장</button>
+    </div>
+
+    <div v-if="err" class="cf2-sch-err">{{ err }}</div>
+    <div v-if="msg" class="cf2-sch-msg">{{ msg }}</div>
+
+    <div v-if="topKind === 'window' && scheduleKind === 'together'" class="cf2-sch-panel">
+      <div class="cf2-sch-cap">요일 선택 + 켜짐/꺼짐 <em>시각</em> (24시간 내)</div>
+      <div class="cf2-sch-tblwrap">
+        <table class="cf2-sch-tbl">
+          <thead>
+            <tr>
+              <th>요일</th>
+              <th>켜짐 시각</th>
+              <th>꺼짐 시각</th>
+              <th>사용</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(s, idx) in togetherSlots" :key="'tg'+idx">
+              <td class="cf2-sch-days">
+                <label v-for="(d, di) in dayMeta" :key="d.bit" class="cf2-sch-daycb">
+                  <input type="checkbox" v-model="s.days[di]" /> {{ d.label }}
+                </label>
+                <button type="button" class="cf2-sch-mini" @click="pickAllDays(s)">전체 요일</button>
+              </td>
+              <td><input class="cf2-sch-time" type="time" v-model="s.onStr" step="60" /></td>
+              <td><input class="cf2-sch-time" type="time" v-model="s.offStr" step="60" /></td>
+              <td class="cf2-sch-cen"><input type="checkbox" v-model="s.enabled" :true-value="1" :false-value="0" /></td>
+              <td><button type="button" class="cf2-sch-x" @click="dropTogether(idx)" :disabled="togetherSlots.length<=1">삭제</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <button type="button" class="cf2-sch-add" @click="addTogether">+ 시간 구간 추가</button>
+    </div>
+
+    <div v-if="topKind === 'window' && scheduleKind === 'eachDay'" class="cf2-sch-panel">
+      <div class="cf2-sch-cap">요일별 켜짐/꺼짐 시각</div>
+      <div class="cf2-sch-tblwrap">
+        <table class="cf2-sch-tbl">
+          <thead>
+            <tr><th>요일</th><th>켜짐 시각</th><th>꺼짐 시각</th><th>사용</th></tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in eachDayRows" :key="row.bit">
+              <td class="cf2-sch-dname">{{ row.label }}</td>
+              <td><input class="cf2-sch-time" type="time" v-model="row.onStr" step="60" /></td>
+              <td><input class="cf2-sch-time" type="time" v-model="row.offStr" step="60" /></td>
+              <td class="cf2-sch-cen"><input type="checkbox" v-model="row.enabled" :true-value="1" :false-value="0" /></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div v-if="topKind === 'cycle'" class="cf2-sch-panel">
+      <div class="cf2-sch-cap">같은 요일에 대해 <em>켜짐 유지</em>·<em>쉼(꺼짐)</em> 길이를 분·초로 반복합니다 (DB·MQTT는 초 단위로 저장).</div>
+      <div class="cf2-sch-tblwrap">
+        <table class="cf2-sch-tbl">
+          <thead>
+            <tr>
+              <th>요일</th>
+              <th>ON 분</th>
+              <th>ON 초</th>
+              <th>OFF 분</th>
+              <th>OFF 초</th>
+              <th>사용</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(c, cidx) in cycleSlots" :key="'cy'+cidx">
+              <td class="cf2-sch-days">
+                <label v-for="(d, di) in dayMeta" :key="d.bit" class="cf2-sch-daycb">
+                  <input type="checkbox" v-model="c.days[di]" /> {{ d.label }}
+                </label>
+                <button type="button" class="cf2-sch-mini" @click="pickAllDays(c)">전체 요일</button>
+              </td>
+              <td><input class="cf2-sch-num" type="number" min="0" max="1440" v-model.number="c.onM" /></td>
+              <td><input class="cf2-sch-num" type="number" min="0" max="59" v-model.number="c.onS" /></td>
+              <td><input class="cf2-sch-num" type="number" min="0" max="1440" v-model.number="c.offM" /></td>
+              <td><input class="cf2-sch-num" type="number" min="0" max="59" v-model.number="c.offS" /></td>
+              <td class="cf2-sch-cen"><input type="checkbox" v-model="c.enabled" :true-value="1" :false-value="0" /></td>
+              <td><button type="button" class="cf2-sch-x" @click="dropCycle(cidx)" :disabled="cycleSlots.length<=1">삭제</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <button type="button" class="cf2-sch-add" @click="addCycle">+ 주기 구간 추가</button>
+    </div>
+
+    <div class="cf2-sch-foot">
+      불러오기가 실패하면: Pi에서 Node-RED 플로우에 <code class="cf2-sch-code">/farm/cronusfarm-sqlite</code> → 브리지 프록시가 있는지,
+      <code class="cf2-sch-code">cronusfarm-sqlite-bridge</code> 서비스(18766)가 떠 있는지 확인하세요.
+    </div>
+  </div>
+  </script>
+  <div id="mount-schedule"></div>
+  <hr style="border:none;border-top:1px solid rgba(255,255,255,.1);margin:20px 0"/>
+  <script type="text/x-template" id="tpl-ctl">
+<div class="cf2-ctlhub">
+    <div class="cf-ctl-hub">
+      <div class="t">스마트팜 관제 허브</div>
+      <div class="s">목표 pH·EC·온도·습도를 설정하면 SQLite <code>settings_kv</code>에 저장됩니다. 시계열 그래프는 Grafana(InfluxDB)에서 확인하세요. 브리지 미기동 시 슬라이더는 HTTP 오류를 무시합니다.</div>
+      <div class="badges">
+        <span class="bd">Influx: tele + guard_*</span>
+        <span class="bd">SQLite: 이력·설정</span>
+        <span class="bd">DEVICE_ID: flow.deviceId</span>
+      </div>
+    </div>
+    <div v-for="r in rows" :key="r.topic" class="cf2-slrow">
+      <div class="cf2-sllab">{{ r.label }}</div>
+      <input class="cf2-sl" type="range" :min="r.min" :max="r.max" :step="r.step" v-model.number="r.v" @change="push(r)" />
+      <div class="cf2-slval">{{ fmt(r) }}</div>
+    </div>
+    <div class="cf2-hint">슬라이더를 놓을 때(change) SQLite 브리지로 전송됩니다.</div>
+  </div>
+  </script>
+  <div id="mount-ctl"></div>
+</div>
+</div>
+</div>
+<script>
+const ScheduleApp = {
+  data () {
+    const dayMeta = [
+      { label: '월', bit: 1 }, { label: '화', bit: 2 }, { label: '수', bit: 4 }, { label: '목', bit: 8 },
+      { label: '금', bit: 16 }, { label: '토', bit: 32 }, { label: '일', bit: 64 }
+    ]
+    const eachDayRows = dayMeta.map(d => ({
+      label: d.label, bit: d.bit, onStr: '06:00', offStr: '22:00', enabled: 0
+    }))
+    const days7 = () => [true, true, true, true, true, true, true]
+    return {
+      apiBase: '/farm/cronusfarm-sqlite',
+      deviceId: 'cronusfarm-01',
+      channel: 'led_a1',
+      channels: ['led_a1','led_a2','led_b1','led_b2','pump_a1','pump_a2','pump_b1','pump_b2','fan_a1','fan_a2','fan_b1','fan_b2','pump_c1','pump_c2','pump_d1','pump_d2'],
+      dayMeta,
+      topKind: 'window',
+      scheduleKind: 'together',
+      togetherSlots: [{
+        days: days7(),
+        onStr: '06:00',
+        offStr: '22:00',
+        enabled: 1
+      }],
+      eachDayRows,
+      cycleSlots: [{
+        days: days7(),
+        onM: 0,
+        onS: 30,
+        offM: 0,
+        offS: 30,
+        enabled: 1
+      }],
+      loading: false,
+      err: '',
+      msg: ''
+    }
+  },
+  methods: {
+    scheduleUrl () {
+      const o = window.location.origin || ''
+      return o + this.apiBase + '/api/schedule'
+    },
+    minToTimeStr (m) {
+      const n = Math.max(0, Math.min(1439, parseInt(m, 10) || 0))
+      const hh = String(Math.floor(n / 60)).padStart(2, '0')
+      const mm = String(n % 60).padStart(2, '0')
+      return hh + ':' + mm
+    },
+    timeStrToMin (s) {
+      if (!s || typeof s !== 'string') return 0
+      const p = s.split(':')
+      let hh = parseInt(p[0], 10)
+      let mm = parseInt(p[1], 10)
+      if (isNaN(hh)) hh = 0
+      if (isNaN(mm)) mm = 0
+      hh = Math.max(0, Math.min(23, hh))
+      mm = Math.max(0, Math.min(59, mm))
+      return Math.min(1439, hh * 60 + mm)
+    },
+    daysArrToMask (arr) {
+      const bits = [1, 2, 4, 8, 16, 32, 64]
+      let m = 0
+      for (let i = 0; i < 7; i++) {
+        if (arr[i]) m |= bits[i]
+      }
+      return m
+    },
+    maskToDaysArr (mask) {
+      const bits = [1, 2, 4, 8, 16, 32, 64]
+      return bits.map(b => !!(mask & b))
+    },
+    defaultTogetherSlot () {
+      return { days: [true, true, true, true, true, true, true], onStr: '06:00', offStr: '22:00', enabled: 1 }
+    },
+    defaultCycleSlot () {
+      return { days: [true, true, true, true, true, true, true], onM: 0, onS: 30, offM: 0, offS: 30, enabled: 1 }
+    },
+    pickAllDays (row) {
+      for (let i = 0; i < 7; i++) row.days[i] = true
+    },
+    addTogether () {
+      this.togetherSlots.push(this.defaultTogetherSlot())
+    },
+    dropTogether (idx) {
+      if (this.togetherSlots.length <= 1) return
+      this.togetherSlots.splice(idx, 1)
+    },
+    addCycle () {
+      this.cycleSlots.push(this.defaultCycleSlot())
+    },
+    dropCycle (idx) {
+      if (this.cycleSlots.length <= 1) return
+      this.cycleSlots.splice(idx, 1)
+    },
+    isPow2 (m) {
+      const x = parseInt(m, 10)
+      return x > 0 && (x & (x - 1)) === 0
+    },
+    partsToSec (minPart, secPart) {
+      const mm = Math.max(0, parseInt(minPart, 10) || 0)
+      let ss = Math.max(0, parseInt(secPart, 10) || 0)
+      ss = Math.min(59, ss)
+      return Math.min(86400, mm * 60 + ss)
+    },
+    mapWindowRules (list) {
+      const bits = [1, 2, 4, 8, 16, 32, 64]
+      const labels = ['월', '화', '수', '목', '금', '토', '일']
+      if (!list.length) {
+        this.scheduleKind = 'together'
+        this.togetherSlots = [this.defaultTogetherSlot()]
+        this.eachDayRows = bits.map((b, i) => ({
+          label: labels[i], bit: b, onStr: '06:00', offStr: '22:00', enabled: 0
+        }))
+        return
+      }
+      const onlyPow2 = list.every(r => this.isPow2(r.dow_mask))
+      if (onlyPow2 && list.length <= 7) {
+        this.scheduleKind = 'eachDay'
+        this.eachDayRows = bits.map((b, i) => {
+          const hit = list.find(r => parseInt(r.dow_mask, 10) === b)
+          return {
+            label: labels[i],
+            bit: b,
+            onStr: hit ? this.minToTimeStr(hit.on_min) : '06:00',
+            offStr: hit ? this.minToTimeStr(hit.off_min) : '22:00',
+            enabled: hit && hit.enabled ? 1 : 0
+          }
+        })
+        return
+      }
+      this.scheduleKind = 'together'
+      this.togetherSlots = list.map(r => ({
+        days: this.maskToDaysArr(parseInt(r.dow_mask, 10) || 0),
+        onStr: this.minToTimeStr(r.on_min),
+        offStr: this.minToTimeStr(r.off_min),
+        enabled: r.enabled ? 1 : 0
+      }))
+    },
+    mapCycleRules (list) {
+      if (!list.length) {
+        this.cycleSlots = [this.defaultCycleSlot()]
+        return
+      }
+      this.cycleSlots = list.map(r => {
+        const on = parseInt(r.on_sec, 10) || 0
+        const off = parseInt(r.off_sec, 10) || 0
+        return {
+          days: this.maskToDaysArr(parseInt(r.dow_mask, 10) || 0),
+          onM: Math.floor(on / 60),
+          onS: on % 60,
+          offM: Math.floor(off / 60),
+          offS: off % 60,
+          enabled: r.enabled ? 1 : 0
+        }
+      })
+    },
+    applyLoadedRules (list) {
+      const win = list.filter(r => (r.rule_kind || 'window') === 'window')
+      const cyc = list.filter(r => r.rule_kind === 'cycle')
+      if (cyc.length && win.length) {
+        this.err = '이 채널에 시간대(window)와 주기(cycle)가 섞여 있습니다. 한 종류만 남기고 저장하세요.'
+      }
+      if (cyc.length) {
+        this.topKind = 'cycle'
+        this.mapCycleRules(cyc)
+        return
+      }
+      this.topKind = 'window'
+      this.mapWindowRules(win)
+    },
+    buildPayloadRules () {
+      if (this.topKind === 'cycle') {
+        const out = []
+        let si = 0
+        this.cycleSlots.forEach(c => {
+          if (!c.enabled) return
+          const mask = this.daysArrToMask(c.days)
+          if (mask === 0) throw new Error('주기 모드: 요일을 하나 이상 선택하세요.')
+          const onT = this.partsToSec(c.onM, c.onS)
+          const offT = this.partsToSec(c.offM, c.offS)
+          if (onT + offT === 0) throw new Error('주기: ON·OFF 길이 합이 0일 수 없습니다.')
+          out.push({
+            rule_kind: 'cycle',
+            dow_mask: mask,
+            slot_index: si++,
+            on_min: 0,
+            off_min: 0,
+            on_sec: onT,
+            off_sec: offT,
+            enabled: 1
+          })
+        })
+        return out
+      }
+      if (this.scheduleKind === 'eachDay') {
+        const out = []
+        let si = 0
+        this.eachDayRows.forEach(row => {
+          if (!row.enabled) return
+          out.push({
+            rule_kind: 'window',
+            dow_mask: row.bit,
+            slot_index: si++,
+            on_min: this.timeStrToMin(row.onStr),
+            off_min: this.timeStrToMin(row.offStr),
+            enabled: 1
+          })
+        })
+        return out
+      }
+      const out = []
+      let si = 0
+      this.togetherSlots.forEach(s => {
+        if (!s.enabled) return
+        const mask = this.daysArrToMask(s.days)
+        if (mask === 0) throw new Error('시간대 모드: 요일을 하나 이상 선택하세요.')
+        out.push({
+          rule_kind: 'window',
+          dow_mask: mask,
+          slot_index: si++,
+          on_min: this.timeStrToMin(s.onStr),
+          off_min: this.timeStrToMin(s.offStr),
+          enabled: 1
+        })
+      })
+      return out
+    },
+    async loadSch () {
+      this.loading = true
+      this.err = ''
+      this.msg = ''
+      try {
+        const u = new URL(this.scheduleUrl())
+        u.searchParams.set('device_id', this.deviceId)
+        u.searchParams.set('channel', this.channel)
+        const r = await fetch(u.toString(), { credentials: 'same-origin' })
+        if (!r.ok) throw new Error('불러오기 실패 HTTP ' + r.status)
+        const j = await r.json()
+        const list = j.rules || []
+        this.applyLoadedRules(list)
+        this.msg = '불러옴'
+      } catch (e) {
+        this.err = (e && e.message) ? e.message : String(e)
+      } finally {
+        this.loading = false
+      }
+    },
+    async saveSch () {
+      this.loading = true
+      this.err = ''
+      this.msg = ''
+      try {
+        const rules = this.buildPayloadRules()
+        const u = new URL(this.scheduleUrl())
+        u.searchParams.set('device_id', this.deviceId)
+        u.searchParams.set('channel', this.channel)
+        const res = await fetch(u.toString(), {
+          method: 'PUT',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({ rules })
+        })
+        const j = await res.json().catch(() => ({}))
+        if (!res.ok) throw new Error(j.error || ('저장 실패 HTTP ' + res.status))
+        this.msg = '저장됨 (' + rules.length + '건)'
+      } catch (e) {
+        this.err = (e && e.message) ? e.message : String(e)
+      } finally {
+        this.loading = false
+      }
+    }
+  }
+}
+ScheduleApp.template = '#tpl-schedule';
+Vue.createApp(ScheduleApp).mount('#mount-schedule');
+const CtlApp = {
+  data () {
+    return {
+      rows: [
+        { label: '목표 pH', topic: 'ctl_target_ph', min: 0, max: 14, step: 0.1, v: 7.0 },
+        { label: '목표 EC (mS/cm)', topic: 'ctl_target_ec', min: 0, max: 3, step: 0.05, v: 1.0 },
+        { label: '목표 온도 (°C)', topic: 'ctl_target_temp_c', min: 10, max: 35, step: 0.5, v: 25.0 },
+        { label: '목표 습도 (%)', topic: 'ctl_target_rh_pct', min: 30, max: 90, step: 1, v: 60 },
+        { label: '사진 촬영 주기 cam01 (분)', topic: 'cctv_cam01_interval_min', min: 1, max: 720, step: 1, v: 60 }
+
+      ]
+    }
+  },
+  methods: {
+    fmt (r) {
+      const x = Number(r.v)
+      if (!isFinite(x)) return '-'
+      if (Math.abs(r.step) >= 1) return String(Math.round(x))
+      return String(Math.round(x * 1000) / 1000).replace(/\.0+$/, (m) => m)
+    },
+    async push (r) {
+      const v = Number(r.v)
+      if (!isFinite(v)) return
+      const el = document.getElementById('cf-sch-device-id')
+      const deviceId = (el && el.value) ? String(el.value).trim() : 'cronusfarm-01'
+      const url = (window.location.origin || '') + '/farm/cronusfarm-sqlite/settings/kv'
+      try {
+        await fetch(url, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json; charset=utf-8' },
+          body: JSON.stringify({ device_id: deviceId, key: r.topic, value: String(v) })
+        })
+      } catch (e) { console.warn(e) }
+    }
+  }
+}
+CtlApp.template = '#tpl-ctl';
+Vue.createApp(CtlApp).mount('#mount-ctl');
+function cfIframeResizeNotify() {
+  const el = document.querySelector('.cf-settings-shell') || document.body;
+  const h = Math.max(el.scrollHeight, el.offsetHeight, document.documentElement.scrollHeight);
+  try { parent.postMessage({ type: 'cf-settings-iframe-resize', height: h }, '*'); } catch (e) {}
+}
+window.addEventListener('load', () => { cfIframeResizeNotify(); setInterval(cfIframeResizeNotify, 3000); });
+</script>
+</body>
+</html>

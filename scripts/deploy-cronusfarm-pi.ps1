@@ -1,6 +1,6 @@
 param(
   [string] $PiHost = "",
-  [string] $PiHostLan = "192.168.0.222",
+  [string] $PiHostLan = "",
   [string] $PiHostWan = "ida.mango-larch.ts.net",
   [string] $PiUser = "dooly",
   [string] $RemoteCronusRoot = "/home/dooly/CronusFarm",
@@ -16,10 +16,20 @@ param(
   # nginx 사이트 설정 동기화·reload(비밀번호 sudo면 WARN만)
   [switch] $SkipNginxDeploy,
   # cronusfarm-camera-ai 복사·systemctl 재시작 생략(장시간 대기 회피)
-  [switch] $SkipAiCamera
+  [switch] $SkipAiCamera,
+  # Node-RED 플로우만 자주 바꿀 때: SQLite/Hailo/Grafana/nginx/텔레그램 drop-in/Dashboard2 설치·upstream 점검 등 생략 (-ApplyNodeRed와 함께 사용)
+  [switch] $NodeRedFlowsOnly,
+  # 초경량: 로컬에서 merged-deploy.json만 생성 후 그 파일만 Pi에 반영(분할 JSON·dashboard HTML·vendor 미복사). iframe/HTML 수정 시에는 쓰지 말 것.
+  [switch] $NodeRedMergedOnly,
+  # settings.js 경로 패치(pi-nodered-apply-settings-farm.sh) 생략 — SSH 불안정 시 플로우만 배포
+  [switch] $SkipSettingsPatch,
+  # farm-ui SPA 빌드·dist 동기화 생략
+  [switch] $SkipFarmUi
 )
 # -SkipGrafana: Pi sudo(그래파나) 대기로 멈출 때 Node·아두이노만 빠르게 배포
 # -SkipAiCamera: AI 카메라 유닛 배포 스킵(원하면 NR 적용 후에도 동일 스위치로 생략)
+# -NodeRedFlowsOnly: 무거운 페이로드 생략 + 분할 JSON·dashboard 정적 파일까지 Pi 동기화
+# -NodeRedMergedOnly: 위 생략 + 분할 JSON/dashboard 미복사(merged-deploy만). 실행 속도 우선.
 
 $ErrorActionPreference = "Stop"
 
@@ -42,6 +52,20 @@ function Assert-Command($name) {
 Assert-Command "ssh"
 Assert-Command "scp"
 
+if ($NodeRedMergedOnly -and -not $ApplyNodeRed) {
+  throw "-NodeRedMergedOnly requires -ApplyNodeRed"
+}
+
+$CfNrDeployLight = $NodeRedFlowsOnly -or $NodeRedMergedOnly
+if ($CfNrDeployLight) {
+  $SkipArduino = $true
+  $SkipNginxDeploy = $true
+  $SkipGrafana = $true
+  $SkipAiCamera = $true
+  $SkipFarmUi = $true
+  Write-Host "=== NR deploy (light): skip SQLite/Hailo/grafana/nginx/telegram extras ===" -ForegroundColor Yellow
+}
+
 # PSScriptRoot 이 비면 Join-Path / dot-source 가 실패하거나 $null 경로가 생김
 $scriptPathDeploy = $MyInvocation.MyCommand.Path
 $scriptDirDeploy = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent $scriptPathDeploy }
@@ -54,9 +78,17 @@ $repoRoot = Split-Path $CronusDeployScriptDir -Parent
 
 . (Join-Path $CronusDeployScriptDir "pi-host-resolve.ps1")
 $PiHost = Get-CronusPiHost -PiHost $PiHost -PiHostLan $PiHostLan -PiHostWan $PiHostWan -PiUser $PiUser
+if ([string]::IsNullOrWhiteSpace($PiHost)) {
+  throw "PiHost 가 비어 있습니다. Tailscale/LAN 확인 후 -PiHostWan ida.mango-larch.ts.net 또는 -PiHostLan 192.168.60.222 를 지정하세요."
+}
+Write-Host "[Pi] deploy target: ${PiUser}@${PiHost}" -ForegroundColor Cyan
+if (-not (Test-CronusSshPort -ComputerName $PiHost -TimeoutMs 5000)) {
+  throw "Pi SSH(22) 연결 불가: ${PiUser}@${PiHost}. Tailscale·LAN(192.168.60.222) 확인 후 -PiHostLan 또는 -PiHostWan 지정."
+}
 # 에이전트/백그라운드 환경에서 SSH 무한 대기 방지 + 비대화형
 # 원격 셸: -T(의사 TTY 끔) — Windows PowerShell에서 ssh가 멈추는 경우가 있어 ssh에만 사용
 $SshScpOpts = @(
+  "-o", "Port=22",
   "-o", "ConnectTimeout=30",
   "-o", "ServerAliveInterval=5",
   "-o", "ServerAliveCountMax=3",
@@ -65,12 +97,34 @@ $SshScpOpts = @(
 )
 $SshRemoteOpts = @(
   "-T",
+  "-o", "Port=22",
   "-o", "ConnectTimeout=30",
   "-o", "ServerAliveInterval=5",
   "-o", "ServerAliveCountMax=3",
   "-o", "BatchMode=yes",
   "-o", "StrictHostKeyChecking=accept-new"
 )
+
+function Invoke-CronusPiSettingsPatch {
+  if ($SkipSettingsPatch) {
+    Write-Host "Skip: settings.js patch (-SkipSettingsPatch)" -ForegroundColor DarkGray
+    return
+  }
+  if (-not (Test-CronusSshPort -ComputerName $PiHost -TimeoutMs 5000)) {
+    Write-Host "WARN: Pi SSH(22) 응답 없음 — settings.js 패치 생략. Tailscale/LAN 확인 후 재시도하거나 Pi에서: bash ~/CronusFarm/scripts/pi-nodered-apply-settings-farm.sh" -ForegroundColor Yellow
+    return
+  }
+  Write-Host "=== Node-RED: settings.js (/ui /admin) patch ===" -ForegroundColor Cyan
+  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "bash '$remoteScripts/pi-nodered-apply-settings-farm.sh'"
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "WARN: settings.js 패치 실패(종료 $LASTEXITCODE). 플로우 배포는 계속됩니다. Pi에서: bash ~/CronusFarm/scripts/pi-nodered-apply-settings-farm.sh" -ForegroundColor Yellow
+    return
+  }
+  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "sudo -n systemctl restart nodered.service" 2>$null
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "WARN: nodered restart after settings patch failed (continue)" -ForegroundColor Yellow
+  }
+}
 
 $nrDir = Join-Path $CronusDeployScriptDir "..\nodered"
 $mqttPath = Join-Path $nrDir "flows_cronusfarm_mqtt.json"
@@ -107,30 +161,75 @@ $remoteNodered = "$RemoteCronusRoot/nodered"
 $remoteScripts = "$RemoteCronusRoot/scripts"
 & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteNodered' '$remoteScripts'"
 
-Write-Host "=== Node-RED: sync flow JSON -> $remoteNodered ===" -ForegroundColor Cyan
-& scp @SshScpOpts "$mqttPath" "${PiUser}@${PiHost}:$remoteNodered/flows_cronusfarm_mqtt.json"
-& scp @SshScpOpts "$dashPath" "${PiUser}@${PiHost}:$remoteNodered/flows_cronusfarm_dashboard.json"
-& scp @SshScpOpts "$devFlowPath" "${PiUser}@${PiHost}:$remoteNodered/flows_cronusfarm_devflow_flow.json"
-$dashHtmlDir = Join-Path $nrDir "dashboard"
-if (Test-Path $dashHtmlDir) {
-  Write-Host "=== Node-RED: dashboard/*.html -> $remoteNodered/dashboard ===" -ForegroundColor Cyan
-  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteNodered/dashboard'"
-  Get-ChildItem -Path $dashHtmlDir -Filter "*.html" -File -ErrorAction SilentlyContinue | ForEach-Object {
-    & scp @SshScpOpts "$($_.FullName)" "${PiUser}@${PiHost}:$remoteNodered/dashboard/$($_.Name)"
-  }
-  $dashVendor = Join-Path $dashHtmlDir "vendor"
-  if (Test-Path $dashVendor) {
-    Write-Host "=== Node-RED: dashboard/vendor/*.js -> $remoteNodered/dashboard/vendor ===" -ForegroundColor Cyan
-    & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteNodered/dashboard/vendor'"
-    Get-ChildItem -Path $dashVendor -Filter "*.js" -File -ErrorAction SilentlyContinue | ForEach-Object {
-      & scp @SshScpOpts "$($_.FullName)" "${PiUser}@${PiHost}:$remoteNodered/dashboard/vendor/$($_.Name)"
+if (-not $NodeRedMergedOnly) {
+  $spaPatchPy = Join-Path $CronusDeployScriptDir "patch_settings_spa.py"
+  if (Test-Path $spaPatchPy) {
+    Write-Host "=== Dashboard: settings tab → SPA links (patch_settings_spa.py) ===" -ForegroundColor Cyan
+    if (Get-Command python -ErrorAction SilentlyContinue) {
+      & python $spaPatchPy
+    } elseif (Get-Command py -ErrorAction SilentlyContinue) {
+      & py -3 $spaPatchPy
+    } else {
+      Write-Host "WARN: Python 없음 — patch_settings_spa.py 생략" -ForegroundColor Yellow
     }
   }
+  Write-Host "=== Node-RED: sync flow JSON -> $remoteNodered ===" -ForegroundColor Cyan
+  & scp @SshScpOpts "$mqttPath" "${PiUser}@${PiHost}:$remoteNodered/flows_cronusfarm_mqtt.json"
+  & scp @SshScpOpts "$dashPath" "${PiUser}@${PiHost}:$remoteNodered/flows_cronusfarm_dashboard.json"
+  & scp @SshScpOpts "$devFlowPath" "${PiUser}@${PiHost}:$remoteNodered/flows_cronusfarm_devflow_flow.json"
+  $dashHtmlDir = Join-Path $nrDir "dashboard"
+  if (Test-Path $dashHtmlDir) {
+    Write-Host "=== Node-RED: dashboard/*.html -> $remoteNodered/dashboard ===" -ForegroundColor Cyan
+    & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteNodered/dashboard'"
+    Get-ChildItem -Path $dashHtmlDir -Filter "*.html" -File -ErrorAction SilentlyContinue | ForEach-Object {
+      & scp @SshScpOpts "$($_.FullName)" "${PiUser}@${PiHost}:$remoteNodered/dashboard/$($_.Name)"
+    }
+    $dashVendor = Join-Path $dashHtmlDir "vendor"
+    if (Test-Path $dashVendor) {
+      Write-Host "=== Node-RED: dashboard/vendor/*.js -> $remoteNodered/dashboard/vendor ===" -ForegroundColor Cyan
+      & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteNodered/dashboard/vendor'"
+      Get-ChildItem -Path $dashVendor -Filter "*.js" -File -ErrorAction SilentlyContinue | ForEach-Object {
+        & scp @SshScpOpts "$($_.FullName)" "${PiUser}@${PiHost}:$remoteNodered/dashboard/vendor/$($_.Name)"
+      }
+    }
+  }
+  if (-not $SkipFarmUi) {
+    $buildFarmUi = Join-Path $CronusDeployScriptDir "build-farm-ui.ps1"
+    $farmUiDist = Join-Path $repoRoot "farm-ui\dist"
+    if (Test-Path $buildFarmUi) {
+      Write-Host "=== farm-ui: Vite build ===" -ForegroundColor Cyan
+      & $buildFarmUi
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host "WARN: farm-ui 빌드 실패 — dist 동기화 생략" -ForegroundColor Yellow
+      } elseif (Test-Path $farmUiDist) {
+        $remoteFarmUiDist = "$RemoteCronusRoot/farm-ui/dist"
+        Write-Host "=== farm-ui: dist -> $remoteFarmUiDist ===" -ForegroundColor Cyan
+        & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteFarmUiDist'"
+        Get-ChildItem -Path $farmUiDist -Recurse -File | ForEach-Object {
+          $rel = $_.FullName.Substring($farmUiDist.Length).TrimStart('\', '/').Replace('\', '/')
+          $remoteDir = "$remoteFarmUiDist/$(Split-Path $rel -Parent)"
+          if ($rel -match '/') {
+            & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteDir'"
+          }
+          & scp @SshScpOpts $_.FullName "${PiUser}@${PiHost}:$remoteFarmUiDist/$rel"
+        }
+        & (Join-Path $CronusDeployScriptDir "Invoke-FarmUiPostDeploy.ps1") `
+          -PiHost $PiHost -PiUser $PiUser -RemoteDist $remoteFarmUiDist `
+          -FarmUiDistLocal $farmUiDist -ScriptDir $CronusDeployScriptDir -SshOpts $SshRemoteOpts
+      }
+    }
+  } else {
+    Write-Host "Skip: farm-ui build/deploy (-SkipFarmUi)" -ForegroundColor DarkGray
+  }
+} else {
+  Write-Host "Skip: split JSON + dashboard static (-NodeRedMergedOnly; merged-deploy only to Pi)" -ForegroundColor DarkGray
 }
 $exportPath = Join-Path $nrDir "CronusFarm_NodeRED_flow.json"
-if (Test-Path $exportPath) {
+if ((Test-Path $exportPath) -and (-not $CfNrDeployLight)) {
   & scp @SshScpOpts "$exportPath" "${PiUser}@${PiHost}:$remoteNodered/CronusFarm_NodeRED_flow.json"
   Write-Host "Synced: CronusFarm_NodeRED_flow.json (export backup)" -ForegroundColor DarkGray
+} elseif ((Test-Path $exportPath) -and $CfNrDeployLight) {
+  Write-Host "Skip: CronusFarm_NodeRED_flow.json (light deploy)" -ForegroundColor DarkGray
 }
 
 $applySettingsSh = Join-Path $CronusDeployScriptDir "pi-nodered-apply-settings-farm.sh"
@@ -142,7 +241,7 @@ if (-not (Test-Path $applySettingsSh)) {
 
 # Dashboard 2 설치 스크립트는 Pi에 항상 복사(git pull 없이 수동 실행 가능). npm 실행은 -ApplyNodeRed 구간에서만.
 $dash2Sh = Join-Path $CronusDeployScriptDir "pi-nodered-install-dashboard2.sh"
-if (Test-Path $dash2Sh) {
+if ((-not $CfNrDeployLight) -and (Test-Path $dash2Sh)) {
   & scp @SshScpOpts "$dash2Sh" "${PiUser}@${PiHost}:$remoteScripts/pi-nodered-install-dashboard2.sh"
   & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "chmod +x '$remoteScripts/pi-nodered-install-dashboard2.sh'; sed -i 's/\r$//' '$remoteScripts/pi-nodered-install-dashboard2.sh' 2>/dev/null || true"
 }
@@ -155,7 +254,7 @@ if (-not (Test-Path $applySh)) {
 & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "chmod +x '$remoteScripts/pi-nodered-apply-merged.sh'"
 
 $ensureUpstreamSh = Join-Path $CronusDeployScriptDir "pi-nodered-ensure-upstream-for-nginx.sh"
-if (Test-Path $ensureUpstreamSh) {
+if ((-not $CfNrDeployLight) -and (Test-Path $ensureUpstreamSh)) {
   & scp @SshScpOpts "$ensureUpstreamSh" "${PiUser}@${PiHost}:$remoteScripts/pi-nodered-ensure-upstream-for-nginx.sh"
   & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "chmod +x '$remoteScripts/pi-nodered-ensure-upstream-for-nginx.sh'"
 }
@@ -185,7 +284,7 @@ $sqliteInit = Join-Path $CronusDeployScriptDir "init_cronusfarm_sqlite.py"
 $sqliteBridge = Join-Path $CronusDeployScriptDir "cronusfarm_sqlite_bridge.py"
 $systemdBridge = Join-Path $repoRoot "deploy\systemd\cronusfarm-sqlite-bridge.service"
 $haveSqlitePayload = ($null -ne $sqliteInit -and (Test-Path -LiteralPath $sqliteInit)) -or ($null -ne $sqliteBridge -and (Test-Path -LiteralPath $sqliteBridge)) -or ($null -ne $sqlSchema -and (Test-Path -LiteralPath $sqlSchema)) -or ($null -ne $systemdBridge -and (Test-Path -LiteralPath $systemdBridge))
-if ($haveSqlitePayload) {
+if ($haveSqlitePayload -and (-not $CfNrDeployLight)) {
   Write-Host "=== SQLite: sync bridge/schema -> $RemoteCronusRoot ===" -ForegroundColor Cyan
   $remoteDeploySystemd = "$RemoteCronusRoot/deploy/systemd"
   & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteScripts/sql' '$remoteDeploySystemd'"
@@ -219,12 +318,12 @@ if ($haveSqlitePayload) {
 
 # Hailo GStreamer: 스크립트 + ~/CronusFarm/Hailo (best.hef / best.onnx / yolov8.json)
 $hailoPy = Join-Path $CronusDeployScriptDir "cronusfarm_hailo_stream.py"
-if (Test-Path -LiteralPath $hailoPy) {
+if ((-not $CfNrDeployLight) -and (Test-Path -LiteralPath $hailoPy)) {
   Write-Host "=== Hailo: cronusfarm_hailo_stream.py -> $remoteScripts ===" -ForegroundColor Cyan
   & scp @SshScpOpts "$hailoPy" "${PiUser}@${PiHost}:$remoteScripts/cronusfarm_hailo_stream.py"
 }
 $hailoRepoDir = Join-Path $repoRoot "Hailo"
-if (Test-Path -LiteralPath $hailoRepoDir) {
+if ((-not $CfNrDeployLight) -and (Test-Path -LiteralPath $hailoRepoDir)) {
   Write-Host "=== Hailo: CronusFarm/Hailo -> $RemoteCronusRoot/Hailo ===" -ForegroundColor Cyan
   $remoteHailo = "$RemoteCronusRoot/Hailo"
   & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteHailo'"
@@ -238,7 +337,7 @@ $tgInstall = Join-Path $CronusDeployScriptDir "pi-install-nodered-telegram-env.s
 $tgDropIn = Join-Path $repoRoot "deploy\systemd\nodered.service.d\10-cronusfarm-telegram.conf"
 $tgEnvEx = Join-Path $repoRoot "deploy\env\nodered-telegram.env.example"
 $nrAiCamDropIn = Join-Path $repoRoot "deploy\systemd\nodered.service.d\20-cronusfarm-camera-ai.conf"
-if ((Test-Path $tgInstall) -and (Test-Path $tgDropIn) -and (Test-Path $tgEnvEx)) {
+if ((-not $CfNrDeployLight) -and (Test-Path $tgInstall) -and (Test-Path $tgDropIn) -and (Test-Path $tgEnvEx)) {
   Write-Host "=== Telegram: systemd drop-in/env example -> $RemoteCronusRoot ===" -ForegroundColor Cyan
   $remoteNrDrop = "$RemoteCronusRoot/deploy/systemd/nodered.service.d"
   $remoteDeployEnv = "$RemoteCronusRoot/deploy/env"
@@ -252,7 +351,7 @@ if ((Test-Path $tgInstall) -and (Test-Path $tgDropIn) -and (Test-Path $tgEnvEx))
 }
 
 # Node-RED 기동 후 cronusfarm-camera-ai try-restart(drop-in). 텔레그램 블록과 독립.
-if (Test-Path $nrAiCamDropIn) {
+if ((-not $CfNrDeployLight) -and (Test-Path $nrAiCamDropIn)) {
   Write-Host "=== Node-RED drop-in: NR 기동 후 cronusfarm-camera-ai restart ===" -ForegroundColor Cyan
   $remoteNrDropOnly = "$RemoteCronusRoot/deploy/systemd/nodered.service.d"
   & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteNrDropOnly'"
@@ -338,31 +437,43 @@ if ($UseSplitFlows) {
   Write-Host "Merge source: split 3 files (no export JSON)" -ForegroundColor Yellow
 }
 Write-Host "NOTE: running Node-RED flow will be fully replaced by repo JSON." -ForegroundColor Yellow
-Write-Host "Also: patch settings.js paths(/farm) + restart service(if possible)" -ForegroundColor Yellow
-
-& ssh @SshRemoteOpts "${PiUser}@${PiHost}" "if [[ -x '$remoteScripts/pi-install-nodered-telegram-env.sh' ]]; then sed -i 's/\r$//' '$remoteScripts/pi-install-nodered-telegram-env.sh' 2>/dev/null || true; bash '$remoteScripts/pi-install-nodered-telegram-env.sh'; else echo 'skip: pi-install-nodered-telegram-env.sh missing'; fi"
-if ($LASTEXITCODE -ne 0) {
-  Write-Host "WARN: telegram env systemd apply failed (sudo/path). On Pi: bash ~/CronusFarm/scripts/pi-install-nodered-telegram-env.sh" -ForegroundColor Yellow
+Write-Host "Also: patch settings.js paths(/ui /admin) after flows apply (WARN only on failure)" -ForegroundColor Yellow
+if ($NodeRedMergedOnly) {
+  Write-Host "WARN: Pi ~/CronusFarm/nodered split/*.json + dashboard/ NOT updated (merged-deploy.json only)." -ForegroundColor Yellow
 }
 
-& ssh @SshRemoteOpts "${PiUser}@${PiHost}" "bash '$remoteScripts/pi-nodered-apply-settings-farm.sh'"
-if ($LASTEXITCODE -ne 0) {
-  throw "settings.js 패치 실패(원격 종료 코드: $LASTEXITCODE)"
-}
-& ssh @SshRemoteOpts "${PiUser}@${PiHost}" "sudo -n systemctl restart nodered.service" 2>$null
-if ($LASTEXITCODE -ne 0) {
-  Write-Host "WARN: nodered restart failed (continue). On Pi: sudo systemctl restart nodered.service" -ForegroundColor Yellow
+if (-not $CfNrDeployLight) {
+  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "if [[ -x '$remoteScripts/pi-install-nodered-telegram-env.sh' ]]; then sed -i 's/\r$//' '$remoteScripts/pi-install-nodered-telegram-env.sh' 2>/dev/null || true; bash '$remoteScripts/pi-install-nodered-telegram-env.sh'; else echo 'skip: pi-install-nodered-telegram-env.sh missing'; fi"
+  if ($LASTEXITCODE -ne 0) {
+    Write-Host "WARN: telegram env systemd apply failed (sudo/path). On Pi: bash ~/CronusFarm/scripts/pi-install-nodered-telegram-env.sh" -ForegroundColor Yellow
+  }
+} else {
+  Write-Host "Skip: telegram env installer (light deploy)" -ForegroundColor DarkGray
 }
 
-Write-Host "=== Node-RED: nginx upstream (1882) vs 502 fix ===" -ForegroundColor Cyan
-& ssh @SshRemoteOpts "${PiUser}@${PiHost}" "if [[ -x '$remoteScripts/pi-nodered-ensure-upstream-for-nginx.sh' ]]; then bash '$remoteScripts/pi-nodered-ensure-upstream-for-nginx.sh'; else echo 'skip: pi-nodered-ensure-upstream-for-nginx.sh missing' >&2; fi"
+if (-not $CfNrDeployLight) {
+  Write-Host "=== Node-RED: nginx upstream (1882) vs 502 fix ===" -ForegroundColor Cyan
+  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "if [[ -x '$remoteScripts/pi-nodered-ensure-upstream-for-nginx.sh' ]]; then bash '$remoteScripts/pi-nodered-ensure-upstream-for-nginx.sh'; else echo 'skip: pi-nodered-ensure-upstream-for-nginx.sh missing' >&2; fi"
+}
 
 # 로컬에서 merge_nodered_deploy.py 실행 → 분할 dashboard → 내보내기 동기화 후 merged-deploy.json 생성
 # Windows에서는 PATH에 python 이 없고 py 런처만 있는 경우가 있어 둘 다 허용한다.
 
-if (Test-Path $dash2Sh) {
+if ((-not $CfNrDeployLight) -and (Test-Path $dash2Sh)) {
   Write-Host "=== Node-RED: Dashboard2 @flowfuse (/nrdb2) install check ===" -ForegroundColor Cyan
   & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "if [[ -x '$remoteScripts/pi-nodered-install-dashboard2.sh' ]]; then bash '$remoteScripts/pi-nodered-install-dashboard2.sh'; else echo 'WARN: pi-nodered-install-dashboard2.sh missing' >&2; fi"
+} elseif ($CfNrDeployLight) {
+  Write-Host "Skip: Dashboard2 install check (light deploy)" -ForegroundColor DarkGray
+}
+
+$spaPatchPy = Join-Path $CronusDeployScriptDir "patch_settings_spa.py"
+if ($ApplyNodeRed -and (Test-Path $spaPatchPy) -and $NodeRedMergedOnly) {
+  Write-Host "=== Dashboard: settings SPA patch (merged-only) ===" -ForegroundColor Cyan
+  if (Get-Command python -ErrorAction SilentlyContinue) {
+    & python $spaPatchPy
+  } elseif (Get-Command py -ErrorAction SilentlyContinue) {
+    & py -3 $spaPatchPy
+  }
 }
 
 $mergeScript = Join-Path $CronusDeployScriptDir "merge_nodered_deploy.py"
@@ -393,6 +504,8 @@ if ($LASTEXITCODE -ne 0) {
   throw "Node-RED apply script failed (exit: $LASTEXITCODE). Pi: journalctl -u nodered -n 80; test -r ~/.node-red/flows.json"
 }
 
+Invoke-CronusPiSettingsPatch
+
 # NR flows 반영 후에 실행: 재시작이 길어도 대시보드 배포는 이미 끝난 상태
 if (-not $SkipAiCamera) {
   $cameraSvc = Join-Path $repoRoot "deploy\systemd\cronusfarm-camera-ai.service"
@@ -421,7 +534,11 @@ if (-not $SkipAiCamera) {
   Write-Host "=== AI camera: skipped (-SkipAiCamera) ===" -ForegroundColor Yellow
 }
 
-if ($SkipArduino) {
+if ($NodeRedMergedOnly) {
+  Write-Host "OK: Node-RED merged-deploy.json only (fast)" -ForegroundColor Green
+} elseif ($CfNrDeployLight) {
+  Write-Host "OK: Node-RED light deploy (split JSON + dashboard static synced)" -ForegroundColor Green
+} elseif ($SkipArduino) {
   Write-Host "OK: Node-RED flow deployed (Arduino skipped)" -ForegroundColor Green
 } else {
   Write-Host "OK: Arduino(upcode) + Node-RED flow deployed" -ForegroundColor Green

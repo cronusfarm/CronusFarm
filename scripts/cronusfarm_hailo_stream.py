@@ -43,7 +43,10 @@ except ImportError:
 
 MQTT_HOST = "127.0.0.1"
 MQTT_PORT = 1883
-MQTT_TOPIC = "cronusfarm/hailo/count"
+# 대시보드·Node-RED(nr_node_mqtt_ai_count)와 동일 토픽
+MQTT_TOPIC = os.environ.get(
+    "CRONUSFARM_AI_MQTT_TOPIC", "cronusfarm/camera/ai_count"
+)
 
 DEFAULT_SYS_HEF = Path("/usr/share/hailo-models/yolov8s_h8l.hef")
 DEFAULT_SYS_YOLO_JSON = Path("/usr/share/hailo-models/yolov8.json")
@@ -123,6 +126,58 @@ def resolve_hef_and_yolo_json() -> tuple[Path, Path, str]:
     sys.exit(1)
 
 
+def _postprocess_paths(yolo_json: Path) -> tuple[str, str]:
+    """HEF에 NMS 포함(yolov8_crops.alls) → libyolo_hailortpp + labels JSON."""
+    explicit_so = os.environ.get("CRONUSFARM_HAILO_POST_SO", "").strip()
+    if explicit_so:
+        return explicit_so, str(yolo_json)
+    try:
+        data = json.loads(yolo_json.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        data = {}
+    if "anchors" in data:
+        so = (
+            "/usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes/libyolo_post.so"
+        )
+    else:
+        so = (
+            "/usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes/"
+            "libyolo_hailortpp_post.so"
+        )
+    return so, str(yolo_json)
+
+
+def _ko_caption_from_detections(detections) -> str:
+    """검출 라벨 → MQTT·대시보드용 한글 캡션."""
+    if not detections:
+        return "포착: 없음 (검출된 작물·객체 없음)"
+    labels: list[str] = []
+    for d in detections:
+        try:
+            labels.append(str(d.get_label()))
+        except Exception:
+            pass
+    if not labels:
+        return f"포착: {len(detections)}개"
+    from collections import Counter
+
+    ctr = Counter(labels)
+    parts = []
+    ko_map = {
+        "tomato": "토마토",
+        "fig": "무화과",
+        "butterhead": "버터헤드",
+        "basil": "바질",
+        "cherry_tomato": "방울토마토",
+        "unlabeled": "미분류",
+    }
+    for k in sorted(ctr.keys()):
+        v = ctr[k]
+        name = ko_map.get(k, k)
+        parts.append(f"{name}×{v}" if v > 1 else name)
+    return "포착: " + " · ".join(parts)
+
+
 def _resolve_yolo_json_path() -> Path:
     env = os.environ.get("CRONUSFARM_HAILO_YOLO_JSON", "").strip()
     if env:
@@ -173,7 +228,10 @@ def _opencv_feed_loop(appsrc: Gst.Element) -> None:
     cap.release()
 
 
-mqtt_client = mqtt.Client()
+try:
+    mqtt_client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+except AttributeError:
+    mqtt_client = mqtt.Client()
 try:
     mqtt_client.connect(MQTT_HOST, MQTT_PORT, 60)
     mqtt_client.loop_start()
@@ -193,18 +251,44 @@ def probe_callback(pad, info):
     roi = hailo.get_roi_from_buffer(buffer)
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
     count = len(detections)
+    caption = _ko_caption_from_detections(detections)
 
     current_time = time.time()
     if current_time - last_publish_time >= PUBLISH_INTERVAL:
         last_publish_time = current_time
-        payload = json.dumps({"count": count, "timestamp": current_time})
+        payload = json.dumps(
+            {
+                "count": count,
+                "caption": caption,
+                "timestamp": current_time,
+            },
+            ensure_ascii=False,
+        )
         try:
             mqtt_client.publish(MQTT_TOPIC, payload)
         except Exception:
             pass
-        print(f"Objects detected: {count}")
+        print(f"Objects detected: {count} — {caption}")
 
     return Gst.PadProbeReturn.OK
+
+
+def _caps_wh(structure) -> tuple[int, int]:
+    """Gst.Structure / StructureWrapper 호환 (Pi Tappas는 get_value)."""
+    try:
+        if hasattr(structure, "get_value"):
+            return int(structure.get_value("width")), int(structure.get_value("height"))
+    except (TypeError, ValueError, AttributeError):
+        pass
+    try:
+        if hasattr(structure, "get_int"):
+            ok, w = structure.get_int("width")
+            ok2, h = structure.get_int("height")
+            if ok and ok2:
+                return int(w), int(h)
+    except (TypeError, ValueError, AttributeError):
+        pass
+    return 640, 640
 
 
 def _on_new_sample(sink: GstApp.AppSink) -> Gst.FlowReturn:
@@ -218,11 +302,7 @@ def _on_new_sample(sink: GstApp.AppSink) -> Gst.FlowReturn:
     if not buffer or not caps:
         return Gst.FlowReturn.ERROR
 
-    structure = caps.get_structure(0)
-    ok, width = structure.get_int("width")
-    ok2, height = structure.get_int("height")
-    if not ok or not ok2:
-        return Gst.FlowReturn.ERROR
+    width, height = _caps_wh(caps.get_structure(0))
 
     success, map_info = buffer.map(Gst.MapFlags.READ)
     if not success:
@@ -283,12 +363,14 @@ def main() -> None:
 
     hef_s = str(hef_path)
     json_s = str(yolo_json)
+    post_so, post_cfg = _postprocess_paths(yolo_json)
+    print(f"[hailo] postprocess: {post_so}")
 
     hailo_tail = (
-        f"hailonet hef-path={hef_s} batch-size=1 ! "
-        "hailofilter "
-        "so-path=/usr/lib/aarch64-linux-gnu/hailo/tappas/post_processes/libyolo_post.so "
-        f"config-path={json_s} qos=false ! "
+        f"hailonet hef-path={hef_s} batch-size=1 force-writable=true ! "
+        "hailofilter function-name=filter "
+        f"so-path={post_so} "
+        f"config-path={post_cfg} qos=false ! "
         "queue ! hailooverlay ! videoconvert ! "
         "video/x-raw, format=BGR ! "
         "appsink name=cf_appsink emit-signals=true max-buffers=1 drop=true sync=false"

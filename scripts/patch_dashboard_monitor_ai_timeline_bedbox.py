@@ -191,11 +191,20 @@ AI_FMT = MONITOR_CLOCK_BOOT + r"""<div class="cf-ai-cam-outer">
   }
   var el=document.getElementById("cf-ai-mjpeg-img");
   if(!el)return;
-  var h=location.hostname||"127.0.0.1";
-  var pr=location.protocol||"http:";
-  var p=String(location.port||"");
-  if(p==="1882"||p==="1884"){el.src=pr+"//"+h+":8080/stream";}
-  else{el.src=(location.origin||"")+"/farm/ai-mjpeg/video_feed";}
+  function cfPiHost(){
+    try{ var s=localStorage.getItem("cfPiHost"); if(s&&String(s).trim()) return String(s).trim(); }catch(e){}
+    return "ida.mango-larch.ts.net";
+  }
+  function cfCamSrc(){
+    var h=location.hostname||"127.0.0.1";
+    var pr=location.protocol||"http:";
+    var p=String(location.port||"");
+    if(p==="1882"||p==="1884") return pr+"//"+h+":8080/stream";
+    if(p==="1881"||h==="127.0.0.1"||h==="localhost") return pr+"//"+cfPiHost()+":8080/stream";
+    return (location.origin||"")+"/farm/ai-mjpeg/video_feed";
+  }
+  el.src=cfCamSrc();
+  el.onerror=function(){ if(el.src.indexOf(cfPiHost())<0) el.src=cfCamSrc(); };
 })(scope);
 </script>"""
 
@@ -245,8 +254,41 @@ def _fmt_stack(bed: str, channels: list[str], labels: list[str], colors: list[st
   const LABELS = {lb_json};
   const COLS = {col_json};
   const FILLS = {fills_json};
-  const API = (location.origin || '') + '/farm/cronusfarm-sqlite/api/channel/timeline';
+  const API_BATCH = (location.origin || '') + '/farm/cronusfarm-sqlite/api/channel/timeline/batch';
   const charts = [];
+  /* Chart.js: Bed 위젯마다 중복 로드·150ms 폴링 방지 — 전역 1회 */
+  function ensureChart(cb) {{
+    if (typeof Chart !== 'undefined') {{ cb(); return; }}
+    var g = window.__cfChartJsReady;
+    if (!g) {{
+      g = new Promise(function(resolve, reject) {{
+        function ok() {{ resolve(); }}
+        var s = document.querySelector('script[src*="chart.umd"]');
+        if (!s) {{
+          s = document.createElement('script');
+          s.src = '/cronusfarm-static/vendor/chart.umd.min.js';
+          s.onload = ok;
+          s.onerror = function() {{
+            var cdn = document.createElement('script');
+            cdn.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
+            cdn.onload = ok;
+            cdn.onerror = function() {{ reject(new Error('chart.js load failed')); }};
+            document.head.appendChild(cdn);
+          }};
+          document.head.appendChild(s);
+          return;
+        }}
+        var n = 0;
+        (function wait() {{
+          if (typeof Chart !== 'undefined') {{ ok(); return; }}
+          if (++n > 50) {{ reject(new Error('chart.js timeout')); return; }}
+          setTimeout(wait, 40);
+        }})();
+      }});
+      window.__cfChartJsReady = g;
+    }}
+    g.then(cb).catch(function(e) {{ console.warn(e); }});
+  }}
   function deviceId() {{
     try {{ const s = localStorage.getItem('cfDeviceId'); if (s && s.trim()) return s.trim(); }} catch (e) {{}}
     return 'cronusfarm-01';
@@ -258,15 +300,11 @@ def _fmt_stack(bed: str, channels: list[str], labels: list[str], colors: list[st
     const hrs = (isFinite(h) && h >= 1 && h <= 168) ? h : 24;
     return {{ tStart: tEnd - hrs * 3600 * 1000, tEnd: tEnd }};
   }}
-  async function loadOne(i) {{
+  function renderOne(i, j) {{
     const ch = CHANNELS[i];
     const el = document.getElementById('cf_hc_' + BED + '_' + ch);
-    if (!el) return;
+    if (!el || !j) return;
     try {{
-      const u = API + '?device_id=' + encodeURIComponent(deviceId()) + '&channel=' + encodeURIComponent(ch) + '&hours=24';
-      const r = await fetch(u, {{ credentials: 'same-origin' }});
-      if (!r.ok) return;
-      const j = await r.json();
       const tt = mapTime(j);
       const x0 = Number(tt.tStart);
       const x1 = Number(tt.tEnd);
@@ -340,11 +378,18 @@ def _fmt_stack(bed: str, channels: list[str], labels: list[str], colors: list[st
     }} catch (e) {{ console.warn(e); }}
   }}
   async function loadAll() {{
-    for (let i = 0; i < CHANNELS.length; i++) await loadOne(i);
+    try {{
+      const u = API_BATCH + '?device_id=' + encodeURIComponent(deviceId()) + '&channels=' + encodeURIComponent(CHANNELS.join(',')) + '&hours=24';
+      const r = await fetch(u, {{ credentials: 'same-origin' }});
+      if (!r.ok) return;
+      const batch = await r.json();
+      const map = batch.channels || {{}};
+      await Promise.all(CHANNELS.map(function(ch, i) {{ return renderOne(i, map[ch]); }}));
+    }} catch (e) {{ console.warn(e); }}
   }}
-  scope.$watch('msg', function() {{ loadAll(); }});
-  setInterval(loadAll, 60000);
-  setTimeout(loadAll, 700);
+  scope.$watch('msg', function() {{ ensureChart(loadAll); }});
+  setInterval(function() {{ ensureChart(loadAll); }}, 60000);
+  setTimeout(function() {{ ensureChart(loadAll); }}, 80);
 }})(scope);
 </script>"""
 

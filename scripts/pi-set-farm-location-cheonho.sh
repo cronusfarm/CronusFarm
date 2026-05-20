@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# 서울 강동구 천호동 432-11 (천호대로151길 36) — Open-Meteo + KMA 격자
+set -euo pipefail
+export CRONUSFARM_WEATHER_LAT="${CRONUSFARM_WEATHER_LAT:-37.54294}"
+export CRONUSFARM_WEATHER_LON="${CRONUSFARM_WEATHER_LON:-127.12733}"
+export CRONUSFARM_WEATHER_NAME="${CRONUSFARM_WEATHER_NAME:-서울 강동 천호동 농장}"
+export CRONUSFARM_KMA_NX="${CRONUSFARM_KMA_NX:-71}"
+export CRONUSFARM_KMA_NY="${CRONUSFARM_KMA_NY:-127}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+bash "$SCRIPT_DIR/pi-set-weather-env.sh"
+echo "좌표: lat=$CRONUSFARM_WEATHER_LAT lon=$CRONUSFARM_WEATHER_LON KMA nx=$CRONUSFARM_KMA_NX ny=$CRONUSFARM_KMA_NY"

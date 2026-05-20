@@ -1,0 +1,41 @@
+<div class="cf-fe cf-fe-wide">
+  <div class="cf-fe-frame">
+    <div class="cf-fe-grid">
+      <div class="cf-fe-box">
+        <div class="cf-fe-kma-head"><span class="cf-fe-box-title">기상청 KMA</span><span class="cf-fe-box-sub">{{msg.payload.kma_obs_label ? ('관측 ' + msg.payload.kma_obs_label) : ''}}</span></div>
+        <div class="cf-fe-box-rule"></div>
+        <div class="cf-fe-kv">
+          <span class="k">기온</span><span class="v">{{(msg.payload.kma_temp != null && msg.payload.kma_temp !== '') ? (msg.payload.kma_temp + ' °C') : '—'}}</span>
+          <span class="k">습도</span><span class="v">{{(msg.payload.kma_humidity != null && msg.payload.kma_humidity !== '') ? (msg.payload.kma_humidity + ' %') : '—'}}</span>
+          <span class="k">풍향</span><span class="v">{{(msg.payload.kma_wind_dir != null && msg.payload.kma_wind_dir !== '') ? (msg.payload.kma_wind_dir + ' °') : '—'}}</span>
+          <span class="k">풍속</span><span class="v">{{(msg.payload.kma_wind_speed != null && msg.payload.kma_wind_speed !== '') ? (msg.payload.kma_wind_speed + ' m/s') : '—'}}</span>
+        </div>
+      </div>
+
+      <div class="cf-fe-box">
+        <div class="cf-fe-box-title">온실</div>
+        <div class="cf-fe-box-rule"></div>
+        <div class="cf-fe-kv">
+          <span class="k">온도</span><span class="v dim">—</span>
+          <span class="k">습도</span><span class="v dim">—</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <style>
+    .cf-fe{ padding:0; color:var(--cf-text,#e6edf7); font-family:system-ui,'Malgun Gothic',sans-serif; }
+    .cf-fe-frame{ border:0; border-radius:14px; padding:12px 12px; background:rgba(255,255,255,.02); }
+    .cf-fe-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    @media(max-width:640px){ .cf-fe-grid{ grid-template-columns:1fr; } }
+    .cf-fe-box{ border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px 10px; background:rgba(255,255,255,.02); }
+    .cf-fe-kma-head{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap; }
+    .cf-fe-box-title{ font-weight:900; font-size:13px; color:#81c784; letter-spacing:.02em; }
+    .cf-fe-box-sub{ font-size:11px; opacity:.65; font-weight:600; white-space:nowrap; margin-left:auto; text-align:right; }
+    .cf-fe-box-rule{ height:1px; background:rgba(255,255,255,.10); margin:8px 0 10px; }
+    .cf-fe-kv{ display:grid; grid-template-columns:1fr auto; gap:6px 14px; align-items:baseline; font-size:13px; }
+    .cf-fe-kv .k{ opacity:.78; }
+    .cf-fe-kv .v{ font-weight:800; text-align:right; }
+    .cf-fe-kv .v.dim{ opacity:.5; font-weight:700; }
+  </style>
+</div>

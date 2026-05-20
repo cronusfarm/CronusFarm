@@ -1,0 +1,92 @@
+[
+  {
+    "id": "tab_cronus_bedapi",
+    "type": "tab",
+    "label": "CronusFarm Bed API",
+    "disabled": false,
+    "info": "SQLite ~/CronusFarm/data/cronusfarm.sqlite\n- GET /api/cronus/beds\n- POST /api/cronus/bed (단일 추가) JSON {code,name,layers:[{layer_no,label}]}\n시드: scripts/pi-seed-cronusfarm-environment.sh"
+  },
+  {
+    "id": "http_in_beds_get",
+    "type": "http in",
+    "z": "tab_cronus_bedapi",
+    "name": "GET /api/cronus/beds",
+    "url": "/api/cronus/beds",
+    "method": "get",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 120,
+    "wires": [
+      [
+        "fn_beds_get"
+      ]
+    ]
+  },
+  {
+    "id": "fn_beds_get",
+    "type": "function",
+    "z": "tab_cronus_bedapi",
+    "name": "beds JSON 조회",
+    "func": "const db = '/home/dooly/CronusFarm/data/cronusfarm.sqlite';\nconst sql = \"SELECT b.id AS bed_id, b.code, b.name, b.sort_order, bl.id AS layer_id, bl.layer_no, bl.label, c.species, c.variety, c.planted_date, c.expected_harvest FROM bed b LEFT JOIN bed_layer bl ON bl.bed_id=b.id LEFT JOIN crop_assignment c ON c.bed_layer_id=bl.id WHERE b.active=1 ORDER BY b.sort_order, bl.layer_no\";\ntry {\n  const out = cp.execFileSync('sqlite3', ['-json', db, sql], { encoding: 'utf8', maxBuffer: 10*1024*1024, timeout: 15000 });\n  msg.statusCode = 200;\n  try { msg.payload = JSON.parse(out || '[]'); } catch (e) { msg.payload = []; }\n} catch (e) {\n  msg.statusCode = 500;\n  msg.payload = { error: String(e.message || e) };\n}\nmsg.headers = { 'Content-Type': 'application/json; charset=utf-8' };\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [ { "var": "cp", "module": "child_process" } ],
+    "x": 380,
+    "y": 120,
+    "wires": [
+      [
+        "http_res_beds"
+      ]
+    ]
+  },
+  {
+    "id": "http_in_beds_post",
+    "type": "http in",
+    "z": "tab_cronus_bedapi",
+    "name": "POST /api/cronus/bed",
+    "url": "/api/cronus/bed",
+    "method": "post",
+    "upload": false,
+    "swaggerDoc": "",
+    "x": 140,
+    "y": 220,
+    "wires": [
+      [
+        "fn_beds_post"
+      ]
+    ]
+  },
+  {
+    "id": "fn_beds_post",
+    "type": "function",
+    "z": "tab_cronus_bedapi",
+    "name": "bed 추가",
+    "func": "const db = '/home/dooly/CronusFarm/data/cronusfarm.sqlite';\nconst opt = { encoding: 'utf8', timeout: 15000 };\nlet body = (msg.req && msg.req.body !== undefined && msg.req.body !== null) ? msg.req.body : msg.payload;\nif (Buffer.isBuffer(body)) { try { body = JSON.parse(body.toString('utf8')); } catch (e) { msg.statusCode = 400; msg.payload = { error: 'JSON 파싱 실패' }; msg.headers = { 'Content-Type': 'application/json; charset=utf-8' }; return msg; } }\nif (typeof body === 'string') { try { body = JSON.parse(body); } catch (e) { msg.statusCode = 400; msg.payload = { error: 'JSON 파싱 실패' }; msg.headers = { 'Content-Type': 'application/json; charset=utf-8' }; return msg; } }\nif (!body || typeof body !== 'object') { msg.statusCode = 400; msg.payload = { error: '본문 필요' }; msg.headers = { 'Content-Type': 'application/json; charset=utf-8' }; return msg; }\nconst code = (body.code || '').toString().trim();\nconst name = (body.name || code).toString().trim();\nif (!/^[A-Za-z][A-Za-z0-9_]{0,15}$/.test(code)) { msg.statusCode = 400; msg.payload = { error: 'code 형식: 영문 시작, 1~16자' }; msg.headers = { 'Content-Type': 'application/json; charset=utf-8' }; return msg; }\nconst q = (s) => String(s).replace(/'/g, \"''\");\nconst layers = Array.isArray(body.layers) ? body.layers : [{ layer_no: 1, label: '1층' }];\nconst ins = \"INSERT INTO bed (code,name,sort_order) VALUES('\" + q(code) + \"','\" + q(name) + \"',900);\";\ntry {\n  cp.execFileSync('sqlite3', [db, ins], opt);\n} catch (e) {\n  const t = String(e.stderr || e.message || e);\n  msg.statusCode = /UNIQUE|unique/.test(t) ? 409 : 500;\n  msg.payload = { error: t || 'INSERT 실패' };\n  msg.headers = { 'Content-Type': 'application/json; charset=utf-8' };\n  return msg;\n}\nlet bid;\ntry {\n  const idOut = cp.execFileSync('sqlite3', [db, \"SELECT id FROM bed WHERE code='\" + q(code) + \"';\"], opt).trim();\n  bid = parseInt(idOut, 10);\n} catch (e) {\n  msg.statusCode = 500;\n  msg.payload = { error: String(e.message || e) };\n  msg.headers = { 'Content-Type': 'application/json; charset=utf-8' };\n  return msg;\n}\nfor (const L of layers) {\n  const no = parseInt(L.layer_no, 10) || 1;\n  const lab = q((L.label || (String(no) + '층')).toString());\n  const insL = \"INSERT INTO bed_layer (bed_id,layer_no,label) VALUES(\" + bid + \",\" + no + \",'\" + lab + \"');\";\n  try { cp.execFileSync('sqlite3', [db, insL], opt); } catch (e) { /* 무시 */ }\n}\nmsg.statusCode = 201;\nmsg.payload = { ok: true, bed_id: bid, code, name };\nmsg.headers = { 'Content-Type': 'application/json; charset=utf-8' };\nreturn msg;",
+    "outputs": 1,
+    "noerr": 0,
+    "initialize": "",
+    "finalize": "",
+    "libs": [ { "var": "cp", "module": "child_process" } ],
+    "x": 380,
+    "y": 220,
+    "wires": [
+      [
+        "http_res_beds"
+      ]
+    ]
+  },
+  {
+    "id": "http_res_beds",
+    "type": "http response",
+    "z": "tab_cronus_bedapi",
+    "name": "",
+    "statusCode": "",
+    "headers": {},
+    "x": 620,
+    "y": 180,
+    "wires": []
+  }
+]

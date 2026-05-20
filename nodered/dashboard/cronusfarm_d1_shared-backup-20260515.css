@@ -1,0 +1,100 @@
+/**
+ * CronusFarm Dashboard 1 — 모니터·설정 공통 디자인 토큰
+ * (단기: iframe 유지, 중기: script 마운트 시에도 동일 파일 재사용)
+ */
+:root {
+  --g0: #040d07;
+  --g1: #0a1a0f;
+  --g2: #0f2415;
+  --g3: #152e1a;
+  --accent: #2dff7a;
+  --accent2: #00e5ff;
+  --accent3: #ffb830;
+  --warn: #ff6b35;
+  --pu: #bb86fc;
+  --muted: #3a5c42;
+  --text: #c8e6c9;
+  --text2: #6b9c73;
+  --text3: #3a5c42;
+  --border: rgba(45, 255, 122, 0.07);
+  --border2: rgba(45, 255, 122, 0.16);
+  --card: rgba(10, 26, 15, 0.9);
+  --glow: 0 0 28px rgba(45, 255, 122, 0.07);
+  --fh: "Syne", sans-serif;
+  --fm: "DM Mono", monospace;
+  --fb: "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+  --r: 14px;
+  /* D1 대시보드·설정 iframe 공통 별칭 */
+  --cf-bg0: var(--g0);
+  --cf-bg: var(--g1);
+  --cf-card: var(--card);
+  --cf-line: var(--border2);
+  --cf-text: var(--text);
+  --cf-muted: var(--text2);
+  --cf-accent: var(--accent);
+  --cf-title: var(--accent3);
+  --cf-on: #34c759;
+  --cf-off: var(--warn);
+  --cf-auto: var(--accent3);
+  --cf-manual: #eaf7ee;
+  --cf-good: var(--cf-on);
+  --cf-bad: var(--warn);
+  --cf-radius: var(--r);
+  --cf-pad-x: 14px;
+  --cf-pad-y: 16px;
+}
+
+/* 설정 탭 안내 패널 (ui_template) */
+.cf-settings-arch {
+  font-family: var(--fb);
+  color: var(--cf-text);
+  padding: 8px 12px;
+  margin: 0 0 8px;
+  border-radius: var(--r);
+  border: 1px solid var(--border2);
+  background: rgba(10, 26, 15, 0.85);
+  box-shadow: var(--glow);
+}
+.cf-settings-arch h4 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  color: var(--cf-title);
+  font-weight: 800;
+}
+.cf-settings-arch p {
+  margin: 4px 0;
+  font-size: 11px;
+  color: var(--cf-muted);
+  line-height: 1.45;
+}
+.cf-settings-arch code {
+  color: #ffcc80;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+
+/* 모니터 cf-tile 과 동일한 상태 점·필 (설정 채널 행용) */
+.cf-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  margin: 0 auto;
+}
+.cf-dot-on,
+.cf-dot.cf-dot-on {
+  background: var(--cf-on);
+  box-shadow: 0 0 10px rgba(45, 255, 122, 0.45);
+}
+.cf-dot-off,
+.cf-dot.cf-dot-off {
+  background: var(--cf-off);
+  box-shadow: 0 0 10px rgba(255, 107, 53, 0.35);
+}
+.cf-pin {
+  color: var(--text2);
+  font-weight: 600;
+  font-size: 11px;
+  margin-left: 6px;
+}
