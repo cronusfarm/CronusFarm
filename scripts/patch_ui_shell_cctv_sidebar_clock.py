@@ -97,16 +97,24 @@ MAIN_CCTV_NEW = (
 NEW_SCRIPT = """<script>
 (function(){
   function pad(n){return String(n).padStart(2,'0');}
+  var CF_TZ='Asia/Seoul';
+  function kstParts(d){
+    var o={};
+    new Intl.DateTimeFormat('en-GB',{timeZone:CF_TZ,hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).formatToParts(d).forEach(function(p){o[p.type]=p.value;});
+    return o;
+  }
   function fmtKst(d){
-    var k=new Date(d.getTime()+9*60*60*1000);
-    return k.getUTCFullYear()+'-'+pad(k.getUTCMonth()+1)+'-'+pad(k.getUTCDate())+' '+pad(k.getUTCHours())+':'+pad(k.getUTCMinutes())+':'+pad(k.getUTCSeconds())+' KST';
+    var p=kstParts(d||new Date());
+    return p.year+'.'+p.month+'.'+p.day+' '+p.hour+':'+p.minute+':'+p.second;
   }
   function tick(){
-    var d=new Date();
+    var line=fmtKst(new Date());
+    var sp=line.indexOf(' ');
+    var date=line.slice(0,sp), time=line.slice(sp+1);
     var el=document.querySelector('#cf-shell #clock');
-    if(el) el.innerHTML = '<span>'+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())+'</span>&nbsp; '+d.getFullYear()+'.'+pad(d.getMonth()+1)+'.'+pad(d.getDate());
+    if(el) el.innerHTML = '<span>'+time+'</span>&nbsp; '+date;
     var sb=document.querySelector('#cf-shell #cf-sidebar-clock');
-    if(sb) sb.innerHTML = '<b>'+fmtKst(d)+'</b>';
+    if(sb) sb.innerHTML = '<b>'+line+' KST</b>';
   }
   tick(); setInterval(tick,1000);
 

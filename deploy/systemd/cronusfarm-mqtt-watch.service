@@ -15,6 +15,11 @@ Environment=CRONUSFARM_MQTT_TELE_STALE_SEC=45
 Environment=CRONUSFARM_MQTT_WATCH_GRACE_SEC=45
 Environment=CRONUSFARM_MQTT_ALERT_COOLDOWN_SEC=300
 Environment=CRONUSFARM_MQTT_RECOVER_NOTIFY=1
+Environment=CRONUSFARM_MQTT_AUTO_RECOVER=1
+Environment=CRONUSFARM_MQTT_AUTO_RECOVER_AFTER_SEC=180
+Environment=CRONUSFARM_MQTT_AUTO_RECOVER_COOLDOWN_SEC=1800
+Environment=CRONUSFARM_MQTT_AUTO_RECOVER_NOTIFY=1
+Environment=CRONUSFARM_SECRETS_PATH=/home/dooly/CronusFarm/arduino/CronusFarm/secrets.h
 ExecStart=/bin/bash -lc 'set -a; [ -f /etc/cronusfarm/nodered-telegram.env ] && . /etc/cronusfarm/nodered-telegram.env; set +a; exec /usr/bin/python3 /home/dooly/CronusFarm/scripts/cronusfarm_mqtt_watch.py'
 Restart=always
 RestartSec=10

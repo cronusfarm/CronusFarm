@@ -24,20 +24,25 @@ fi
 sudo mkdir -p /etc/cronusfarm /etc/systemd/system/nodered.service.d
 sudo cp -f "$DROPIN_SRC" /etc/systemd/system/nodered.service.d/10-cronusfarm-telegram.conf
 
-# NR 기동 후 AI 카메라 재시작(저장소에 20-cronusfarm-camera-ai.conf 가 있을 때만 복사)
-CAM_DROPIN="${ROOT}/deploy/systemd/nodered.service.d/20-cronusfarm-camera-ai.conf"
+# NR 기동 후 ustreamer + Hailo AI 카메라 (8081 충돌 방지)
+CAM_DROPIN="${ROOT}/deploy/systemd/nodered.service.d/20-cronusfarm-hailo-camera.conf"
 if [[ -f "$CAM_DROPIN" ]]; then
-  sudo cp -f "$CAM_DROPIN" /etc/systemd/system/nodered.service.d/20-cronusfarm-camera-ai.conf
+  sudo mkdir -p /etc/systemd/system/nodered.service.d
+  sudo cp -f "$CAM_DROPIN" /etc/systemd/system/nodered.service.d/20-cronusfarm-hailo-camera.conf
+  sudo rm -f /etc/systemd/system/nodered.service.d/20-cronusfarm-camera-ai.conf
+  sudo systemctl daemon-reload
 fi
 
 if [[ ! -f "$ENV_DST" ]]; then
   sudo cp "$ENV_EXAMPLE" "$ENV_DST"
-  sudo chmod 600 "$ENV_DST"
-  sudo chown root:root "$ENV_DST"
-  echo "생성: $ENV_DST — BotFather 토큰·chat_id 를 넣은 뒤: sudo systemctl restart nodered.service"
+  echo "생성: $ENV_DST — BotFather 토큰·chat_id·GEMINI 키 입력 후 재시작"
 else
   echo "유지: $ENV_DST (이미 있음)"
 fi
+# nodered User=dooly — root-only 600 이면 EnvironmentFile·vision.py 가 키를 못 읽음
+NR_USER="$(systemctl show -p User --value nodered.service 2>/dev/null || echo dooly)"
+sudo chown "root:${NR_USER}" "$ENV_DST"
+sudo chmod 640 "$ENV_DST"
 
 sudo systemctl daemon-reload
 sudo systemctl restart nodered.service

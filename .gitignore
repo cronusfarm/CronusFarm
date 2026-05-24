@@ -1,5 +1,7 @@
 # Arduino — 로컬 비밀(원격 저장소에 올리지 말 것)
 arduino/CronusFarm/secrets.h
+deploy/env/oauth2-proxy.env
+deploy/env/duckdns.env
 
 # 빌드 산출물
 build/

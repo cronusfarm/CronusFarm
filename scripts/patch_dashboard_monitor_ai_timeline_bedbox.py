@@ -47,6 +47,23 @@ body.nr-dashboard-theme md-card:has(.cf-bed-hist-box) .nr-dashboard-template{
 .cf-bed-hist-cwrap canvas{width:100%!important;height:62px!important;max-height:none!important;display:block;}
 """
 
+SCHED_DEF_CSS = """
+/* 기본 스케줄표 — Bed별 카드(타일) */
+.cf-sched-def-box{font-family:system-ui,sans-serif;padding:0 4px 6px;margin:0;}
+.nr-dashboard-theme .nr-dashboard-group:has(.cf-sched-def-box) .nr-dashboard-template,
+body.nr-dashboard-theme md-card:has(.cf-sched-def-box) .nr-dashboard-template{
+  height:auto!important;min-height:0!important;max-height:none!important;}
+.cf-sched-def-hd{font-size:13px;color:#aed581;margin:0 0 2px;font-weight:800;}
+.cf-sched-def-sub{font-size:11px;color:#9db0cc;margin:0 0 8px;}
+.cf-sched-def-beds{display:flex;flex-direction:column;gap:10px;}
+.cf-sched-def-bed-hd{font-size:12px;color:#8bc34a;font-weight:800;margin:0 0 6px;}
+.cf-sched-def-tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:6px;}
+.cf-sched-def-tile{background:rgba(30,40,55,.72);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:8px 9px;min-height:64px;}
+.cf-sched-def-tile-ch{font-size:11px;font-weight:800;color:#e6edf7;margin:0 0 4px;}
+.cf-sched-def-tile-kind{display:inline-block;font-size:10px;font-weight:700;color:#ffcc80;background:rgba(255,204,128,.12);padding:2px 6px;border-radius:6px;margin:0 0 5px;}
+.cf-sched-def-tile-detail{font-size:10px;color:#b8c5d9;line-height:1.35;}
+"""
+
 CSS_INJECT = """
 /* AI 카메라: 높이 확보 + 캡션 오버레이 + 잘림 방지 */
 .nr-dashboard-theme .cf-ai-cam-outer{position:relative;width:100%;display:inline-block;max-width:100%;vertical-align:top;}
@@ -55,7 +72,7 @@ CSS_INJECT = """
 .nr-dashboard-theme .cf-ai-cam-caption{position:absolute;left:0;right:0;bottom:0;z-index:3;padding:8px 10px;font-size:13px;font-weight:800;color:#e8f5e9;text-align:center;line-height:1.35;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,.95);background:linear-gradient(180deg,transparent,rgba(0,0,0,.82));}
 .nr-dashboard-theme .nr-dashboard-group:has(.cf-ai-cam-outer) .nr-dashboard-template,
 body.nr-dashboard-theme md-card:has(.cf-ai-cam-outer) .nr-dashboard-template{overflow:visible!important;max-height:none!important;height:auto!important;}
-""" + BED_HIST_CSS
+""" + BED_HIST_CSS + SCHED_DEF_CSS
 
 GH_GAUGE_MARK = "/* cf-gh-sensor-gauge-text v1 */"
 GH_GAUGE_END = "/* end cf-gh-sensor */"
@@ -129,12 +146,15 @@ def _inject_or_refresh_gh_gauge_css(fmt: str) -> str:
     return fmt + "\n<style>\n" + core + "</style>\n"
 
 
-# 툴바 시계: body MutationObserver + textContent 갱신이 상호 재진입해 /ui 탭 멈춤 → Observer 미사용, mount만 저빈도
+# 툴바 시계: V2 가드(구 __cfMonitorToolbarClock 세션 잔존 무시) + Pi API 시각 보정
 MONITOR_CLOCK_BOOT = r"""<script type="text/javascript">
 (function(){
-  if(window.__cfMonitorToolbarClock)return; window.__cfMonitorToolbarClock=1;
+  if(window.__cfMonitorToolbarClockV2)return; window.__cfMonitorToolbarClockV2=1;
   var ID="cf-monitor-tab-clock";
   var NEEDLE="CronusFarm";
+  var CF_TZ="Asia/Seoul";
+  var skewMs=0;
+  function pad2(n){return String(n).padStart(2,"0");}
   function findToolbarTools(){
     var list=document.querySelectorAll("md-toolbar .md-toolbar-tools");
     for(var i=0;i<list.length;i++){
@@ -143,13 +163,27 @@ MONITOR_CLOCK_BOOT = r"""<script type="text/javascript">
     }
     return document.querySelector("md-toolbar .md-toolbar-tools");
   }
+  function fmtKstNow(){
+    var d=new Date(Date.now()+skewMs);
+    try{
+      var p={};
+      new Intl.DateTimeFormat("en-GB",{timeZone:CF_TZ,hour12:false,year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"}).formatToParts(d).forEach(function(x){p[x.type]=x.value;});
+      return p.year+"."+p.month+"."+p.day+" "+p.hour+":"+p.minute+":"+p.second+" KST";
+    }catch(e){
+      var t=d.getTime()+9*60*60*1000,u=new Date(t);
+      return u.getUTCFullYear()+"."+pad2(u.getUTCMonth()+1)+"."+pad2(u.getUTCDate())+" "+pad2(u.getUTCHours())+":"+pad2(u.getUTCMinutes())+":"+pad2(u.getUTCSeconds())+" KST";
+    }
+  }
+  function syncServer(){
+    fetch("/farm/cronusfarm-sqlite/api/time/now",{credentials:"same-origin"})
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(j){if(j&&j.pi_ts_ms)skewMs=Number(j.pi_ts_ms)-Date.now();})
+      .catch(function(){});
+  }
   function tick(){
     var el=document.getElementById(ID);
     if(!el) return;
-    el.textContent=new Date().toLocaleString("ko-KR",{
-      year:"numeric",month:"2-digit",day:"2-digit",
-      hour:"2-digit",minute:"2-digit",second:"2-digit",hour12:false
-    });
+    el.textContent=fmtKstNow();
   }
   function mount(){
     var host=findToolbarTools();
@@ -162,9 +196,12 @@ MONITOR_CLOCK_BOOT = r"""<script type="text/javascript">
     }
     tick();
   }
+  syncServer();
+  setInterval(syncServer,60000);
   setInterval(tick,1000);
-  setInterval(mount,8000);
+  setInterval(mount,2000);
   setTimeout(mount,0);
+  setTimeout(mount,800);
 })();
 </script>
 """
@@ -211,14 +248,115 @@ AI_FMT = MONITOR_CLOCK_BOOT + r"""<div class="cf-ai-cam-outer">
 # Bed 타임라인 카드 제목(스택 HTML)
 _BED_HIST_TITLE = {"a": "A Bed", "b": "B Bed", "c": "C Bed", "d": "D Bed"}
 
+# farm-ui scheduleDefaultsDisplay.js 와 동일 (builtin·DB 시드)
+SCHEDULE_DEFAULTS_BEDS = [
+  {
+    "bed": "A Bed",
+    "rows": [
+      { "label": "LED A1", "rule": "시간대", "detail": "06:30 ~ 18:30 ON · 그 외 OFF" },
+      { "label": "LED A2", "rule": "시간대", "detail": "06:30 ~ 18:30 ON · 그 외 OFF" },
+      {
+        "label": "Pump A1",
+        "rule": "주기",
+        "detail": "0시부터 15분 ON / 20분 OFF 반복 (하루 종일)",
+      },
+      {
+        "label": "Pump A2",
+        "rule": "주기",
+        "detail": "09:00~17:00 → 10분 ON / 50분 OFF · 그 외 5분 ON / 55분 OFF",
+      },
+      { "label": "Fan A1", "rule": "시간대", "detail": "06:00 ~ 24:00 ON · 그 외 OFF" },
+      { "label": "Fan A2", "rule": "시간대", "detail": "06:00 ~ 24:00 ON · 그 외 OFF" },
+    ],
+  },
+  {
+    "bed": "B Bed",
+    "rows": [
+      { "label": "LED B1", "rule": "시간대", "detail": "07:30 ~ 17:30 ON · 그 외 OFF" },
+      { "label": "LED B2", "rule": "시간대", "detail": "07:30 ~ 17:30 ON · 그 외 OFF" },
+      {
+        "label": "Pump B1",
+        "rule": "주기",
+        "detail": "07:30~17:30 → 3분 ON / 7분 OFF · 그 외 1분 ON / 9분 OFF",
+      },
+      {
+        "label": "Pump B2",
+        "rule": "주기",
+        "detail": "09:00~17:00 → 10분 ON / 50분 OFF · 그 외 5분 ON / 55분 OFF",
+      },
+      { "label": "Fan B1", "rule": "시간대", "detail": "06:00 ~ 24:00 ON · 그 외 OFF" },
+      { "label": "Fan B2", "rule": "시간대", "detail": "06:00 ~ 24:00 ON · 그 외 OFF" },
+    ],
+  },
+  {
+    "bed": "C Bed",
+    "rows": [
+      { "label": "Pump C1", "rule": "주기", "detail": "1시간 주기 · 1분 ON" },
+      { "label": "Pump C2", "rule": "주기", "detail": "2시간 주기 · 1분 ON" },
+    ],
+  },
+  {
+    "bed": "D Bed",
+    "rows": [
+      { "label": "Pump D1", "rule": "주기", "detail": "3시간 주기 · 1분 ON" },
+      { "label": "Pump D2", "rule": "주기", "detail": "4시간 주기 · 1분 ON" },
+    ],
+  },
+]
 
-def _fill_rgba(hex_color: str, alpha: float = 0.38) -> str:
+
+# 실제 동작(tele) 타임라인 ON 구간 채움 — 선색 동일·연한 투명(24h 차트 tele 범례 0.09와 맞춤)
+HIST_FILL_ALPHA = 0.12
+
+
+def _fill_rgba(hex_color: str, alpha: float = HIST_FILL_ALPHA) -> str:
     """ON 구간 채우기용 — 선색과 동일 톤의 반투명 배경."""
     h = (hex_color or "").strip().lstrip("#")
     if len(h) != 6 or not all(c in "0123456789abcdefABCDEF" for c in h):
         return f"rgba(127,127,127,{alpha})"
     r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
     return f"rgba({r},{g},{b},{alpha})"
+
+
+def _fmt_sched_defaults_cards() -> str:
+    """모니터 탭: 기본 스케줄표 카드(타일) 그리드."""
+    beds_html = []
+    for bed in SCHEDULE_DEFAULTS_BEDS:
+        tiles = []
+        for row in bed["rows"]:
+            tiles.append(
+                f'<div class="cf-sched-def-tile">'
+                f'<div class="cf-sched-def-tile-ch">{row["label"]}</div>'
+                f'<span class="cf-sched-def-tile-kind">{row["rule"]}</span>'
+                f'<div class="cf-sched-def-tile-detail">{row["detail"]}</div>'
+                f"</div>"
+            )
+        beds_html.append(
+            f'<section class="cf-sched-def-bed">'
+            f'<div class="cf-sched-def-bed-hd">{bed["bed"]}</div>'
+            f'<div class="cf-sched-def-tiles">{"".join(tiles)}</div>'
+            f"</section>"
+        )
+    return (
+        '<div class="cf-sched-def-box">'
+        '<div class="cf-sched-def-hd">기본 스케줄표</div>'
+        '<p class="cf-sched-def-sub">Bed 순 · DB 시드·펌웨어 builtin 동일 (테스트 중 pump D는 DB 값과 다를 수 있음)</p>'
+        f'<div class="cf-sched-def-beds">{"".join(beds_html)}</div>'
+        "</div>"
+    )
+
+
+def _sched_defaults_grid_height() -> int:
+    n = sum(len(b["rows"]) for b in SCHEDULE_DEFAULTS_BEDS)
+    return max(6, min(14, 3 + (n + 3) // 4))
+
+
+def _remove_sched_defaults_monitor(flows: list) -> int:
+    """모니터 탭 기본 스케줄 카드(타일) 제거 — 설정 SPA 「채널별 스케줄 편집」에만 표."""
+    drop = {"ui_grp_sched_defaults", "ui_tpl_sched_defaults_monitor"}
+    before = len(flows)
+    flows[:] = [n for n in flows if n.get("id") not in drop]
+    return before - len(flows)
 
 
 def _nr_bed_hist_height(num_channels: int) -> int:
@@ -241,7 +379,7 @@ def _fmt_stack(bed: str, channels: list[str], labels: list[str], colors: list[st
     fills_json = json.dumps([_fill_rgba(c) for c in colors], ensure_ascii=False)
     title = _BED_HIST_TITLE.get(bed, bed.upper() + " Bed")
     return f"""<div class="cf-bed-hist-box">
-  <div class="cf-bed-hist-hd">{title} — 24h ON/OFF</div>
+  <div class="cf-bed-hist-hd">{title} — 48h ON/OFF</div>
   <div class="cf-bed-hist-stack">
     {rows_html}
   </div>
@@ -293,17 +431,32 @@ def _fmt_stack(bed: str, channels: list[str], labels: list[str], colors: list[st
     try {{ const s = localStorage.getItem('cfDeviceId'); if (s && s.trim()) return s.trim(); }} catch (e) {{}}
     return 'cronusfarm-01';
   }}
+  const FILL_ALPHA = {HIST_FILL_ALPHA};
+  function fillRgba(hex) {{
+    var h = String(hex || '').replace('#', '');
+    if (h.length !== 6) return 'rgba(127,127,127,' + FILL_ALPHA + ')';
+    var r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+    return 'rgba(' + r + ',' + g + ',' + b + ',' + FILL_ALPHA + ')';
+  }}
+  const FILLS_DYN = COLS.map(fillRgba);
   function mapTime(j) {{
-    /* API anchor_ts_ms 대신 window_end·hours로만 창 고정(정확히 N시간 롤링) */
-    const tEnd = (j.window_end_ms != null && isFinite(Number(j.window_end_ms))) ? Number(j.window_end_ms) : Date.now();
+    if (!j) return {{ tStart: Date.now() - 48 * 3600 * 1000, tEnd: Date.now() }};
     const h = Number(j.hours);
-    const hrs = (isFinite(h) && h >= 1 && h <= 168) ? h : 24;
-    return {{ tStart: tEnd - hrs * 3600 * 1000, tEnd: tEnd }};
+    const hrs = (isFinite(h) && h >= 1 && h <= 168) ? h : 48;
+    const tEnd = (j.window_end_ms != null && isFinite(Number(j.window_end_ms))) ? Number(j.window_end_ms) : Date.now();
+    let tStart;
+    if (hrs <= 24 && j.anchor_ts_ms != null && isFinite(Number(j.anchor_ts_ms))) {{
+      tStart = Number(j.anchor_ts_ms);
+    }} else {{
+      tStart = tEnd - hrs * 3600 * 1000;
+    }}
+    return {{ tStart: tStart, tEnd: tEnd }};
   }}
   function renderOne(i, j) {{
     const ch = CHANNELS[i];
     const el = document.getElementById('cf_hc_' + BED + '_' + ch);
-    if (!el || !j) return;
+    if (!el) return;
+    if (!j) j = {{ hours: 48, points: [], window_end_ms: Date.now() }};
     try {{
       const tt = mapTime(j);
       const x0 = Number(tt.tStart);
@@ -363,13 +516,13 @@ def _fmt_stack(bed: str, channels: list[str], labels: list[str], colors: list[st
       if (!charts[i]) {{
         charts[i] = new Chart(el.getContext('2d'), {{
           type: 'line',
-          data: {{ datasets: [{{ label: LABELS[i], data: data, parsing: false, stepped: true, borderWidth: 1.5, borderColor: COLS[i], backgroundColor: FILLS[i], fill: true, pointRadius: 0 }}]}},
+          data: {{ datasets: [{{ label: LABELS[i], data: data, parsing: false, stepped: true, borderWidth: 1.5, borderColor: COLS[i], backgroundColor: FILLS_DYN[i], fill: true, pointRadius: 0 }}]}},
           options: opt
         }});
       }} else {{
         charts[i].data.datasets[0].data = data;
         charts[i].data.datasets[0].borderColor = COLS[i];
-        charts[i].data.datasets[0].backgroundColor = FILLS[i];
+        charts[i].data.datasets[0].backgroundColor = FILLS_DYN[i];
         charts[i].options.scales.x.min = x0;
         charts[i].options.scales.x.max = x1;
         charts[i].options.scales.x.ticks.stepSize = xTickStep;
@@ -379,17 +532,22 @@ def _fmt_stack(bed: str, channels: list[str], labels: list[str], colors: list[st
   }}
   async function loadAll() {{
     try {{
-      const u = API_BATCH + '?device_id=' + encodeURIComponent(deviceId()) + '&channels=' + encodeURIComponent(CHANNELS.join(',')) + '&hours=24';
+      const u = API_BATCH + '?device_id=' + encodeURIComponent(deviceId()) + '&channels=' + encodeURIComponent(CHANNELS.join(',')) + '&hours=48';
       const r = await fetch(u, {{ credentials: 'same-origin' }});
-      if (!r.ok) return;
+      if (!r.ok) {{ console.warn('timeline batch HTTP', r.status, BED); return; }}
       const batch = await r.json();
       const map = batch.channels || {{}};
-      await Promise.all(CHANNELS.map(function(ch, i) {{ return renderOne(i, map[ch]); }}));
-    }} catch (e) {{ console.warn(e); }}
+      CHANNELS.forEach(function(ch, i) {{ renderOne(i, map[ch]); }});
+    }} catch (e) {{ console.warn('timeline load', BED, e); }}
   }}
-  scope.$watch('msg', function() {{ ensureChart(loadAll); }});
-  setInterval(function() {{ ensureChart(loadAll); }}, 60000);
-  setTimeout(function() {{ ensureChart(loadAll); }}, 80);
+  function boot() {{ ensureChart(loadAll); }}
+  boot();
+  setInterval(boot, 60000);
+  setTimeout(boot, 200);
+  setTimeout(boot, 1200);
+  if (scope && scope.$watch) {{
+    scope.$watch('msg', function() {{ boot(); }});
+  }}
 }})(scope);
 </script>"""
 
@@ -416,6 +574,27 @@ def patch_nginx() -> bool:
     txt = txt.replace(needle, insert + needle, 1)
     NGINX.write_text(txt, encoding="utf-8")
     return True
+
+
+def _apply_hist_nodes(flows: list, ch_a, lb_a, col_a, ch_b, lb_b, col_b, ch_c, lb_c, col_c, ch_d, lb_d, col_d) -> int:
+    """ui_tpl_hist_stack_* format 갱신."""
+    specs = {
+        "ui_tpl_hist_stack_a": ("a", ch_a, lb_a, col_a),
+        "ui_tpl_hist_stack_b": ("b", ch_b, lb_b, col_b),
+        "ui_tpl_hist_stack_c": ("c", ch_c, lb_c, col_c),
+        "ui_tpl_hist_stack_d": ("d", ch_d, lb_d, col_d),
+    }
+    n = 0
+    for node in flows:
+        nid = node.get("id")
+        if nid not in specs:
+            continue
+        bed, ch, lb, col = specs[nid]
+        ha = _nr_bed_hist_height(len(ch))
+        node["format"] = _fmt_stack(bed, ch, lb, col)
+        node["height"] = ha
+        n += 1
+    return n
 
 
 def main() -> None:
@@ -522,6 +701,8 @@ def main() -> None:
             fmt = _repair_ui_tpl_css_cronus_format((n.get("format") or ""))
             if "cf-bed-hist-box" in fmt:
                 fmt = RE_BED_HIST_CSS_BLOCK.sub(BED_HIST_CSS.strip() + "\n", fmt, count=1)
+            if "cf-sched-def-box" not in fmt and "</style>" in fmt:
+                fmt = fmt.replace("</style>", SCHED_DEF_CSS.strip() + "\n</style>", 1)
             elif "cf-bed-hist-box" not in fmt:
                 fmt = fmt.rstrip()
                 if fmt.endswith("</style>"):
@@ -532,6 +713,17 @@ def main() -> None:
             n["format"] = fmt
 
     DASH.write_text(json.dumps(d, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    flow_path = ROOT / "nodered" / "CronusFarm_NodeRED_flow.json"
+    if flow_path.is_file():
+        flow = json.loads(flow_path.read_text(encoding="utf-8-sig"))
+        nf = _apply_hist_nodes(
+            flow, ch_a, lb_a, col_a, ch_b, lb_b, col_b, ch_c, lb_c, col_c, ch_d, lb_d, col_d
+        )
+        nd = _remove_sched_defaults_monitor(flow)
+        flow_path.write_text(
+            json.dumps(flow, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+        )
+        print("OK", flow_path.name, "hist nodes", nf, "sched monitor removed", nd)
     ng = patch_nginx()
     print("OK dashboard bed A~D stacks + AI; nginx ai-mjpeg:", "patched" if ng else "skip")
 

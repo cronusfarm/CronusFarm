@@ -1,7 +1,8 @@
 [Unit]
 Description=CronusFarm Hailo YOLO MJPEG (8081, best.hef)
-After=network-online.target mosquitto.service
-Wants=network-online.target
+After=network-online.target mosquitto.service cronusfarm-ustreamer.service
+Wants=network-online.target cronusfarm-ustreamer.service
+Conflicts=cronusfarm-camera-ai.service
 
 [Service]
 Type=simple

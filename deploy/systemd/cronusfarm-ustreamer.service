@@ -1,0 +1,15 @@
+[Unit]
+Description=CronusFarm USB camera MJPEG (ustreamer :8080)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=dooly
+Group=dooly
+ExecStart=/usr/bin/ustreamer --device=/dev/video0 --host=0.0.0.0 --port=8080 --resolution=640x480 --desired-fps=15 --format=mjpeg
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

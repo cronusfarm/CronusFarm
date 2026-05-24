@@ -4,12 +4,12 @@ export const SCHEDULE_DEFAULTS_BEDS = [
   {
     bed: 'A Bed',
     rows: [
-      { label: 'LED A1', rule: '시간대', detail: '07:30 ~ 17:30 ON · 그 외 OFF' },
+      { label: 'LED A1', rule: '시간대', detail: '06:30 ~ 18:30 ON · 그 외 OFF' },
       { label: 'LED A2', rule: '시간대', detail: '06:30 ~ 18:30 ON · 그 외 OFF' },
       {
         label: 'Pump A1',
         rule: '주기',
-        detail: '09:00~17:00 → 10분 ON / 50분 OFF · 그 외 5분 ON / 55분 OFF',
+        detail: '0시부터 15분 ON / 20분 OFF 반복 (하루 종일)',
       },
       {
         label: 'Pump A2',
@@ -28,7 +28,7 @@ export const SCHEDULE_DEFAULTS_BEDS = [
       {
         label: 'Pump B1',
         rule: '주기',
-        detail: '07:30~17:30 → 10분 ON / 50분 OFF · 그 외 5분 ON / 55분 OFF',
+        detail: '07:30~17:30 → 3분 ON / 7분 OFF · 그 외 1분 ON / 9분 OFF',
       },
       {
         label: 'Pump B2',

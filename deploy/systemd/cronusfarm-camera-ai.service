@@ -1,8 +1,10 @@
 [Unit]
-Description=CronusFarm AI 카메라 MJPEG (8081 /video_feed)
-# Node-RED(MQTT·플로우) 준비 후 기동 — nodered.service.d/20-cronusfarm-camera-ai.conf 가 NR 기동 시 try-restart
+Description=CronusFarm AI 카메라 MJPEG (8081 /video_feed, Hailo 미사용 시 폴백)
+# Hailo best.hef 있으면 cronusfarm-hailo-stream 사용 — 이 서비스는 기동하지 않음
+ConditionPathExists=!/home/dooly/CronusFarm/Hailo/best.hef
 After=network-online.target mosquitto.service nodered.service
 Wants=network-online.target
+Conflicts=cronusfarm-hailo-stream.service
 
 [Service]
 Type=simple

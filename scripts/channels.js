@@ -1,8 +1,9 @@
 /** Bed·24h 스케줄·설정 화면 공통 채널 순서 */
+/** 펌웨어 CH_KEY[] / CH_PIN[] 순서와 동일 */
 export const CF_SCH_CHANNELS = [
-  'led_a1', 'led_a2', 'pump_a1', 'pump_a2', 'fan_a1', 'fan_a2',
-  'led_b1', 'led_b2', 'pump_b1', 'pump_b2', 'fan_b1', 'fan_b2',
-  'pump_c1', 'pump_c2', 'pump_d1', 'pump_d2',
+  'led_a1', 'led_a2', 'led_b1', 'pump_a1', 'pump_a2', 'pump_b1', 'pump_b2',
+  'fan_a1', 'fan_a2', 'fan_b1', 'fan_b2',
+  'pump_c1', 'pump_c2', 'pump_d1', 'pump_d2', 'led_b2',
 ]
 
 export const BEDS = [

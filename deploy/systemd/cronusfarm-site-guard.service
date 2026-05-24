@@ -1,0 +1,8 @@
+[Unit]
+Description=CronusFarm site guard (farm-ui perms, NR, bridge)
+After=network-online.target nginx.service
+
+[Service]
+Type=oneshot
+Environment=CRONUSFARM_ROOT=/home/dooly/CronusFarm
+ExecStart=/bin/bash /home/dooly/CronusFarm/scripts/pi-cronusfarm-site-guard.sh

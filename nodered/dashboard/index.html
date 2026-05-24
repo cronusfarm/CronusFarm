@@ -32,6 +32,107 @@
       rel="stylesheet"
     />
     <title>CronusFarm</title>
+    <!-- 설정 탭: Dashboard 1 프리뷰 없이 farm-ui SPA로 즉시 이동 -->
+    <script type="text/javascript">
+      (function () {
+        var h = location.hash || '';
+        if (h.indexOf('ui-tab_settings') >= 0) {
+          location.replace((location.origin || '') + '/farm/ui/#/');
+        }
+      })();
+    </script>
+    <!-- 모니터 탭 툴바 시계: Asia/Seoul 고정 (PC 로컬 TZ·구 가드 무관) -->
+    <script type="text/javascript">
+      (function () {
+        if (window.__cfMonitorToolbarClockV2) return;
+        window.__cfMonitorToolbarClockV2 = 1;
+        var ID = 'cf-monitor-tab-clock';
+        var NEEDLE = 'CronusFarm';
+        var CF_TZ = 'Asia/Seoul';
+        var skewMs = 0;
+        function pad2(n) {
+          return String(n).padStart(2, '0');
+        }
+        function findToolbarTools() {
+          var list = document.querySelectorAll('md-toolbar .md-toolbar-tools');
+          for (var i = 0; i < list.length; i++) {
+            var el = list[i];
+            if (el.querySelector('md-tabs') && (el.textContent || '').indexOf(NEEDLE) >= 0) return el;
+          }
+          return document.querySelector('md-toolbar .md-toolbar-tools');
+        }
+        function fmtKstNow() {
+          var d = new Date(Date.now() + skewMs);
+          try {
+            var p = {};
+            new Intl.DateTimeFormat('en-GB', {
+              timeZone: CF_TZ,
+              hour12: false,
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit',
+            }).formatToParts(d).forEach(function (x) {
+              p[x.type] = x.value;
+            });
+            return (
+              p.year + '.' + p.month + '.' + p.day + ' ' + p.hour + ':' + p.minute + ':' + p.second + ' KST'
+            );
+          } catch (e) {
+            var t = d.getTime() + 9 * 60 * 60 * 1000;
+            var u = new Date(t);
+            return (
+              u.getUTCFullYear() +
+              '.' +
+              pad2(u.getUTCMonth() + 1) +
+              '.' +
+              pad2(u.getUTCDate()) +
+              ' ' +
+              pad2(u.getUTCHours()) +
+              ':' +
+              pad2(u.getUTCMinutes()) +
+              ':' +
+              pad2(u.getUTCSeconds()) +
+              ' KST'
+            );
+          }
+        }
+        function syncServer() {
+          fetch('/farm/cronusfarm-sqlite/api/time/now', { credentials: 'same-origin' })
+            .then(function (r) {
+              return r.ok ? r.json() : null;
+            })
+            .then(function (j) {
+              if (j && j.pi_ts_ms) skewMs = Number(j.pi_ts_ms) - Date.now();
+            })
+            .catch(function () {});
+        }
+        function tick() {
+          var el = document.getElementById(ID);
+          if (!el) return;
+          el.textContent = fmtKstNow();
+        }
+        function mount() {
+          var host = findToolbarTools();
+          if (!host) return;
+          var el = document.getElementById(ID);
+          if (!el) {
+            el = document.createElement('span');
+            el.id = ID;
+            host.appendChild(el);
+          }
+          tick();
+        }
+        syncServer();
+        setInterval(syncServer, 60000);
+        setInterval(tick, 1000);
+        setInterval(mount, 2000);
+        setTimeout(mount, 0);
+        setTimeout(mount, 800);
+      })();
+    </script>
   </head>
 
   <body
@@ -46,8 +147,8 @@
     ng-swipe-left="onSwipeLeft();"
     ng-attr-ng-swipe-disable-mouse="{{main.allowSwipe !== 'mouse' ? '' : undefined}}"
   >
-    <!-- 프리뷰(로딩 전): Node-RED가 로드되면 자동 숨김 -->
-    <div id="cf-preview" ng-if="!main.loaded && !main.nothing" aria-label="CronusFarm preview">
+    <!-- 로딩 프리뷰 제거: NR Dashboard 본 UI만 표시 -->
+    <div id="cf-preview" ng-if="false" aria-hidden="true" style="display:none!important">
       <style>
         /* 첨부 HTML 디자인 컨셉(스코프 적용: #cf-preview 내부만) */
         #cf-preview{
@@ -190,11 +291,21 @@
       <script>
         (function(){
           function pad(n){return String(n).padStart(2,'0');}
+          var CF_TZ='Asia/Seoul';
+          function fmtKst(){
+            try{
+              var p={},d=new Date();
+              new Intl.DateTimeFormat('en-GB',{timeZone:CF_TZ,hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).formatToParts(d).forEach(function(x){p[x.type]=x.value;});
+              return {time:p.hour+':'+p.minute+':'+p.second,date:p.year+'.'+p.month+'.'+p.day};
+            }catch(e){
+              return {time:pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds()),date:d.getFullYear()+'.'+pad(d.getMonth()+1)+'.'+pad(d.getDate())};
+            }
+          }
           function tick(){
-            var d=new Date();
             var el=document.getElementById('clock');
             if(!el) return;
-            el.innerHTML = '<span>'+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())+'</span>&nbsp; '+d.getFullYear()+'.'+pad(d.getMonth()+1)+'.'+pad(d.getDate());
+            var k=fmtKst();
+            el.innerHTML = '<span>'+k.time+'</span>&nbsp; '+k.date+' KST';
           }
           tick(); setInterval(tick,1000);
         })();

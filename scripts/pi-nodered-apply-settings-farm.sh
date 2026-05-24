@@ -2,7 +2,7 @@
 # Pi에서 실행: Node-RED settings.js 경로 루트 설정
 # - Editor/Admin: /admin
 # - Dashboard(UI): /ui
-# - FlexDash: /flexdash 유지 (httpNodeRoot를 건드리지 않음)
+# - FlexDash 제거됨 (모니터 /ui/, 설정 /farm/ui/ 만 사용)
 # - HTTP API 프리픽스(/farm/cronusfarm/...)는 플로우의 http in url에서 직접 처리
 #
 # 사용:

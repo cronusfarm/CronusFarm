@@ -21,6 +21,16 @@ HOST="${CRONUSFARM_MQTT_HOST:-127.0.0.1}"
 PORT="${CRONUSFARM_MQTT_PORT:-1883}"
 TOPIC="cronusfarm/${DEVICE_ID}/cmd"
 PAYLOAD="rtc_local=$(date +%Y%m%d%H%M%S)"
+TRANSPORT="${CRONUSFARM_R4_CMD_TRANSPORT:-mqtt}"
+
+if [[ "$TRANSPORT" == "serial" || "$TRANSPORT" == "usb" || "$TRANSPORT" == "usb-serial" ]]; then
+  API="${CRONUSFARM_R4_SERIAL_API_URL:-http://127.0.0.1:18767}"
+  curl -fsS -m 8 -X POST "${API%/}/r4/cmd" \
+    -H "Content-Type: application/json" \
+    -d "{\"device_id\":\"${DEVICE_ID}\",\"payload\":\"${PAYLOAD}\"}"
+  echo "[ok] serial <- $PAYLOAD"
+  exit 0
+fi
 
 if ! command -v mosquitto_pub >/dev/null 2>&1; then
   echo "[error] mosquitto_pub 없음. apt install mosquitto-clients" >&2

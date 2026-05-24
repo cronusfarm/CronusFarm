@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """
-CronusFarm MQTT 연결 감시 → 접속 불가 시 텔레그램 즉시 알림.
+CronusFarm MQTT 연결 감시 → 접속 불가 시 텔레그램 알림 + (선택) R4 WiFi 자동 복구.
 
 감시 항목:
   1) Mosquitto TCP(기본 127.0.0.1:1883)
   2) Arduino tele 최신 수신(bridge /api/time/status, 기본 45초 초과)
+  3) status retain offline 장시간 → USB 시리얼 wifi_set (secrets.h)
 
 환경: /etc/cronusfarm/nodered-telegram.env (토큰·chat_id)
 """
@@ -33,6 +34,20 @@ RECOVER_NOTIFY = os.environ.get("CRONUSFARM_MQTT_RECOVER_NOTIFY", "1").strip().l
     "true",
     "yes",
 )
+AUTO_RECOVER = os.environ.get("CRONUSFARM_MQTT_AUTO_RECOVER", "1").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
+AUTO_RECOVER_AFTER_SEC = int(
+    os.environ.get("CRONUSFARM_MQTT_AUTO_RECOVER_AFTER_SEC", "180") or 180
+)
+AUTO_RECOVER_COOLDOWN_SEC = int(
+    os.environ.get("CRONUSFARM_MQTT_AUTO_RECOVER_COOLDOWN_SEC", "1800") or 1800
+)
+AUTO_RECOVER_NOTIFY = os.environ.get(
+    "CRONUSFARM_MQTT_AUTO_RECOVER_NOTIFY", "1"
+).strip().lower() in ("1", "true", "yes")
 
 
 def load_env_file(path: Path) -> dict[str, str]:
@@ -92,13 +107,19 @@ def check_broker_tcp(host: str, port: int, timeout: float = 3.0) -> bool:
         return False
 
 
-def check_tele_fresh(device_id: str, stale_sec: int) -> tuple[bool, str | None]:
+def fetch_bridge_status(device_id: str) -> tuple[dict | None, str | None]:
     url = f"{BRIDGE_URL}/api/time/status?device_id={urllib.parse.quote(device_id)}"
     try:
         with urllib.request.urlopen(url, timeout=8) as resp:
-            j = json.loads(resp.read().decode("utf-8", errors="replace"))
+            return json.loads(resp.read().decode("utf-8", errors="replace")), None
     except Exception as e:
-        return False, f"상태 API 오류: {e}"
+        return None, str(e)
+
+
+def check_tele_fresh(device_id: str, stale_sec: int) -> tuple[bool, str | None]:
+    j, err = fetch_bridge_status(device_id)
+    if j is None:
+        return False, f"상태 API 오류: {err}"
     lt = j.get("last_tele_ts_ms")
     if lt is None or not str(lt).strip():
         return False, "tele 미수신(기록 없음)"
@@ -158,14 +179,75 @@ def main() -> None:
 
     print(
         f"mqtt_watch start host={MQTT_HOST}:{MQTT_PORT} device={DEVICE_ID} "
-        f"poll={POLL_SEC}s tele_stale={TELE_STALE_SEC}s",
+        f"poll={POLL_SEC}s tele_stale={TELE_STALE_SEC}s "
+        f"auto_recover={AUTO_RECOVER} after={AUTO_RECOVER_AFTER_SEC}s "
+        f"recover_cd={AUTO_RECOVER_COOLDOWN_SEC}s",
         flush=True,
     )
+
+    mqtt_offline_since: float | None = None
+    last_auto_recover_at = 0.0
+
+    def maybe_auto_wifi_recover(status: str, tele_stale: int | float) -> None:
+        nonlocal mqtt_offline_since, last_auto_recover_at
+        if not AUTO_RECOVER:
+            return
+        st = (status or "").strip().lower()
+        if st == "online":
+            mqtt_offline_since = None
+            return
+        now = time.time()
+        if mqtt_offline_since is None:
+            mqtt_offline_since = now
+            return
+        offline_for = now - mqtt_offline_since
+        if offline_for < AUTO_RECOVER_AFTER_SEC:
+            return
+        if now - last_auto_recover_at < AUTO_RECOVER_COOLDOWN_SEC:
+            return
+
+        print(
+            f"[recover] MQTT status={status!r} offline {int(offline_for)}s "
+            f"tele_stale={tele_stale}s — 시리얼 WiFi 프로비저닝",
+            flush=True,
+        )
+        try:
+            from cronusfarm_mqtt_wifi_recover import run_auto_recover
+        except ImportError:
+            # Pi: scripts 가 cwd 가 아닐 수 있음
+            import sys
+            from pathlib import Path
+
+            scripts = Path(__file__).resolve().parent
+            if str(scripts) not in sys.path:
+                sys.path.insert(0, str(scripts))
+            from cronusfarm_mqtt_wifi_recover import run_auto_recover
+
+        ok = run_auto_recover()
+        last_auto_recover_at = now
+        mqtt_offline_since = now  # 연속 시도 방지 — 쿨다운까지 대기
+
+        if AUTO_RECOVER_NOTIFY and token and chat_id:
+            body = (
+                f"자동 WiFi 프로비저닝 {'성공' if ok else '실패'}\n"
+                f"status={status} offline {int(offline_for)}s\n"
+                f"tele_stale={tele_stale}s"
+            )
+            if ok:
+                maybe_recover("auto_wifi", body)
+            else:
+                maybe_alert("auto_wifi", body)
 
     while True:
         broker_ok = check_broker_tcp(MQTT_HOST, MQTT_PORT)
         tele_ok, tele_reason = check_tele_fresh(DEVICE_ID, TELE_STALE_SEC)
         armed = (time.time() - started) >= STARTUP_GRACE_SEC
+
+        bridge_j, _ = fetch_bridge_status(DEVICE_ID)
+        if armed and bridge_j is not None:
+            last_status = str(bridge_j.get("last_status") or "offline")
+            tele_stale = int(bridge_j.get("tele_stale_sec") or 9999)
+            maybe_auto_wifi_recover(last_status, tele_stale)
 
         if armed:
             if prev_broker is None:

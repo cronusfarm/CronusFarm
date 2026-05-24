@@ -10,6 +10,7 @@ from pathlib import Path
 def main() -> None:
     root = Path(__file__).resolve().parents[1]
     sql_path = root / "scripts" / "sql" / "cronusfarm_record_v1.sql"
+    admin_sql = root / "scripts" / "sql" / "cronusfarm_admin_v2.sql"
     ap = argparse.ArgumentParser()
     ap.add_argument(
         "db",
@@ -24,6 +25,8 @@ def main() -> None:
     conn = sqlite3.connect(str(db_path))
     try:
         conn.executescript(sql_path.read_text(encoding="utf-8"))
+        if admin_sql.is_file():
+            conn.executescript(admin_sql.read_text(encoding="utf-8"))
         conn.execute(
             "INSERT OR IGNORE INTO device (device_id, label) VALUES (?, ?)",
             ("cronusfarm-01", "기본 장치"),

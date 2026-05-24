@@ -153,6 +153,12 @@ if (-not $SkipArduino) {
   } catch {
     Write-Host "WARN: R3 panel upload failed (not connected / no port). You can run upcode for R3 only." -ForegroundColor Yellow
   }
+  # upcode 중단·R4+R3 연속 업로드 시에도 /ui(1882) 복구 — StopNodeRed 여부와 무관하게 1회 재기동
+  Write-Host "=== Node-RED: Arduino 업로드 후 UI 복구 (restart + 1882 대기) ===" -ForegroundColor Cyan
+  & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "sudo -n systemctl restart nodered.service 2>/dev/null || true; bash '$RemoteCronusRoot/scripts/pi-nodered-wait-ready.sh' 90 2>/dev/null || true"
+  if ($StopNodeRedDuringArduinoUpload) {
+    Write-Host "NOTE: 업로드 직후 1~2분은 /ui 가 502일 수 있음 — 재기동 메시지 후 브라우저 Ctrl+F5" -ForegroundColor Yellow
+  }
 } else {
   Write-Host "=== Arduino upload skipped (-SkipArduino) ===" -ForegroundColor Yellow
 }
@@ -282,6 +288,8 @@ if (-not $SkipNginxDeploy -and (Test-Path $nginxConfSrc)) {
 $sqlSchema = Join-Path $CronusDeployScriptDir "sql\cronusfarm_record_v1.sql"
 $sqliteInit = Join-Path $CronusDeployScriptDir "init_cronusfarm_sqlite.py"
 $sqliteBridge = Join-Path $CronusDeployScriptDir "cronusfarm_sqlite_bridge.py"
+$sqliteAdminApi = Join-Path $CronusDeployScriptDir "cronusfarm_admin_api.py"
+$sqlAdminV2 = Join-Path $CronusDeployScriptDir "sql\cronusfarm_admin_v2.sql"
 $systemdBridge = Join-Path $repoRoot "deploy\systemd\cronusfarm-sqlite-bridge.service"
 $haveSqlitePayload = ($null -ne $sqliteInit -and (Test-Path -LiteralPath $sqliteInit)) -or ($null -ne $sqliteBridge -and (Test-Path -LiteralPath $sqliteBridge)) -or ($null -ne $sqlSchema -and (Test-Path -LiteralPath $sqlSchema)) -or ($null -ne $systemdBridge -and (Test-Path -LiteralPath $systemdBridge))
 if ($haveSqlitePayload -and (-not $CfNrDeployLight)) {
@@ -294,8 +302,14 @@ if ($haveSqlitePayload -and (-not $CfNrDeployLight)) {
   if ($null -ne $sqliteBridge -and (Test-Path -LiteralPath $sqliteBridge)) {
     & scp @SshScpOpts "$sqliteBridge" "${PiUser}@${PiHost}:$remoteScripts/cronusfarm_sqlite_bridge.py"
   }
+  if ($null -ne $sqliteAdminApi -and (Test-Path -LiteralPath $sqliteAdminApi)) {
+    & scp @SshScpOpts "$sqliteAdminApi" "${PiUser}@${PiHost}:$remoteScripts/cronusfarm_admin_api.py"
+  }
   if ($null -ne $sqlSchema -and (Test-Path -LiteralPath $sqlSchema)) {
     & scp @SshScpOpts "$sqlSchema" "${PiUser}@${PiHost}:$remoteScripts/sql/cronusfarm_record_v1.sql"
+  }
+  if ($null -ne $sqlAdminV2 -and (Test-Path -LiteralPath $sqlAdminV2)) {
+    & scp @SshScpOpts "$sqlAdminV2" "${PiUser}@${PiHost}:$remoteScripts/sql/cronusfarm_admin_v2.sql"
   }
   if ($null -ne $systemdBridge -and (Test-Path -LiteralPath $systemdBridge)) {
     & scp @SshScpOpts "$systemdBridge" "${PiUser}@${PiHost}:$remoteDeploySystemd/cronusfarm-sqlite-bridge.service"
@@ -336,7 +350,7 @@ if ((-not $CfNrDeployLight) -and (Test-Path -LiteralPath $hailoRepoDir)) {
 $tgInstall = Join-Path $CronusDeployScriptDir "pi-install-nodered-telegram-env.sh"
 $tgDropIn = Join-Path $repoRoot "deploy\systemd\nodered.service.d\10-cronusfarm-telegram.conf"
 $tgEnvEx = Join-Path $repoRoot "deploy\env\nodered-telegram.env.example"
-$nrAiCamDropIn = Join-Path $repoRoot "deploy\systemd\nodered.service.d\20-cronusfarm-camera-ai.conf"
+$nrAiCamDropIn = Join-Path $repoRoot "deploy\systemd\nodered.service.d\20-cronusfarm-hailo-camera.conf"
 if ((-not $CfNrDeployLight) -and (Test-Path $tgInstall) -and (Test-Path $tgDropIn) -and (Test-Path $tgEnvEx)) {
   Write-Host "=== Telegram: systemd drop-in/env example -> $RemoteCronusRoot ===" -ForegroundColor Cyan
   $remoteNrDrop = "$RemoteCronusRoot/deploy/systemd/nodered.service.d"
@@ -352,11 +366,11 @@ if ((-not $CfNrDeployLight) -and (Test-Path $tgInstall) -and (Test-Path $tgDropI
 
 # Node-RED 기동 후 cronusfarm-camera-ai try-restart(drop-in). 텔레그램 블록과 독립.
 if ((-not $CfNrDeployLight) -and (Test-Path $nrAiCamDropIn)) {
-  Write-Host "=== Node-RED drop-in: NR 기동 후 cronusfarm-camera-ai restart ===" -ForegroundColor Cyan
+  Write-Host "=== Node-RED drop-in: NR 기동 후 ustreamer+hailo restart ===" -ForegroundColor Cyan
   $remoteNrDropOnly = "$RemoteCronusRoot/deploy/systemd/nodered.service.d"
   & ssh @SshRemoteOpts "${PiUser}@${PiHost}" "mkdir -p '$remoteNrDropOnly'"
-  & scp @SshScpOpts "$nrAiCamDropIn" "${PiUser}@${PiHost}:$remoteNrDropOnly/20-cronusfarm-camera-ai.conf"
-  $nrAiDropCmd = "sudo mkdir -p /etc/systemd/system/nodered.service.d && sudo cp '$remoteNrDropOnly/20-cronusfarm-camera-ai.conf' /etc/systemd/system/nodered.service.d/20-cronusfarm-camera-ai.conf && sudo systemctl daemon-reload"
+  & scp @SshScpOpts "$nrAiCamDropIn" "${PiUser}@${PiHost}:$remoteNrDropOnly/20-cronusfarm-hailo-camera.conf"
+  $nrAiDropCmd = "sudo mkdir -p /etc/systemd/system/nodered.service.d && sudo cp '$remoteNrDropOnly/20-cronusfarm-hailo-camera.conf' /etc/systemd/system/nodered.service.d/20-cronusfarm-hailo-camera.conf && sudo rm -f /etc/systemd/system/nodered.service.d/20-cronusfarm-camera-ai.conf && sudo systemctl daemon-reload"
   & ssh @SshRemoteOpts "${PiUser}@${PiHost}" $nrAiDropCmd
 }
 

@@ -1,7 +1,7 @@
 """
 Pi/로컬보내기(flows_pi_editor_latest.json)에서 CronusFarm 대시보드 분할 JSON을 재생성한다.
 
-- Dashboard 1: tab_cronus_dash, tab_cronus_flexdash, ui_* (z 없음)
+- Dashboard 1: tab_cronus_dash, ui_* (z 없음)
 - Dashboard 2 제거: type이 ui- 로 시작하거나 ui-template
 - NRDB2 전용 Function f1e2d3c4b5a6800f 제거
 - PHW3988 플로우 탭(02ccfe788704ab49) 노드는 z를 tab_cronus_dash 로 옮겨 /ui 모니터(온실 Data)에 표시
@@ -24,7 +24,7 @@ PI_PATH = ROOT / "nodered" / "flows_pi_editor_latest.json"
 OUT_PATH = ROOT / "nodered" / "flows_cronusfarm_dashboard.json"
 DEVFLOW_PATH = ROOT / "nodered" / "flows_cronusfarm_devflow_flow.json"
 
-ALLOW_TAB = frozenset({"tab_cronus_dash", "tab_cronus_flexdash"})
+ALLOW_TAB = frozenset({"tab_cronus_dash"})
 PHW_FLOW_TAB = "02ccfe788704ab49"
 EXPLICIT_DROP_IDS = frozenset(
     {

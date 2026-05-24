@@ -78,12 +78,14 @@ chmod +x ~/CronusFarm/scripts/pi-arduino-build.sh ~/CronusFarm/scripts/upcode.sh
 # 포트 지정: ~/CronusFarm/scripts/upcode.sh /dev/ttyACM0
 ```
 
-편하게 쓰려면 `~/.bashrc` 에 **아래 두 줄**(또는 `pi-repair-upcode.sh` 가 넣어 주는 블록)만 유지하면 됩니다:
+편하게 쓰려면 `~/.bashrc` 에 **아래 별칭**(또는 `pi-repair-upcode.sh` 가 넣어 주는 블록)만 유지하면 됩니다:
 ```bash
 alias upcode='bash $HOME/CronusFarm/scripts/upcode.sh'
 alias upcod='bash $HOME/CronusFarm/scripts/upcode.sh'
+alias resetcode='bash $HOME/CronusFarm/scripts/pi-reset-r4.sh'
+alias resetcod='bash $HOME/CronusFarm/scripts/pi-reset-r4.sh'
 ```
-(`upcod` 는 오타 대비용으로 `upcode` 와 동일합니다.)
+(`upcod` / `resetcod` 는 오타 대비용으로 각각 `upcode` / `resetcode` 와 동일합니다.)
 
 예전에 `MyProject` 를 가리키던 `alias upcode=...` 가 남아 있으면 **틀린 경로**입니다. 아래로 정리한 뒤 위를 다시 넣으세요.
 ```bash
@@ -103,6 +105,17 @@ type upcode
 ```
 
 이후 터미널에서 `upcode` 또는 `upcode /dev/ttyACM0` 로 실행합니다. 실제 업로드 스케치는 **`~/CronusFarm/arduino/CronusFarm/`** (`CronusFarm.ino` 포함) 입니다.
+
+#### R4 소프트 리셋만 (업로드 없음)
+
+펌웨어를 다시 올리지 않고 **보드만 재시작**할 때는 **1200bps touch** 만 합니다 (`pi-upload-r4.sh` 업로드 직전과 동일한 리셋, compile/upload 생략).
+
+| 위치 | 명령 |
+|------|------|
+| **Thalia (Windows)** | `.\scripts\resetcode.ps1` 또는 `resetcode.bat` (선택: `-StopNodeRedDuringReset`, `-Port /dev/ttyACM0`) |
+| **ida (SSH)** | `resetcode` / `resetcod` (별칭 → `pi-reset-r4.sh`) 또는 `bash ~/CronusFarm/scripts/pi-reset-r4.sh` |
+
+`pi-reset-r4-main.sh` 는 **레거시 이름**으로, 실제로는 **업로드**(`pi-upload-r4.sh`)입니다. 리셋만 쓸 때는 위 `resetcode` 를 사용하세요.
 
 직접 빌드 스크립트만 호출할 때:
 ```bash
@@ -125,6 +138,8 @@ sudo arduino-cli upload -p /dev/ttyACM0 --fqbn arduino:renesas_uno:unor4wifi .
 
 ### 5) Node-RED는 MQTT로 연결
 Serial(USB) 대신 MQTT 노드를 사용하면 업로드와 포트 점유 충돌이 사라집니다.
+
+MQTT가 자주 끊길 때: **`docs/cronusfarm_mqtt_stability.md`** (R4 `secrets.h` LAN IP, WiFi·keepalive, Node-RED 브로커 `127.0.0.1`, tele 15초 샘플 vs UI 타임아웃).
 
 ### 6) 개발 PC에서 SSH/업로드(Windows → Pi)
 `scripts/upcode.ps1` 기본 Pi 호스트는 **`ida.mango-larch.ts.net`** 입니다. PC에 Tailscale 클라이언트가 있고 같은 tailnet이면 `ssh dooly@ida.mango-larch.ts.net` 로 접속됩니다.
@@ -238,6 +253,8 @@ curl -sS "http://127.0.0.1:1880/farm/cronusfarm/telegram-ping?text=테스트"
 
 **systemd로 환경변수 넣기(권장)**  
 배포 시 `deploy-cronusfarm-pi.ps1 -ApplyNodeRed` 가 `pi-install-nodered-telegram-env.sh` 를 호출해 drop-in을 깔고, 없을 때만 `/etc/cronusfarm/nodered-telegram.env` 를 만듭니다. 토큰·chat_id 는 Pi에서만 편집합니다: `sudo nano /etc/cronusfarm/nodered-telegram.env` 후 `sudo systemctl restart nodered.service`.
+
+**운영 시각(KST):** Pi `timedatectl` → `Asia/Seoul` (`scripts/pi-set-timezone-seoul.sh`). UI·그래프는 Pi `/api/time/now` 동기 — [cronusfarm_time_policy.md](cronusfarm_time_policy.md).
 
 **봇 자동 응답(환영·키워드 안내)**  
 `getUpdates` 짧은 폴링(약 8초)으로 `/start`·`/help` 는 환영 안내만 보내고, **그 외 텍스트는 바로 키워드 매칭 답변**을 보냅니다(대화 단계 상태를 저장하지 않아 배포·재시작 후에도 동작이 단순합니다). 토큰만 있으면 되며 **웹훅을 걸면 폴링이 비게 될 수 있어** 자동응답 시에는 웹훅을 쓰지 않는 편이 안전합니다.

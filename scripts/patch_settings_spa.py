@@ -12,25 +12,13 @@ DASH = ROOT / "nodered" / "flows_cronusfarm_dashboard.json"
 # hash 라우터: nginx·Node-RED httpStatic 모두에서 하위 경로 404 없이 동작
 SPA_ENTRY = "/farm/ui/#/"
 
-SPA_REDIRECT = f"""<style>
-.cf-settings-spa-go{{padding:24px 12px;text-align:center;font-family:'Noto Sans KR',system-ui,sans-serif;color:#c8e6c9;}}
-.cf-settings-spa-go a{{color:#4fc3f7;font-weight:800;}}
-</style>
-<div class="cf-settings-spa-go">
-  <p>설정 화면으로 이동 중…</p>
-  <p><a id="cf-spa-fallback" href="{SPA_ENTRY}">자동 이동이 안 되면 여기를 클릭</a></p>
-</div>
-<script type="text/javascript">
+SPA_REDIRECT = f"""<script type="text/javascript">
 (function(){{
   var u = (window.location.origin || '') + '{SPA_ENTRY}';
   var p = window.location.pathname || '';
   if (p.indexOf('/farm/ui') === 0) return;
-  try {{
-    window.location.replace(u);
-  }} catch (e) {{
-    var a = document.getElementById('cf-spa-fallback');
-    if (a) a.href = u;
-  }}
+  var w = window.top || window;
+  try {{ w.location.replace(u); }} catch (e) {{ w.location.href = u; }}
 }})();
 </script>"""
 

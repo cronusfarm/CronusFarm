@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """flows_cronusfarm_dashboard.json 에 텔레그램 "오늘의 CronusFarm News" 일일 발송 노드 추가.
 
-- 매일 오전 09:00(KST, Node-RED 호스트 타임존 기준) 자동 발송
+- 매일 09:00 아침 브리핑(Open-Meteo) · 17:00 저녁 영농일지(KMA·MQTT) — 서로 다른 노드
 - 수동 inject 버튼으로 즉시 테스트 발송 가능
 - 토큰/채팅ID는 환경변수 사용:
   - CRONUSFARM_TELEGRAM_BOT_TOKEN
@@ -91,7 +91,7 @@ NODES = [
         "payloadType": "date",
         "x": 130,
         "y": 980,
-        "wires": [["cf_fn_tg_news_daily"]],
+        "wires": [["cf_fn_tg_briefing_morning"]],
     },
     {
         "id": "cf_inj_tg_news_now",
@@ -108,13 +108,13 @@ NODES = [
         "payloadType": "date",
         "x": 130,
         "y": 1020,
-        "wires": [["cf_fn_tg_news_daily"]],
+        "wires": [["cf_fn_tg_briefing_morning"]],
     },
     {
-        "id": "cf_fn_tg_news_daily",
+        "id": "cf_fn_tg_news_evening",
         "type": "function",
         "z": TAB,
-        "name": "뉴스 메시지 준비",
+        "name": "저녁 영농일지 준비",
         "func": FN_PREP,
         "outputs": 1,
         "timeout": 0,

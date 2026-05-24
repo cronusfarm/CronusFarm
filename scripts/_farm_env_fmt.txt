@@ -7,7 +7,9 @@
         <div class="cf-fe-kv">
           <span class="k">기온</span><span class="v">{{(msg.payload.kma_temp != null && msg.payload.kma_temp !== '') ? (msg.payload.kma_temp + ' °C') : '—'}}</span>
           <span class="k">습도</span><span class="v">{{(msg.payload.kma_humidity != null && msg.payload.kma_humidity !== '') ? (msg.payload.kma_humidity + ' %') : '—'}}</span>
-          <span class="k">풍향</span><span class="v">{{(msg.payload.kma_wind_dir != null && msg.payload.kma_wind_dir !== '') ? (msg.payload.kma_wind_dir + ' °') : '—'}}</span>
+          <span class="k">강수형태</span><span class="v">{{msg.payload.kma_precip_label || '—'}}</span>
+          <span class="k">1h 강수</span><span class="v">{{(msg.payload.kma_precip_1h != null && msg.payload.kma_precip_1h !== '') ? (msg.payload.kma_precip_1h + ' mm') : '—'}}</span>
+          <span class="k">풍향</span><span class="v">{{msg.payload.kma_wind_compass ? (msg.payload.kma_wind_compass + ' · ' + msg.payload.kma_wind_dir + '°') : ((msg.payload.kma_wind_dir != null && msg.payload.kma_wind_dir !== '') ? (msg.payload.kma_wind_dir + ' °') : '—')}}</span>
           <span class="k">풍속</span><span class="v">{{(msg.payload.kma_wind_speed != null && msg.payload.kma_wind_speed !== '') ? (msg.payload.kma_wind_speed + ' m/s') : '—'}}</span>
         </div>
       </div>

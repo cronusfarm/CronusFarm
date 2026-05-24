@@ -152,7 +152,7 @@ export function isScheduleOnAt(rules, tsMs) {
   const secDay = secondsOfDay(tsMs)
 
   for (const r of list) {
-    if (!r.enabled) continue
+    if (r.enabled === 0 || r.enabled === false) continue
     const kind = r.rule_kind || 'window'
     const mask = parseInt(r.dow_mask, 10) || 0
     if (!(mask & dow)) continue
@@ -288,18 +288,31 @@ export function teleOnSegments(points, tStart, tEnd, nowMs) {
   const sorted = [...points]
     .map((p) => ({
       ts_ms: Number(p.ts_ms),
-      state: Number(p.state),
+      state: Number(p.state) === 1 ? 1 : 0,
     }))
     .filter((p) => Number.isFinite(p.ts_ms) && p.ts_ms <= clipEnd)
     .sort((a, b) => a.ts_ms - b.ts_ms)
-  if (sorted.length < 2) return []
+  if (!sorted.length) return []
+
+  if (sorted.length === 1) {
+    if (sorted[0].state !== 1) return []
+    const t0 = Math.max(tStart, sorted[0].ts_ms)
+    if (clipEnd > t0) return [{ t0, t1: clipEnd }]
+    return []
+  }
+
   const segs = []
   for (let i = 0; i < sorted.length - 1; i++) {
     if (sorted[i].state !== 1) continue
-    const t0 = sorted[i].ts_ms
+    const t0 = Math.max(tStart, sorted[i].ts_ms)
     const t1 = Math.min(sorted[i + 1].ts_ms, clipEnd)
     if (t1 <= t0 || t0 >= clipEnd) continue
     segs.push({ t0, t1 })
+  }
+  const last = sorted[sorted.length - 1]
+  if (last.state === 1 && last.ts_ms < clipEnd) {
+    const t0 = Math.max(tStart, last.ts_ms)
+    if (clipEnd > t0) segs.push({ t0, t1: clipEnd })
   }
   return segs
 }
@@ -322,12 +335,9 @@ export function shouldShowNowMarker(tStart, tEnd, nowMs) {
 
 /** timeline API 응답이 그릴 수 있는지 */
 export function hasTeleTimelineData(execData) {
-  return (
-    execData != null &&
-    Number.isFinite(Number(execData.anchor_ts_ms)) &&
-    Array.isArray(execData.points) &&
-    execData.points.length >= 2
-  )
+  if (execData == null) return false
+  if (execData.live_at_now != null && execData.live_at_now.state != null) return true
+  return Array.isArray(execData.points) && execData.points.length >= 1
 }
 
 /** stepped {x,y} 에서 y=1 구간 → canvas 막대용 */

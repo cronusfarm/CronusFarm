@@ -9,6 +9,31 @@
 #
 set -euo pipefail
 
+LOCK_FILE="${CRONUSFARM_R4_UPLOAD_LOCK:-/run/cronusfarm/r4-upload.lock}"
+SERIAL_UNIT="${CRONUSFARM_R4_SERIAL_UNIT:-cronusfarm-r4-serial.service}"
+
+upload_lock_begin() {
+  sudo mkdir -p "$(dirname "$LOCK_FILE")"
+  if command -v systemctl >/dev/null 2>&1; then
+    if systemctl is-active --quiet "$SERIAL_UNIT" 2>/dev/null; then
+      echo "[$SERIAL_UNIT] 중지 (업로드 중 시리얼 간섭 방지)"
+      sudo systemctl stop "$SERIAL_UNIT" || true
+      sleep 1
+    fi
+  fi
+  sudo touch "$LOCK_FILE"
+  echo "LOCK=$LOCK_FILE"
+}
+
+upload_lock_end() {
+  sudo rm -f "$LOCK_FILE" 2>/dev/null || true
+  if command -v systemctl >/dev/null 2>&1; then
+    if systemctl is-enabled --quiet "$SERIAL_UNIT" 2>/dev/null; then
+      sudo systemctl start "$SERIAL_UNIT" || true
+    fi
+  fi
+}
+
 SKETCH_DIR="${1:-/home/dooly/CronusFarm/arduino/CronusFarm}"
 PORT_HINT="${2:-}"
 FQBN="arduino:renesas_uno:unor4wifi"
@@ -73,6 +98,9 @@ find_bossac() {
 echo "SKETCH_DIR=$SKETCH_DIR"
 echo "PORT_HINT=$PORT_HINT"
 
+upload_lock_begin
+trap upload_lock_end EXIT
+
 # 1) 컴파일(바이너리 경로 고정)
 OUT="/tmp/cf_r4_build"
 rm -rf "$OUT"
@@ -108,15 +136,15 @@ echo "PRE=$PRE"
 
 # 3) 1200bps touch reset
 set +e
-stty -F "$PRE" 1200 2>/dev/null
+stty -F "$PRE" 1200 2>/dev/null || true
 set -e
-sleep 0.2
+sleep 2
 
 # 4) 재연결된 포트 찾기 (by-id 타깃이 바뀌는 경우 + ACM 스왑)
 NEW="$PRE"
-for _ in $(seq 1 80); do
+for _ in $(seq 1 120); do
   CUR="$(pick_r4_port "")"
-  if [[ -n "$CUR" && -e "$CUR" && "$CUR" != "$PRE" ]]; then
+  if [[ -n "$CUR" && -e "$CUR" ]]; then
     NEW="$CUR"
     break
   fi
@@ -127,7 +155,30 @@ echo "NEW=$NEW"
 DEV="$(basename "$NEW")"
 echo "USE_DEV=$DEV"
 
-# 5) bossac 업로드(ttyACM 이름만 받음)
-"$BOSSAC" -d --port="$DEV" -U -e -w "$BIN" -R
-echo "DONE"
+# 5) bossac 업로드(ttyACM 이름만 받음) — R4는 부트로더 진입 후 3~8초 여유 필요
+for attempt in 1 2 3; do
+  if command -v fuser >/dev/null 2>&1; then
+    sudo -n fuser -k "/dev/$DEV" 2>/dev/null || fuser -k "/dev/$DEV" 2>/dev/null || true
+    sleep 1
+  fi
+  set +e
+  "$BOSSAC" -d --port="$DEV" -U -e -w "$BIN" -R
+  ec=$?
+  set -e
+  if [[ $ec -eq 0 ]]; then
+    echo "DONE"
+    exit 0
+  fi
+  echo "bossac 실패(ec=$ec) 재시도 $attempt/3 — 1200 touch"
+  stty -F "$PRE" 1200 2>/dev/null || true
+  sleep 6
+  CUR="$(pick_r4_port "")"
+  if [[ -n "$CUR" && -e "$CUR" ]]; then
+    NEW="$CUR"
+    DEV="$(basename "$NEW")"
+    echo "재탐지 NEW=$NEW"
+  fi
+done
+echo "bossac 업로드 실패 — R4 리셋 버튼 2회(부트로더) 후 재실행" >&2
+exit 5
 

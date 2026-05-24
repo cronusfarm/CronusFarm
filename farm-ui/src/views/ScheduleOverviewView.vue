@@ -4,6 +4,7 @@ import { CF_SCH_CHANNELS } from '@/constants/channels'
 import { channelKind, channelLabel } from '@/constants/channelLabels'
 import { channelIconSvg } from '@/lib/channelIcons'
 import { useDevice } from '@/composables/useDevice'
+import { useScheduleBatch } from '@/composables/useScheduleBatch'
 import {
   ensureChartClockPolling,
   stopChartClockPolling,
@@ -17,6 +18,7 @@ const { embedded } = defineProps({
 
 const emit = defineEmits(['pick-channel'])
 const { deviceId, persist } = useDevice()
+const { rulesFor } = useScheduleBatch()
 const rows = ref(CF_SCH_CHANNELS.map((k) => ({ key: k, rules: [], tl: null })))
 const dayWindow = ref(null)
 const loading = ref(false)
@@ -32,10 +34,13 @@ async function loadAll() {
   persist()
   const tlUrl =
     `${apiUrl('/api/channel/timeline/batch')}?device_id=${encodeURIComponent(deviceId.value)}` +
-    `&channels=${encodeURIComponent(CF_SCH_CHANNELS.join(','))}&hours=24`
+    `&channels=${encodeURIComponent(CF_SCH_CHANNELS.join(','))}&hours=12`
   let tlMap = {}
   try {
-    const tr = await fetch(tlUrl, { credentials: 'same-origin' })
+    const ac = new AbortController()
+    const t = setTimeout(() => ac.abort(), 15000)
+    const tr = await fetch(tlUrl, { credentials: 'same-origin', signal: ac.signal })
+    clearTimeout(t)
     if (tr.ok) {
       const tj = await tr.json()
       tlMap = tj.channels || {}
@@ -44,25 +49,18 @@ async function loadAll() {
   } catch (e) {
     console.warn(e)
   }
-  await Promise.all(
-    rows.value.map(async (row) => {
-      try {
-        const u = `${apiUrl('/api/schedule')}?device_id=${encodeURIComponent(deviceId.value)}&channel=${encodeURIComponent(row.key)}`
-        const r = await fetch(u, { credentials: 'same-origin' })
-        row.rules = r.ok ? (await r.json()).rules || [] : []
-      } catch {
-        row.rules = []
-      }
-      row.tl = tlMap[row.key] || null
-    }),
-  )
+  rows.value = CF_SCH_CHANNELS.map((key) => ({
+    key,
+    rules: rulesFor(key),
+    tl: tlMap[key] || null,
+  }))
   loading.value = false
 }
 
 onMounted(() => {
   ensureChartClockPolling()
   loadAll()
-  pollTimer = setInterval(() => loadAll(), 30000)
+  pollTimer = setInterval(() => loadAll(), 60000)
   devTimer = setInterval(() => {
     try {
       const s = localStorage.getItem('cfDeviceId')
@@ -92,15 +90,7 @@ defineExpose({ loadAll })
       'cf-sch-overview-page',
     ]"
   >
-    <div v-if="!embedded" class="row2">
-      <button type="button" class="btn" :disabled="loading" @click="loadAll">새로고침</button>
-    </div>
-
-    <div v-if="!embedded" class="cf-sch-overview-legend">
-      <span class="lg lg-sch">스케줄(계획)</span>
-      <span class="lg lg-tele">실제 동작(tele)</span>
-      <span class="lg lg-match">일치(겹침)</span>
-    </div>
+    <div v-if="loading" class="cf-sch-overview-loading">타임라인 불러오는 중…</div>
 
     <div class="cf-sch-overview-list">
       <div
@@ -123,6 +113,6 @@ defineExpose({ loadAll })
         </div>
       </div>
     </div>
-    <p v-if="!embedded" class="hint">행 클릭 → 아래 「스케줄 편집」</p>
+    <p v-if="!embedded" class="hint">행 클릭 → 「채널별 스케줄 편집」</p>
   </div>
 </template>

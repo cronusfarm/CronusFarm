@@ -93,6 +93,8 @@ grep -v 'alias upcode' "$BRC" \
   echo "# --- CronusFarm upcode (auto) ---"
   echo "alias upcode='bash ${HOME}/CronusFarm/scripts/upcode.sh'"
   echo "alias upcod='bash ${HOME}/CronusFarm/scripts/upcode.sh'"
+  echo "alias resetcode='bash ${HOME}/CronusFarm/scripts/pi-reset-r4.sh'"
+  echo "alias resetcod='bash ${HOME}/CronusFarm/scripts/pi-reset-r4.sh'"
   echo "# --- end CronusFarm upcode ---"
 } >> /tmp/.bashrc.repair.$$
 

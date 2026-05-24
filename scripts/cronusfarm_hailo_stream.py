@@ -60,6 +60,28 @@ HAILO_SOURCE = os.environ.get("CRONUSFARM_HAILO_SOURCE", "ustreamer").strip().lo
 app = Flask(__name__)
 _latest_jpeg: bytes | None = None
 _jpeg_lock = threading.Lock()
+_latest_lb_bgr: np.ndarray | None = None
+_lb_lock = threading.Lock()
+_last_hailo_count = 0
+_onnx_model = None
+_onnx_conf = float(os.environ.get("CRONUSFARM_ONNX_CONF", "0.08"))
+# fig 오분류(바질→무화과) 보정: 이 conf 미만 fig는 basil로 표시
+_FIG_TO_BASIL_MAX = float(os.environ.get("CRONUSFARM_FIG_TO_BASIL_MAX", "0.30"))
+_KO_CROP_MAP = {
+    "tomato": "토마토",
+    "fig": "무화과",
+    "butterhead": "버터헤드",
+    "basil": "바질",
+    "cherry_tomato": "방울토마토",
+    "unlabeled": "미분류",
+}
+# 클래스별 최소 conf — fig는 높게(오검출 방지), basil은 낮게
+_CLASS_MIN_CONF = {
+    "basil": 0.06,
+    "tomato": 0.18,
+    "butterhead": 0.18,
+    "fig": 0.30,
+}
 _running = True
 _FRAME_DUR = None  # Gst.SECOND // 15, init in main
 
@@ -147,35 +169,49 @@ def _postprocess_paths(yolo_json: Path) -> tuple[str, str]:
     return so, str(yolo_json)
 
 
-def _ko_caption_from_detections(detections) -> str:
-    """검출 라벨 → MQTT·대시보드용 한글 캡션."""
-    if not detections:
-        return "포착: 없음 (검출된 작물·객체 없음)"
-    labels: list[str] = []
-    for d in detections:
-        try:
-            labels.append(str(d.get_label()))
-        except Exception:
-            pass
+def _normalize_crop_label(raw: str, conf: float) -> str | None:
+    """검출 라벨 보정·클래스별 최소 conf 필터."""
+    label = (raw or "").strip().lower()
+    if not label:
+        return None
+    # 현장 카메라: 바질 잎을 fig로 오분류하는 경우가 많음
+    if label == "fig" and conf < _FIG_TO_BASIL_MAX:
+        label = "basil"
+    min_conf = _CLASS_MIN_CONF.get(label, _onnx_conf)
+    if conf < min_conf:
+        return None
+    return label
+
+
+def _ko_caption_from_labels(labels: list[str]) -> str:
     if not labels:
-        return f"포착: {len(detections)}개"
+        return "포착: 없음 (검출된 작물·객체 없음)"
     from collections import Counter
 
     ctr = Counter(labels)
     parts = []
-    ko_map = {
-        "tomato": "토마토",
-        "fig": "무화과",
-        "butterhead": "버터헤드",
-        "basil": "바질",
-        "cherry_tomato": "방울토마토",
-        "unlabeled": "미분류",
-    }
     for k in sorted(ctr.keys()):
         v = ctr[k]
-        name = ko_map.get(k, k)
+        name = _KO_CROP_MAP.get(k, k)
         parts.append(f"{name}×{v}" if v > 1 else name)
     return "포착: " + " · ".join(parts)
+
+
+def _ko_caption_from_detections(detections) -> str:
+    """검출 라벨 → MQTT·대시보드용 한글 캡션."""
+    labels: list[str] = []
+    for d in detections:
+        try:
+            raw = str(d.get_label())
+            conf = float(d.get_confidence()) if hasattr(d, "get_confidence") else 1.0
+            norm = _normalize_crop_label(raw, conf)
+            if norm:
+                labels.append(norm)
+        except Exception:
+            pass
+    if not labels and detections:
+        return f"포착: {len(detections)}개"
+    return _ko_caption_from_labels(labels)
 
 
 def _resolve_yolo_json_path() -> Path:
@@ -202,6 +238,19 @@ def _build_v4l2_source() -> str:
     )
 
 
+def _letterbox_bgr(bgr: np.ndarray, size: int = 640) -> np.ndarray:
+    """YOLO 학습과 동일 비율 유지(letterbox)."""
+    h, w = bgr.shape[:2]
+    scale = min(size / h, size / w)
+    nh, nw = int(round(h * scale)), int(round(w * scale))
+    resized = cv2.resize(bgr, (nw, nh), interpolation=cv2.INTER_LINEAR)
+    out = np.zeros((size, size, 3), dtype=bgr.dtype)
+    top = (size - nh) // 2
+    left = (size - nw) // 2
+    out[top : top + nh, left : left + nw] = resized
+    return out
+
+
 def _opencv_feed_loop(appsrc: Gst.Element) -> None:
     """ustreamer MJPEG는 souphttpsrc와 협상 실패 → OpenCV로 8080/stream 수신."""
     cap = cv2.VideoCapture(USTREAMER_URL)
@@ -214,7 +263,10 @@ def _opencv_feed_loop(appsrc: Gst.Element) -> None:
         if not ret:
             time.sleep(0.02)
             continue
-        bgr = cv2.resize(bgr, (640, 640))
+        bgr = _letterbox_bgr(bgr, 640)
+        with _lb_lock:
+            global _latest_lb_bgr
+            _latest_lb_bgr = bgr.copy()
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         data = rgb.tobytes()
         buf = Gst.Buffer.new_allocate(None, len(data), None)
@@ -242,16 +294,85 @@ last_publish_time = 0.0
 PUBLISH_INTERVAL = 1.0
 
 
+def _ko_caption_from_ultralytics(result) -> tuple[int, str]:
+    """Ultralytics ONNX 폴백 → (count, caption)."""
+    boxes = getattr(result, "boxes", None)
+    if boxes is None or len(boxes) == 0:
+        return 0, "포착: 없음 (검출된 작물·객체 없음)"
+    names = getattr(result, "names", None) or {}
+    labels: list[str] = []
+    for c, conf_t in zip(boxes.cls, boxes.conf):
+        raw = str(names.get(int(c.item()), int(c.item())))
+        norm = _normalize_crop_label(raw, float(conf_t.item()))
+        if norm:
+            labels.append(norm)
+    return len(labels), _ko_caption_from_labels(labels)
+
+
+def _onnx_fallback_loop() -> None:
+    """Hailo NMS 임계값이 높을 때 CPU ONNX로 작물 검출 보완."""
+    global _onnx_model, last_publish_time, _last_hailo_count
+    onnx_path = _hailo_dir() / "best.onnx"
+    if not onnx_path.is_file():
+        return
+    while _running:
+        time.sleep(1.2)
+        if _last_hailo_count > 0:
+            continue
+        with _lb_lock:
+            bgr = None if _latest_lb_bgr is None else _latest_lb_bgr.copy()
+        if bgr is None:
+            continue
+        try:
+            if _onnx_model is None:
+                from ultralytics import YOLO
+
+                _onnx_model = YOLO(str(onnx_path))
+            results = _onnx_model.predict(bgr, conf=_onnx_conf, verbose=False)
+            count, caption = _ko_caption_from_ultralytics(results[0])
+            if count <= 0:
+                continue
+            current_time = time.time()
+            if current_time - last_publish_time < PUBLISH_INTERVAL:
+                continue
+            last_publish_time = current_time
+            payload = json.dumps(
+                {
+                    "count": count,
+                    "caption": caption,
+                    "timestamp": current_time,
+                    "source": "onnx_fallback",
+                },
+                ensure_ascii=False,
+            )
+            mqtt_client.publish(MQTT_TOPIC, payload)
+            print(f"[onnx-fallback] Objects detected: {count} — {caption}")
+        except Exception as e:
+            print(f"[onnx-fallback] warn: {e}", file=sys.stderr)
+
+
 def probe_callback(pad, info):
-    global last_publish_time
+    global last_publish_time, _last_hailo_count
     buffer = info.get_buffer()
     if not buffer:
         return Gst.PadProbeReturn.OK
 
     roi = hailo.get_roi_from_buffer(buffer)
     detections = roi.get_objects_typed(hailo.HAILO_DETECTION)
-    count = len(detections)
-    caption = _ko_caption_from_detections(detections)
+    labels: list[str] = []
+    for d in detections:
+        try:
+            norm = _normalize_crop_label(str(d.get_label()), float(d.get_confidence()))
+            if norm:
+                labels.append(norm)
+        except Exception:
+            pass
+    count = len(labels)
+    _last_hailo_count = count
+    if count <= 0:
+        return Gst.PadProbeReturn.OK
+
+    caption = _ko_caption_from_labels(labels)
 
     current_time = time.time()
     if current_time - last_publish_time >= PUBLISH_INTERVAL:
@@ -346,6 +467,22 @@ def index():
     )
 
 
+def _ensure_http_port_free() -> None:
+    import socket
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("0.0.0.0", HTTP_PORT))
+    except OSError as e:
+        print(
+            f"ERROR: 포트 {HTTP_PORT} 사용 중 — cronusfarm-camera-ai 중지 후 Hailo만 8081 사용: {e}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    finally:
+        sock.close()
+
+
 def _run_flask():
     print(f"[hailo] HTTP MJPEG http://0.0.0.0:{HTTP_PORT}/video_feed")
     app.run(host="0.0.0.0", port=HTTP_PORT, threaded=True, use_reloader=False)
@@ -360,6 +497,7 @@ def main() -> None:
     print(f"[hailo] {label}")
     print(f"[hailo] yolov8.json: {yolo_json}")
     print(f"[hailo] source: {HAILO_SOURCE} ({USTREAMER_URL if HAILO_SOURCE != 'v4l2' else 'v4l2'})")
+    _ensure_http_port_free()
 
     hef_s = str(hef_path)
     json_s = str(yolo_json)
@@ -395,6 +533,8 @@ def main() -> None:
     appsrc_elem = pipeline.get_by_name("cf_appsrc")
     if appsrc_elem and HAILO_SOURCE != "v4l2":
         threading.Thread(target=_opencv_feed_loop, args=(appsrc_elem,), daemon=True).start()
+
+    threading.Thread(target=_onnx_fallback_loop, daemon=True).start()
 
     appsink = pipeline.get_by_name("cf_appsink")
     if appsink:

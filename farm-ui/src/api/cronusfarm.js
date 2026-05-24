@@ -6,12 +6,30 @@ export function apiUrl(path) {
   return `${typeof location !== 'undefined' ? location.origin : ''}${API_BASE}${p}`
 }
 
+const DEFAULT_TIMEOUT_MS = 8000
+
 export async function apiFetch(path, options = {}) {
-  const r = await fetch(apiUrl(path), {
-    credentials: 'same-origin',
-    ...options,
-  })
-  return r
+  const { timeoutMs = DEFAULT_TIMEOUT_MS, signal: outerSignal, ...rest } = options
+  const controller = new AbortController()
+  const timer =
+    timeoutMs > 0
+      ? setTimeout(() => controller.abort(new Error('요청 시간 초과')), timeoutMs)
+      : null
+  if (outerSignal) {
+    outerSignal.addEventListener('abort', () => controller.abort(outerSignal.reason), {
+      once: true,
+    })
+  }
+  try {
+    const r = await fetch(apiUrl(path), {
+      credentials: 'same-origin',
+      signal: controller.signal,
+      ...rest,
+    })
+    return r
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
 }
 
 export async function apiJson(path, options = {}) {

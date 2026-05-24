@@ -8,6 +8,8 @@ import SchedulePumpHelp from '@/components/SchedulePumpHelp.vue'
 
 const props = defineProps({
   initialChannel: { type: String, default: '' },
+  /** SettingsAllView 등 상위에 제목·카드가 있을 때 내부 박스·중복 제목 제거 */
+  embedded: { type: Boolean, default: false },
 })
 
 const channel = defineModel('channel', { type: String, default: 'led_a1' })
@@ -75,8 +77,7 @@ function selectedDayLabels(days) {
 </script>
 
 <template>
-  <div class="cf2-schedule">
-    <div class="cf2-sch-hd">채널별 스케줄 편집</div>
+  <div :class="embedded ? 'cf2-schedule-embed' : 'cf2-schedule'">
     <p class="cf2-sch-sub">
       <strong>저장</strong> 시 SQLite <code class="cf2-sch-code">schedule_rule</code> → MQTT
       <code class="cf2-sch-code">SCHED_JSON</code> → Arduino. 시간대·주기를 같이 켜면 OR(합집합)으로 동작합니다.

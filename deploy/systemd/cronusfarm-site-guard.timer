@@ -1,0 +1,10 @@
+[Unit]
+Description=Run CronusFarm site guard every 2 minutes
+
+[Timer]
+OnBootSec=90
+OnUnitActiveSec=2min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target

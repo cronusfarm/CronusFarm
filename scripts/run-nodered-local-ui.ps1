@@ -84,7 +84,6 @@ if ((Test-Path $flowsPath) -and (Select-String -Path $flowsPath -Pattern $broker
 
 Write-Host "편집기: http://127.0.0.1:$Port/" -ForegroundColor Green
 Write-Host "Dashboard 1 (/ui): http://127.0.0.1:$Port/ui/" -ForegroundColor Green
-Write-Host "FlexDash: http://127.0.0.1:$Port/flexdash/" -ForegroundColor Green
 
 $nodeVer = (node -v).TrimStart('v')
 $nodeMaj = [int]($nodeVer.Split('.')[0])
@@ -93,7 +92,7 @@ if ($nodeMaj -ge 22) {
 }
 
 $localNr = Join-Path $UserDir "node_modules\node-red\red.js"
-$nrNpmPkgs = 'node-red@4 node-red-dashboard@3.6.6 @flexdash/node-red-fd-corewidgets'
+$nrNpmPkgs = 'node-red@4 node-red-dashboard@3.6.6'
 
 if (-not (Test-Path $localNr)) {
   $lines = @(
