@@ -36,6 +36,13 @@ if [[ -f "$ROOT/scripts/_pi_mqtt_diag.sh" ]]; then
   bash "$ROOT/scripts/_pi_mqtt_diag.sh" 2>&1 | tail -n 40 || true
 fi
 
+log "=== Node-RED /ui 개발환경 반영 ==="
+if [[ -f "$ROOT/nodered/merged-deploy.json" ]]; then
+  cp "$ROOT/nodered/merged-deploy.json" "$HOME/.node-red/flows.json"
+  sudo systemctl restart nodered.service 2>/dev/null || true
+  sleep 8
+fi
+
 log "=== health ==="
 curl -fsS -m 5 http://127.0.0.1:18767/health && echo
 curl -fsS -m 5 "http://127.0.0.1:18766/api/time/status?device_id=cronusfarm-01" && echo
