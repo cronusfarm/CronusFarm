@@ -15,4 +15,4 @@ Write-Host "=== patch devflow + merge ===" -ForegroundColor Cyan
 
 & (Join-Path $PSScriptRoot "pi-sync-usb-primary.ps1") -PiHost $PiHost -PiUser $PiUser -SkipUpload:$SkipUpload
 
-Write-Host "OK: Pi + Arduino + /ui 개발현황 4장" -ForegroundColor Green
+Write-Host "OK: Pi Arduino NR devflow 4 panels" -ForegroundColor Green
