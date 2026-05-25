@@ -11,6 +11,20 @@ SERIAL_UNIT="cronusfarm-r4-serial.service"
 
 log() { echo "[install-serial] $*"; }
 
+SECRETS="$ROOT/arduino/CronusFarm/secrets.h"
+if [[ -f "$SECRETS" ]]; then
+  if grep -q 'CRONUSFARM_MQTT_ENABLE' "$SECRETS"; then
+    sed -i 's/^#define CRONUSFARM_MQTT_ENABLE.*/#define CRONUSFARM_MQTT_ENABLE 0/' "$SECRETS" || true
+    log "secrets.h: CRONUSFARM_MQTT_ENABLE 0"
+  else
+    printf '\n#define CRONUSFARM_MQTT_ENABLE 0\n' >>"$SECRETS"
+    log "secrets.h: CRONUSFARM_MQTT_ENABLE 0 추가"
+  fi
+  bash "$ROOT/scripts/pi-ensure-secrets-http-backup.sh" "$SECRETS" 2>/dev/null || true
+else
+  log "WARN: secrets.h 없음 — example 복사 후 값 채우기"
+fi
+
 sudo mkdir -p "$ENV_DIR" "$BRIDGE_DROPIN"
 if [[ ! -f "$ENV_FILE" ]]; then
   sudo cp "$ROOT/deploy/env/r4-serial.env.example" "$ENV_FILE"
