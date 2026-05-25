@@ -53,12 +53,12 @@ if [[ "$online" != "1" ]]; then
   exit 1
 fi
 
-if [[ -f "$ROOT/scripts/pi-mqtt-publish-rtc-to-r4.sh" ]]; then
+if test -f "$ROOT/scripts/pi-mqtt-publish-rtc-to-r4.sh"; then
   log "=== RTC 동기 ==="
   CRONUSFARM_R4_CMD_TRANSPORT=serial bash "$ROOT/scripts/pi-mqtt-publish-rtc-to-r4.sh" || true
 fi
 
-if [[ -f "$ROOT/scripts/pi-mqtt-force-all-auto.sh ]]; then
+if test -f "$ROOT/scripts/pi-mqtt-force-all-auto.sh"; then
   log "=== force_all_auto ==="
   CRONUSFARM_R4_CMD_TRANSPORT=serial bash "$ROOT/scripts/pi-mqtt-force-all-auto.sh" || true
 fi

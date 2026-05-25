@@ -14,8 +14,7 @@ git fetch origin 2>/dev/null || true
 git checkout feature/r4-usb-serial-primary 2>/dev/null || true
 git pull --ff-only origin feature/r4-usb-serial-primary 2>/dev/null || git pull --ff-only || true
 
-for f in scripts/pi-install-r4-serial-primary.sh scripts/pi-upload-r4.sh scripts/pi-recover-r4-usb.sh \
-  scripts/cronusfarm_r4_serial_daemon.py scripts/_pi_mqtt_diag.sh; do
+for f in "$ROOT"/scripts/*.sh "$ROOT"/scripts/*.py; do
   [[ -f "$f" ]] && tr -d '\r' <"$f" >"$f.lf" && mv "$f.lf" "$f" && chmod +x "$f" 2>/dev/null || true
 done
 

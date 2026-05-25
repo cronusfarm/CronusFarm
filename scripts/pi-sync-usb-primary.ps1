@@ -3,7 +3,8 @@ param(
   [string] $PiHost = "",
   [string] $PiUser = "dooly",
   [switch] $SkipUpload,
-  [switch] $SkipNodeRed
+  [switch] $SkipNodeRed,
+  [switch] $DevflowOnly
 )
 $ErrorActionPreference = "Stop"
 . (Join-Path $PSScriptRoot "pi-host-resolve.ps1")
@@ -11,6 +12,20 @@ $PiHost = Get-CronusPiHost -PiHost $PiHost -PiUser $PiUser
 $SshOpts = @("-o", "ConnectTimeout=30", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new")
 $repo = Split-Path $PSScriptRoot -Parent
 $remote = "/home/dooly/CronusFarm"
+if ($DevflowOnly) {
+  & python (Join-Path $repo "scripts\patch_devflow_hybrid_usb.py")
+  & python (Join-Path $repo "scripts\merge_nodered_deploy.py") --use-split
+  $only = @("nodered/merged-deploy.json", "nodered/flows_cronusfarm_devflow_flow.json")
+  foreach ($rel in $only) {
+    $local = Join-Path $repo $rel
+    $rdir = "$remote/$(Split-Path $rel -Parent)"
+    & ssh @SshOpts "${PiUser}@${PiHost}" "mkdir -p '$rdir'"
+    & scp @SshOpts $local "${PiUser}@${PiHost}:$remote/$rel"
+  }
+  & ssh @SshOpts "${PiUser}@${PiHost}" "cp '$remote/nodered/merged-deploy.json' ~/.node-red/flows.json && sudo systemctl restart nodered.service"
+  Write-Host "OK: /ui 개발현황 devflow only" -ForegroundColor Green
+  exit 0
+}
 $files = @(
   "scripts/cronusfarm_r4_serial_daemon.py",
   "scripts/cronusfarm_mqtt_wifi_recover.py",
@@ -21,6 +36,8 @@ $files = @(
   "scripts/pi-apply-usb-primary-all.sh",
   "scripts/pi-ensure-secrets-http-backup.sh",
   "scripts/pi-mqtt-publish-rtc-to-r4.sh",
+  "scripts/pi-mqtt-force-all-auto.sh",
+  "scripts/patch_devflow_hybrid_usb.py",
   "scripts/_pi_mqtt_diag.sh",
   "deploy/systemd/cronusfarm-r4-serial.service",
   "deploy/env/r4-serial.env.example",
