@@ -12,9 +12,9 @@ $PiHost = Get-CronusPiHost -PiHost $PiHost -PiUser $PiUser
 $SshOpts = @("-o", "ConnectTimeout=30", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new")
 $repo = Split-Path $PSScriptRoot -Parent
 $remote = "/home/dooly/CronusFarm"
+& python (Join-Path $repo "scripts\patch_devflow_hybrid_usb.py")
+& python (Join-Path $repo "scripts\merge_nodered_deploy.py") --use-split
 if ($DevflowOnly) {
-  & python (Join-Path $repo "scripts\patch_devflow_hybrid_usb.py")
-  & python (Join-Path $repo "scripts\merge_nodered_deploy.py") --use-split
   $only = @("nodered/merged-deploy.json", "nodered/flows_cronusfarm_devflow_flow.json")
   foreach ($rel in $only) {
     $local = Join-Path $repo $rel
