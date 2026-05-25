@@ -72,9 +72,25 @@ function Get-CronusPiHost {
   }
   $trimLan = if ($null -eq $PiHostLan) { "" } else { $PiHostLan.Trim() }
   if ($trimLan.Length -eq 0) {
+    $duck = "cronusfarm.duckdns.org"
+    $duckOk = Test-CronusSshPort -ComputerName $duck
     $wanOk = Test-CronusSshPort -ComputerName $PiHostWan
+    if ($duckOk -and $wanOk) {
+      $td = Measure-Command { Test-CronusSshPort -ComputerName $duck -TimeoutMs 8000 }
+      $tt = Measure-Command { Test-CronusSshPort -ComputerName $PiHostWan -TimeoutMs 8000 }
+      if ($td.TotalMilliseconds -le $tt.TotalMilliseconds) {
+        Write-Host "[Pi] SSH DuckDNS 우선 (${td}ms < TS ${tt}ms): ${PiUser}@${duck}" -ForegroundColor DarkCyan
+        return $duck
+      }
+      Write-Host "[Pi] SSH Tailscale 우선 (${tt}ms < Duck ${td}ms): ${PiUser}@${PiHostWan}" -ForegroundColor DarkCyan
+      return $PiHostWan
+    }
+    if ($duckOk) {
+      Write-Host "[Pi] DuckDNS SSH: ${PiUser}@${duck}" -ForegroundColor DarkCyan
+      return $duck
+    }
     if ($wanOk) {
-      Write-Host "[Pi] Tailscale SSH 우선: ${PiUser}@${PiHostWan}" -ForegroundColor DarkCyan
+      Write-Host "[Pi] Tailscale SSH: ${PiUser}@${PiHostWan}" -ForegroundColor DarkCyan
       return $PiHostWan
     }
     $preferredLan = "192.168.60.222"

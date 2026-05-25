@@ -2261,12 +2261,13 @@ static void publishTelemetry() {
 #endif
   }
 #else
-  if (WiFi.status() == WL_CONNECTED) {
+  /* USB primary: tele/status는 WiFi 없이도 시리얼로 Pi에 전달 */
 #if CRONUS_HTTP_TELE_BACKUP
+  if (WiFi.status() == WL_CONNECTED) {
     sent = httpPostTeleIngest(payload);
     if (sent) Serial.println(F("tele→HTTP ingest"));
-#endif
   }
+#endif
   static bool sUsbStatusOnline = false;
   if (!sUsbStatusOnline) {
     serialPublishStatus("online");
@@ -3144,6 +3145,14 @@ void loop() {
     lastTelemetryMs = now;
     publishTelemetry();
   }
+
+#if !CRONUSFARM_MQTT_ENABLE
+  static uint32_t sUsbHeartbeatMs = 0;
+  if (now - sUsbHeartbeatMs >= 30000u) {
+    sUsbHeartbeatMs = now;
+    Serial.println(F("CF_HEARTBEAT usb"));
+  }
+#endif
 
   bool wifiOk = (WiFi.status() == WL_CONNECTED);
 #if CRONUSFARM_MQTT_ENABLE

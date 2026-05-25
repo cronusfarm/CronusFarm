@@ -54,7 +54,7 @@ function Test-CronusPiReachable {
 <#
   호스트 선택:
   - LocalDev: Tailscale 고정 (로컬 Node-RED 개발)
-  - 그 외: LAN → Tailscale → DuckDNS (MQTT/nginx 포트로 TCP 프로브)
+  - 그 외: LAN → DuckDNS → Tailscale (원격 SSH 속도: DuckDNS가 TS보다 빠른 경우 많음)
 #>
 function Get-CronusFarmPiEndpoint {
   param(
@@ -99,20 +99,6 @@ function Get-CronusFarmPiEndpoint {
     }
   }
 
-  if ((Test-CronusPiReachable -HostName $TailscaleHost)) {
-    Write-Host "[CronusNet] Tailscale: $TailscaleHost" -ForegroundColor DarkCyan
-    return [pscustomobject]@{
-      Host       = $TailscaleHost
-      Via        = "Tailscale"
-      MqttPort   = $p.mqtt
-      NginxPort  = $p.nginx
-      NrPort     = $p.nrLatest
-      SqlitePort = $p.sqliteBridge
-      CctvPort   = $p.cctvStream
-      HailoPort  = $p.hailoMjpeg
-    }
-  }
-
   if ((Test-CronusPiReachable -HostName $DuckDnsHost)) {
     Write-Host "[CronusNet] DuckDNS: $DuckDnsHost" -ForegroundColor DarkCyan
     return [pscustomobject]@{
@@ -127,10 +113,24 @@ function Get-CronusFarmPiEndpoint {
     }
   }
 
-  Write-Host "[CronusNet] 프로브 실패 → Tailscale 기본: $TailscaleHost" -ForegroundColor DarkYellow
+  if ((Test-CronusPiReachable -HostName $TailscaleHost)) {
+    Write-Host "[CronusNet] Tailscale: $TailscaleHost" -ForegroundColor DarkCyan
+    return [pscustomobject]@{
+      Host       = $TailscaleHost
+      Via        = "Tailscale"
+      MqttPort   = $p.mqtt
+      NginxPort  = $p.nginx
+      NrPort     = $p.nrLatest
+      SqlitePort = $p.sqliteBridge
+      CctvPort   = $p.cctvStream
+      HailoPort  = $p.hailoMjpeg
+    }
+  }
+
+  Write-Host "[CronusNet] 프로브 실패 → DuckDNS 기본: $DuckDnsHost" -ForegroundColor DarkYellow
   return [pscustomobject]@{
-    Host       = $TailscaleHost
-    Via        = "Tailscale(Fallback)"
+    Host       = $DuckDnsHost
+    Via        = "DuckDNS(Fallback)"
     MqttPort   = $p.mqtt
     NginxPort  = $p.nginx
     NrPort     = $p.nrLatest
