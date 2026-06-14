@@ -5,6 +5,8 @@ import { useDevice } from '@/composables/useDevice'
 import { apiUrl } from '@/api/cronusfarm'
 import { channelIconSvg } from '@/lib/channelIcons'
 import { isScheduleOnAt } from '@/lib/scheduleCanvas'
+import { useScheduleBatch } from '@/composables/useScheduleBatch'
+import { usePiClock } from '@/composables/usePiClock'
 
 const { embedded } = defineProps({
   embedded: { type: Boolean, default: false },
@@ -12,7 +14,7 @@ const { embedded } = defineProps({
 
 const { deviceId, persist } = useDevice()
 const status = ref({ channels: {} })
-const scheduleByKey = ref({})
+const { loadSchedules: fetchScheduleBatch, rulesFor, rulesByChannel } = useScheduleBatch()
 const holdMin = ref({})
 const holdOptions = Array.from({ length: 60 }, (_, i) => i + 1)
 let pollTimer = null
@@ -54,8 +56,10 @@ function isAuto(k) {
   if (v === undefined || v === null) return true
   return Number(v) === 1
 }
+const { piNowMs } = usePiClock()
+
 function schNow(k) {
-  return isScheduleOnAt(scheduleByKey.value[k] || [], Date.now())
+  return isScheduleOnAt(rulesFor(k), piNowMs())
 }
 
 function fmtKstHm(ms) {
@@ -104,19 +108,7 @@ function rowWarn(k) {
 }
 
 async function loadSchedules() {
-  const map = {}
-  await Promise.all(
-    allChannels.value.map(async (key) => {
-      try {
-        const u = `${apiUrl('/api/schedule')}?device_id=${encodeURIComponent(deviceId.value)}&channel=${encodeURIComponent(key)}`
-        const r = await fetch(u, { credentials: 'same-origin' })
-        map[key] = r.ok ? (await r.json()).rules || [] : []
-      } catch {
-        map[key] = []
-      }
-    }),
-  )
-  scheduleByKey.value = map
+  await fetchScheduleBatch(deviceId.value)
 }
 
 async function poll() {
@@ -197,11 +189,11 @@ onMounted(() => {
   for (const k of allChannels.value) {
     if (holdMin.value[k] == null) holdMin.value[k] = 30
   }
-  poll()
-  loadSchedules()
+  void loadSchedules(deviceId.value)
+  void poll()
   pollTimer = setInterval(() => {
     poll()
-  }, 5000)
+  }, 10000)
 })
 
 onUnmounted(() => {
@@ -228,8 +220,12 @@ defineExpose({ poll, loadSchedules })
         <div class="ch-meta">
           <span class="ch-name">{{ row.label }}</span>
           <span class="ch-pin">{{ row.pin }}</span>
-          <span class="ch-sch-now" :class="schNow(row.key) ? 'on' : 'off'">
-            스케줄 {{ schNow(row.key) ? 'ON' : 'OFF' }}
+          <span
+            class="ch-sch-now"
+            :class="schNow(row.key) ? 'on' : 'off'"
+            :title="'지금 시각(KST) 기준 DB 스케줄이 켜져 있어야 하는지(계획). 자동/수동·실제 릴레이(ON 버튼)와는 별개'"
+          >
+            계획 {{ schNow(row.key) ? 'ON' : 'OFF' }}
           </span>
           <span v-if="rowHint(row.key)" class="ch-hint">{{ rowHint(row.key) }}</span>
         </div>

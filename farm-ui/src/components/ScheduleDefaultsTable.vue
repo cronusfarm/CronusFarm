@@ -3,9 +3,11 @@ import { SCHEDULE_DEFAULTS_BEDS } from '@/constants/scheduleDefaultsDisplay'
 </script>
 
 <template>
-  <div class="cf-def-sch">
-    <h3 class="cf-def-sch-title">기본 스케줄표</h3>
-    <p class="cf-def-sch-sub">Bed 순 · DB 시드·펌웨어 builtin 동일</p>
+  <section class="cf-def-sch cf-def-sch--plain">
+    <p class="cf-def-sch-sub">
+      Bed 순 · DB 시드·펌웨어 builtin 동일. 수동 60분 후 AUTO. 패널 먹통 시 리셋 없이 푸시
+      2회(0.45초 안)로 I2C·브라우즈 재동기화.
+    </p>
     <div class="cf-def-sch-scroll">
       <table class="cf-def-sch-tbl">
         <thead>
@@ -28,5 +30,5 @@ import { SCHEDULE_DEFAULTS_BEDS } from '@/constants/scheduleDefaultsDisplay'
         </tbody>
       </table>
     </div>
-  </div>
+  </section>
 </template>

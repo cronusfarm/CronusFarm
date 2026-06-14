@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>CronusFarm 기술발표 v2</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/meshesha/PPTXjs@master/css/pptxjs.css"/>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/meshesha/PPTXjs@master/css/nv.d3.min.css"/>
+  <style>
+    html,body{margin:0;padding:10px 12px 16px;background:#fafafa;font-family:system-ui,'Malgun Gothic',sans-serif;}
+    .cf-pptx-bar{margin:0 0 10px;font-size:13px;color:#555;}
+    .cf-pptx-bar a{color:#006064;font-weight:700;text-decoration:none;}
+    .cf-pptx-bar a:hover{text-decoration:underline;}
+    #result{background:#fff;border:1px solid #e0e0e0;border-radius:10px;padding:8px;min-height:240px;}
+    .cf-loading{color:#888;padding:24px;text-align:center;}
+    .slide{margin:0 auto 16px!important;box-shadow:0 2px 8px rgba(0,0,0,.08);}
+  </style>
+</head>
+<body>
+  <p class="cf-pptx-bar">
+    <a href="/cronusfarm-static/docs/CronusFarm_tech_presentation_v2.pptx" download>CronusFarm_기술발표_v2.pptx</a> 다운로드
+  </p>
+  <div id="result" class="cf-loading">슬라이드 불러오는 중…</div>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/meshesha/PPTXjs@master/js/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/meshesha/PPTXjs@master/js/filereader.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/meshesha/PPTXjs@master/js/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/meshesha/PPTXjs@master/js/nv.d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/meshesha/PPTXjs@master/js/pptxjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/meshesha/PPTXjs@master/js/divs2slides.min.js"></script>
+  <script>
+  (function(){
+    var PPT="/cronusfarm-static/docs/CronusFarm_tech_presentation_v2.pptx";
+    function notifyParent(){
+      try{
+        var h=Math.max(document.documentElement.scrollHeight,document.body.scrollHeight,480);
+        parent.postMessage({type:"cf-tech-pptx-resize",height:h},"*");
+      }catch(e){}
+    }
+    $("#result").removeClass("cf-loading");
+    try{
+      $("#result").pptxToHtml({
+        pptxFileUrl:PPT,
+        slidesScale:"100%",
+        slideMode:false,
+        keyBoardShortCut:false
+      });
+    }catch(err){
+      $("#result").html('<p style="color:#c62828;padding:16px">슬라이드를 불러오지 못했습니다. 위 링크로 PPTX를 내려받아 주세요.</p>');
+    }
+    window.addEventListener("load",function(){setTimeout(notifyParent,800);setTimeout(notifyParent,2500);});
+    if(window.ResizeObserver){new ResizeObserver(notifyParent).observe(document.body);}
+  })();
+  </script>
+</body>
+</html>

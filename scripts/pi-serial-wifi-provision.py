@@ -116,13 +116,59 @@ def read_pi_wifi_from_nmcli() -> tuple[str, str]:
 
 
 def open_serial(port: str):
+    """DTR/RTS 로 보드를 리셋하지 않음 — open 직후 wifi_set 이 무시되는 문제 방지."""
     try:
         import serial
     except ImportError as e:
         raise SystemExit(
             "pyserial 없음: pip3 install pyserial --break-system-packages"
         ) from e
-    return serial.Serial(port, BAUD, timeout=0.5)
+    ser = serial.Serial()
+    ser.port = port
+    ser.baudrate = BAUD
+    ser.timeout = 0.5
+    ser.dtr = False
+    ser.rts = False
+    ser.open()
+    try:
+        ser.setDTR(False)
+        ser.setRTS(False)
+    except Exception:
+        pass
+    time.sleep(0.15)
+    return ser
+
+
+def wait_boot_banner(ser, timeout_s: float = 90.0) -> bool:
+    """펌웨어 'CronusFarm setup...' 또는 WiFi/MQTT 로그가 나올 때까지 대기."""
+    markers = (
+        "CronusFarm setup",
+        "BOOT self-test",
+        "WiFi 연결됨",
+        "WiFi 재연결됨",
+        "MQTT 연결",
+        "OK wifi_status",
+    )
+    deadline = time.time() + timeout_s
+    buf: list[str] = []
+    while time.time() < deadline:
+        raw = ser.readline()
+        if not raw:
+            time.sleep(0.05)
+            continue
+        text = raw.decode("utf-8", errors="replace").strip()
+        if not text:
+            continue
+        buf.append(text)
+        print(text)
+        if any(m in text for m in markers):
+            return True
+    if not buf:
+        print(
+            f"[provision] 부팅 로그 없음 ({int(timeout_s)}s) — USB·포트·펌웨어 업로드 확인",
+            file=sys.stderr,
+        )
+    return False
 
 
 def drain(ser, seconds: float = 0.4) -> None:
@@ -135,7 +181,7 @@ def drain(ser, seconds: float = 0.4) -> None:
             time.sleep(0.05)
 
 
-def send_command(ser, cmd: str, wait_s: float = 28.0) -> list[str]:
+def send_command(ser, cmd: str, wait_s: float = 45.0) -> list[str]:
     line = cmd.strip() + "\n"
     ser.write(line.encode("utf-8", errors="replace"))
     ser.flush()
@@ -150,16 +196,14 @@ def send_command(ser, cmd: str, wait_s: float = 28.0) -> list[str]:
         if text:
             out.append(text)
             print(text)
-        if any(
-            x in text
-            for x in (
-                "OK wifi_status connected",
-                "OK wifi_status disconnected",
-                "WiFi 재연결됨",
-                "ERR wifi_set",
-                "OK wifi_clear",
-            )
-        ):
+        # disconnected 로 조기 종료하면 wifi_set 직후(아직 연결 전)에 멈춤
+        if "ERR wifi_set" in text or "OK wifi_clear" in text:
+            break
+        if "OK wifi_status connected" in text or "WiFi 재연결됨" in text:
+            break
+        if "WiFi 연결됨" in text and "0.0.0.0" not in text:
+            break
+        if cmd.strip() == "wifi_status" and "OK wifi_status" in text:
             break
     return out
 
@@ -177,8 +221,13 @@ def main() -> int:
     print(f"[provision] port={port}")
 
     ser = open_serial(port)
-    time.sleep(0.6)
-    drain(ser, 0.5)
+    boot_wait = float(os.environ.get("CRONUSFARM_WIFI_BOOT_WAIT_SEC", "90") or 90)
+    if not args.status and not args.clear:
+        print(f"[provision] R4 부팅 로그 대기 (최대 {int(boot_wait)}s, DTR 리셋 없음)...")
+        wait_boot_banner(ser, timeout_s=boot_wait)
+    else:
+        time.sleep(0.6)
+        drain(ser, 0.5)
 
     if args.clear:
         send_command(ser, "wifi_clear", wait_s=5.0)
@@ -211,19 +260,28 @@ def main() -> int:
 
     cmd = f"wifi_set {ssid} {psk}"
     print(f"[provision] send: wifi_set {ssid} ****")
-    lines = send_command(ser, cmd, wait_s=35.0)
+    wait_s = float(os.environ.get("CRONUSFARM_WIFI_PROVISION_WAIT_SEC", "45") or 45)
+    lines = send_command(ser, cmd, wait_s=wait_s)
     ser.close()
 
     ok = any(
         "OK wifi_status connected" in ln
         or "WiFi 재연결됨" in ln
-        or "WiFi 연결됨" in ln
+        or ("WiFi 연결됨" in ln and "0.0.0.0" not in ln)
+        or "MQTT 연결" in ln
         for ln in lines
     )
     if ok:
         print("[ok] R4 WiFi 프로비저닝 성공")
         return 0
-    print("[warn] WiFi 연결 확인 메시지 없음 — 시리얼 로그·비밀번호 확인", file=sys.stderr)
+    if not lines:
+        print(
+            "[warn] 시리얼 응답 0줄 — pi-reset 직후 90초 대기, mqtt-watch 중지, "
+            "DTR 무리셋 펌웨어·포트(/dev/ttyACM2) 확인",
+            file=sys.stderr,
+        )
+    else:
+        print("[warn] WiFi 연결 확인 메시지 없음 — 시리얼 로그·비밀번호 확인", file=sys.stderr)
     return 2
 
 

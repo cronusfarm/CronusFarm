@@ -115,35 +115,43 @@ if (-not (Test-Path $piBuild)) {
 
 
 
-if ($StopNodeRedDuringUpload) {
+$waitNrSh = Join-Path $PSScriptRoot "pi-nodered-wait-ready.sh"
+& scp @SshOpts $waitNrSh "${PiUser}@${PiHost}:$RemoteScriptsDir/pi-nodered-wait-ready.sh" 2>$null
+& ssh @SshOpts "${PiUser}@${PiHost}" "chmod +x '$RemoteScriptsDir/pi-nodered-wait-ready.sh' 2>/dev/null || true"
 
-  & ssh @SshOpts "${PiUser}@${PiHost}" "sudo -n systemctl stop nodered.service" 2>$null
-
-  if ($LASTEXITCODE -ne 0) {
-
-    Write-Host "WARN: failed to stop nodered (continue). sudo may be missing." -ForegroundColor Yellow
-
+$nrStopped = $false
+try {
+  if ($StopNodeRedDuringUpload) {
+    & ssh @SshOpts "${PiUser}@${PiHost}" "sudo -n systemctl stop nodered.service" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "WARN: failed to stop nodered (continue). sudo may be missing." -ForegroundColor Yellow
+    } else {
+      $nrStopped = $true
+    }
   }
 
-}
-
-
-
-# AutoPort: 두 번째 인자 생략 -> pi 스크립트가 ttyACM 자동 탐지
-# CRLF가 남아 있어도 동작하도록 bash로 명시 실행(쉐뱅 exec 경로 회피)
-
-if ($AutoPort) {
-  & ssh @SshOpts "${PiUser}@${PiHost}" "bash -lc 'export FQBN=$Fqbn; bash $RemoteScriptsDir/pi-arduino-build.sh $RemoteSketchUnix'"
-} else {
-  & ssh @SshOpts "${PiUser}@${PiHost}" "bash -lc 'export FQBN=$Fqbn; bash $RemoteScriptsDir/pi-arduino-build.sh $RemoteSketchUnix $Port'"
-}
-
-
-
-if ($StopNodeRedDuringUpload) {
-
-  & ssh @SshOpts "${PiUser}@${PiHost}" "sudo -n systemctl start nodered.service" 2>$null
-
+  # AutoPort: 두 번째 인자 생략 -> pi 스크립트가 ttyACM 자동 탐지
+  if ($AutoPort) {
+    & ssh @SshOpts "${PiUser}@${PiHost}" "bash -lc 'export FQBN=$Fqbn; bash $RemoteScriptsDir/pi-arduino-build.sh $RemoteSketchUnix'"
+  } else {
+    & ssh @SshOpts "${PiUser}@${PiHost}" "bash -lc 'export FQBN=$Fqbn; bash $RemoteScriptsDir/pi-arduino-build.sh $RemoteSketchUnix $Port'"
+  }
+} finally {
+  if ($StopNodeRedDuringUpload) {
+    Write-Host "=== Node-RED: 업로드 후 재기동 (finally) ===" -ForegroundColor Cyan
+    & ssh @SshOpts "${PiUser}@${PiHost}" "sudo -n systemctl restart nodered.service" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+      Write-Host "WARN: nodered restart failed — Pi에서: sudo systemctl restart nodered" -ForegroundColor Yellow
+    } else {
+      & ssh @SshOpts "${PiUser}@${PiHost}" "bash '$RemoteScriptsDir/pi-nodered-wait-ready.sh' 90" 2>$null
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host "WARN: Node-RED 1882 대기 타임아웃 — /ui 는 1~2분 뒤 새로고침" -ForegroundColor Yellow
+      }
+    }
+    if ($nrStopped) {
+      Write-Host "NOTE: 업로드 중 /ui·/farm/ui 는 잠시 502 — 재기동 완료 후 Ctrl+F5" -ForegroundColor DarkGray
+    }
+  }
 }
 
 

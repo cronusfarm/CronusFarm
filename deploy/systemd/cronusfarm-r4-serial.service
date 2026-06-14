@@ -1,0 +1,22 @@
+[Unit]
+Description=CronusFarm R4 USB serial tele/cmd bridge
+After=network-online.target cronusfarm-sqlite-bridge.service
+Wants=network-online.target
+Conflicts=cronusfarm-mqtt-watch.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/cronusfarm/r4-serial.env
+Environment=CRONUSFARM_ROOT=/home/dooly/CronusFarm
+Environment=CRONUSFARM_SQLITE_BRIDGE_URL=http://127.0.0.1:18766
+Environment=CRONUSFARM_R4_SERIAL_API_PORT=18767
+Environment=CRONUSFARM_DEVICE_ID=cronusfarm-01
+Environment=CRONUSFARM_INGEST_REPUBLISH_MQTT=1
+Environment=CRONUSFARM_R4_CMD_TRANSPORT=serial
+Environment=CRONUSFARM_R4_CMD_MQTT_MIRROR=1
+ExecStart=/usr/bin/python3 /home/dooly/CronusFarm/scripts/cronusfarm_r4_serial_daemon.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

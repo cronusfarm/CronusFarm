@@ -227,7 +227,7 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now nodered.service nodered-v05.service nodered-v07.service
 sudo systemctl restart nodered.service nodered-v05.service nodered-v07.service
 
-echo "[7/7] nginx 프록시 설정(1880) — 저장소 deploy/nginx/cronusfarm-nodered.conf 와 동일 본문"
+echo "[7/7] nginx 프록시 설정(1880)"
 sudo tee /etc/nginx/sites-available/cronusfarm-nodered.conf >/dev/null <<'EOF'
 map $http_upgrade $connection_upgrade {
   default upgrade;
@@ -238,23 +238,9 @@ server {
   listen 1880;
   server_name _;
 
-  # 대용량 플로우 배포(POST /admin/flows) 시 기본 1m 제한·짧은 업스트림 타임아웃이 502로 이어질 수 있음
-  client_max_body_size 20m;
-  proxy_read_timeout 600s;
-  proxy_send_timeout 600s;
-
-  # CronusFarm http in (스케줄 API 프록시·telegram-ping 등) → 작업용 Node-RED
-  location ^~ /farm/ {
-    proxy_pass http://127.0.0.1:1882;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_read_timeout 600s;
-    proxy_send_timeout 600s;
-  }
-  location = /farm { return 301 /farm/; }
+  # 과거 경로(/farm)는 완전 차단
+  location ^~ /farm/ { return 404; }
+  location = /farm { return 404; }
 
   # 스냅샷 내부 경로(ui05/ui07)는 외부 접근 차단(항상 /ui/v0.x 로만 접근)
   location ^~ /ui05/ { return 404; }
@@ -272,9 +258,6 @@ server {
     proxy_set_header Host $host;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection $connection_upgrade;
-    proxy_read_timeout 600s;
-    proxy_send_timeout 600s;
-    proxy_request_buffering off;
   }
   location = /admin { return 301 /admin/; }
 
@@ -286,15 +269,6 @@ server {
     proxy_set_header Connection $connection_upgrade;
   }
   location = /ui { return 301 /ui/; }
-
-  # Dashboard 2(FlowFuse): ui-base path /nrdb2 — /ui 와 동일하게 업그레이드·WebSocket 헤더 유지
-  location ^~ /nrdb2 {
-    proxy_pass http://127.0.0.1:1882;
-    proxy_http_version 1.1;
-    proxy_set_header Host $host;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection $connection_upgrade;
-  }
 
   # v0.5 스냅샷 - 1881
   location ^~ /admin/v0.5/ {
@@ -342,8 +316,6 @@ server {
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_read_timeout 600s;
-    proxy_send_timeout 600s;
   }
 }
 EOF

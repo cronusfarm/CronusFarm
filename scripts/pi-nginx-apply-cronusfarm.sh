@@ -18,6 +18,18 @@ if ! sudo -n true 2>/dev/null; then
   exit 0
 fi
 sudo cp "$SRC" /etc/nginx/sites-available/cronusfarm-nodered.conf
+AUTH_SRC="${HOME}/CronusFarm/deploy/nginx/cronusfarm-auth.conf"
+if [[ -f "$AUTH_SRC" ]]; then
+  sudo cp "$AUTH_SRC" /etc/nginx/cronusfarm-auth.conf
+elif [[ ! -f /etc/nginx/cronusfarm-auth.conf ]]; then
+  sudo touch /etc/nginx/cronusfarm-auth.conf
+fi
+OAUTH_SRC="${HOME}/CronusFarm/deploy/nginx/cronusfarm-oauth2.conf"
+if [[ -f "$OAUTH_SRC" ]]; then
+  sudo cp "$OAUTH_SRC" /etc/nginx/cronusfarm-oauth2.conf
+elif [[ ! -f /etc/nginx/cronusfarm-oauth2.conf ]]; then
+  sudo touch /etc/nginx/cronusfarm-oauth2.conf
+fi
 sudo ln -sf /etc/nginx/sites-available/cronusfarm-nodered.conf /etc/nginx/sites-enabled/cronusfarm-nodered.conf
 # Debian/Ubuntu 기본 default 사이트가 listen 80 default_server 이면 CronusFarm 적용 후에도 "Welcome to nginx!" 만 보임
 if [[ -e /etc/nginx/sites-enabled/default ]] || [[ -L /etc/nginx/sites-enabled/default ]]; then
@@ -26,4 +38,12 @@ if [[ -e /etc/nginx/sites-enabled/default ]] || [[ -L /etc/nginx/sites-enabled/d
 fi
 sudo nginx -t
 sudo systemctl reload nginx
-echo "OK: nginx cronusfarm-nodered.conf applied and reloaded"
+# Google OAuth(DuckDNS HTTPS)와 충돌 — pi-nginx-https-to-http.sh 자동 실행 금지
+if command -v certbot >/dev/null 2>&1 \
+  && [[ -d /etc/letsencrypt/live/cronusfarm.duckdns.org ]]; then
+  sudo certbot install --cert-name cronusfarm.duckdns.org --nginx \
+    --no-redirect --non-interactive 2>/dev/null \
+    || echo "WARN: certbot install 실패"
+  sudo nginx -t && sudo systemctl reload nginx
+fi
+echo "OK: nginx cronusfarm-nodered.conf applied"

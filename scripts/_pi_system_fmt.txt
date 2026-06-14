@@ -1,0 +1,52 @@
+<div class="cf-pi-sys">
+  <div class="cf-pi-ardu-oneline">
+    <div class="cf-pi-ardu-half">
+      <span class="cf-pi-ardu-l">Arduino WiFi SSID</span>
+      <span class="cf-pi-ardu-v">{{msg.payload.arduinoSsid || '—'}}</span>
+    </div>
+    <div class="cf-pi-ardu-half">
+      <span class="cf-pi-ardu-l">Arduino IP</span>
+      <span class="cf-pi-ardu-v">{{msg.payload.arduinoIp || '—'}}</span>
+    </div>
+  </div>
+  <div class="cf-pi-row cf-pi-full">
+    <span class="cf-pi-k">Booting Time</span>
+    <span class="cf-pi-v">{{msg.payload.uptime || '—'}}</span>
+  </div>
+  <div class="cf-pi-row cf-pi-pair">
+    <div class="cf-pi-cell">
+      <span class="cf-pi-k">Pi WiFi SSID</span>
+      <span class="cf-pi-v">{{msg.payload.ssid || '—'}}</span>
+    </div>
+    <div class="cf-pi-cell">
+      <span class="cf-pi-k">Pi LAN IP</span>
+      <span class="cf-pi-v">{{msg.payload.lanIp || '—'}}</span>
+    </div>
+  </div>
+  <div class="cf-pi-row cf-pi-pair">
+    <div class="cf-pi-cell">
+      <span class="cf-pi-k">cronusfarm.duckdns.org</span>
+      <span class="cf-pi-v">{{msg.payload.wanIp || '—'}}</span>
+    </div>
+    <div class="cf-pi-cell">
+      <span class="cf-pi-k">ida.mango-larch.ts.net</span>
+      <span class="cf-pi-v">{{msg.payload.tsIp || '—'}}</span>
+    </div>
+  </div>
+  <style>
+    .cf-pi-sys{font-size:12px;line-height:1.35;color:#e6edf7;padding:2px 0}
+    .cf-pi-ardu-oneline{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;margin:0 0 8px;padding:5px 10px;background:#fff;color:#111;border:1px solid rgba(0,0,0,.15);border-radius:3px;font-size:14px;line-height:1.45;box-sizing:border-box}
+    @media(max-width:520px){.cf-pi-ardu-oneline{grid-template-columns:1fr}}
+    .cf-pi-ardu-half{display:grid;grid-template-columns:minmax(7.5em,auto) 1fr;gap:4px 8px;align-items:center;min-width:0}
+    .cf-pi-ardu-l{font-weight:400;color:#111;white-space:nowrap}
+    .cf-pi-ardu-v{font-weight:400;color:#111;text-align:left;word-break:break-all}
+    .cf-pi-row{margin:0 0 6px}
+    .cf-pi-full{display:grid;grid-template-columns:minmax(7em,auto) 1fr;gap:8px 12px;align-items:baseline}
+    .cf-pi-pair{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px}
+    @media(max-width:520px){.cf-pi-pair{grid-template-columns:1fr}}
+    .cf-pi-cell{display:grid;grid-template-columns:minmax(5em,auto) 1fr;gap:4px 8px;align-items:baseline;min-width:0}
+    .cf-pi-k{color:#9db0cc;font-weight:600;white-space:nowrap}
+    .cf-pi-v{font-weight:800;text-align:right;word-break:break-all}
+    .nr-dashboard-theme .nr-dashboard-group:has(.cf-pi-sys) md-card-content{height:auto!important;padding-bottom:4px!important}
+  </style>
+</div>

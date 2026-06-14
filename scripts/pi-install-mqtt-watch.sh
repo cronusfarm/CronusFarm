@@ -9,7 +9,8 @@ if [[ ! -f "$ROOT/scripts/cronusfarm_mqtt_watch.py" ]]; then
   echo "missing $ROOT/scripts/cronusfarm_mqtt_watch.py"
   exit 1
 fi
-chmod +x "$ROOT/scripts/cronusfarm_mqtt_watch.py"
+chmod +x "$ROOT/scripts/cronusfarm_mqtt_watch.py" \
+  "$ROOT/scripts/cronusfarm_mqtt_wifi_recover.py" 2>/dev/null || true
 
 if [[ -f "$UNIT_SRC" ]]; then
   sudo cp "$UNIT_SRC" "$UNIT_DST"

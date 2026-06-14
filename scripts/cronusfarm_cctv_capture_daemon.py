@@ -2,7 +2,7 @@
 """
 CronusFarm CCTV 캡처 데몬
 
-- 사진은 파일로 저장: ~/CronusFarm/CCTV/cam01/YYYY/MM/DD/...
+- 사진은 파일로 저장: /mnt/usb/CCTV/cam01/YYYY/MM/DD/... (USB 미마운트 시 ~/CronusFarm/CCTV)
 - SQLite에는 메타데이터/경로만 저장: cctv_photo
 - 촬영 주기는 SQLite settings_kv에서 읽음:
     key: cctv_cam01_interval_min  (정수 분, 예: 60)
@@ -10,7 +10,7 @@ CronusFarm CCTV 캡처 데몬
 환경변수:
   CRONUSFARM_SQLITE_PATH          DB 경로 (기본: ~/.node-red/cronusfarm.sqlite)
   CRONUSFARM_DEVICE_ID            device_id (기본: cronusfarm-01)
-  CRONUSFARM_CCTV_BASE_DIR        기본 저장 폴더 (기본: ~/CronusFarm/CCTV)
+  CRONUSFARM_CCTV_BASE_DIR        기본 저장 폴더 (기본: /mnt/usb/CCTV, 없으면 ~/CronusFarm/CCTV)
   CRONUSFARM_CCTV_CAM01_SRC       캡처 소스 (예: RTSP URL). 비어있으면 cam01 캡처는 건너뜀.
   CRONUSFARM_CCTV_INTERVAL_MIN_DEFAULT  settings_kv가 없을 때 기본 분 (기본: 60)
 
@@ -70,6 +70,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_cctv_photo_rel_path ON cctv_photo(rel_path)
 
 def _home_expand(p: str) -> Path:
     return Path(p).expanduser().resolve()
+
+
+def _default_cctv_base_dir() -> Path:
+    """USB 마운트 우선, 없으면 홈 폴백."""
+    for candidate in ("/mnt/usb/CCTV", "~/CronusFarm/CCTV"):
+        p = _home_expand(candidate)
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+            return p
+        except OSError:
+            continue
+    return _home_expand("~/CronusFarm/CCTV")
 
 
 def _env_int(name: str, default: int) -> int:
@@ -274,7 +286,7 @@ def _capture_once(
     ts_ms = int(time.time() * 1000)
     y, mo, d, stamp, _ = _now_kst_tuple(ts_ms)
 
-    # 경로: ~/CronusFarm/CCTV/cam01/YYYY/MM/DD/YYYYMMDD_HHMMSS.jpg
+    # 경로: {base}/cam01/YYYY/MM/DD/YYYYMMDD_HHMMSS.jpg (base 기본 /mnt/usb/CCTV)
     rel_dir = Path(cam.camera_key) / y / mo / d
     out_dir = base_dir / rel_dir
     _mkdirs(out_dir)
@@ -300,19 +312,23 @@ def _capture_once(
     sha = _sha256_file(out_path)
     print(f"[cctv] captured {rel_path} bytes={st.st_size}", flush=True)
 
-    # 최신 파일: 고정 URL 용(그래프/대시보드에서 사용)
+    # 최신 파일: 고정 URL 용(/cctv/cam01/latest.jpg). exFAT USB는 symlink 불가 → 파일 복사.
     try:
         latest_dir = base_dir / cam.camera_key
         _mkdirs(latest_dir)
-        latest_link = latest_dir / "latest.jpg"
-        tmp_link = latest_dir / ".latest.jpg.tmp"
+        latest_path = latest_dir / "latest.jpg"
+        tmp_path = latest_dir / ".latest.jpg.tmp"
         try:
-            if tmp_link.exists() or tmp_link.is_symlink():
-                tmp_link.unlink()
+            if tmp_path.exists():
+                tmp_path.unlink()
         except OSError:
             pass
-        os.symlink(out_path, tmp_link)
-        os.replace(tmp_link, latest_link)
+        try:
+            os.symlink(out_path, tmp_path)
+            os.replace(tmp_path, latest_path)
+        except OSError:
+            shutil.copy2(out_path, tmp_path)
+            os.replace(tmp_path, latest_path)
     except OSError as e:
         print(f"[cctv] latest.jpg update failed: {e}", flush=True)
 
@@ -340,7 +356,8 @@ def _sleep_until(ts_target: float) -> None:
 def _main_loop() -> int:
     db_path = _home_expand(os.environ.get("CRONUSFARM_SQLITE_PATH", "~/.node-red/cronusfarm.sqlite"))
     device_id = (os.environ.get("CRONUSFARM_DEVICE_ID") or "cronusfarm-01").strip() or "cronusfarm-01"
-    base_dir = _home_expand(os.environ.get("CRONUSFARM_CCTV_BASE_DIR", "~/CronusFarm/CCTV"))
+    raw_base = (os.environ.get("CRONUSFARM_CCTV_BASE_DIR") or "").strip()
+    base_dir = _home_expand(raw_base) if raw_base else _default_cctv_base_dir()
     default_min = _env_int("CRONUSFARM_CCTV_INTERVAL_MIN_DEFAULT", 60)
 
     cams = [

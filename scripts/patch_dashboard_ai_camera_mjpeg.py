@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""대시보드 AI 카메라: 1880/1882/1884 → :8080/stream 직접, 그 외 → /farm/ai-mjpeg. inject_cf_ai_mjpeg_boot 만 제거."""
+"""대시보드 AI 카메라: 브라우저는 항상 nginx /farm/hailo-mjpeg (localhost만 :8080 직연결). inject_cf_ai_mjpeg_boot 제거."""
 from __future__ import annotations
 
 import json
@@ -11,45 +11,87 @@ DASH = ROOT / "nodered" / "flows_cronusfarm_dashboard.json"
 REMOVE_INJECT_IDS = frozenset({"inject_cf_ai_mjpeg_boot"})
 STREAM_ID = "nr_node_ui_ai_stream"
 
+CAM_CLICK_JS = r"""
+  function cfDetectApi(){
+    var o=location.origin||"";
+    return o+"/farm/hailo-mjpeg/detect_now";
+  }
+  function cfRedetect(){
+    var cap=document.getElementById("cf-ai-cap-txt");
+    if(cap) cap.textContent="검출 중… (클릭)";
+    fetch(cfDetectApi(),{method:"POST",credentials:"same-origin"})
+      .then(function(r){return r.json();})
+      .then(function(j){
+        if(j&&j.caption) setCap(j);
+        else if(cap) cap.textContent=(j&&j.ok)?"검출 완료":"검출 결과 없음";
+      })
+      .catch(function(){ if(cap) cap.textContent="검출 요청 실패"; });
+  }
+  var stage=document.querySelector(".cf-ai-cam-stage");
+  if(stage){
+    stage.style.cursor="pointer";
+    stage.title="화면 클릭 → 다시 검출";
+    stage.addEventListener("click", function(ev){
+      if(ev.target&&ev.target.id==="cf-ai-mjpeg-img") cfRedetect();
+    });
+  }
+"""
+
 FMT = r"""<div class="cf-ai-cam-outer">
-  <div class="cf-ai-cam-root" style="width:100%;background:#050a12;text-align:center;">
-    <img id="cf-ai-mjpeg-img" alt="AI camera" src="/farm/ai-mjpeg/video_feed" style="max-width:100%;width:auto;height:auto;object-fit:contain;display:block;margin:0 auto;background:#000;"/>
+  <div class="cf-ai-cam-stage">
+    <img id="cf-ai-mjpeg-img" alt="AI camera" src="/farm/hailo-mjpeg/video_feed"/>
   </div>
-  <div id="cf-ai-cap-txt" class="cf-ai-cam-caption">실시간 온실 영상 (로딩)</div>
+  <div id="cf-ai-cap-txt" class="cf-ai-cam-caption">실시간 온실 영상 (로딩) · 화면 클릭 시 재검출</div>
 </div>
 <script type="text/javascript">
 (function(scope){
+  function formatCropCap(v){
+    if(v==null||v==="")return "";
+    if(typeof v==="object"&&v!==null){
+      if(v.caption!=null&&String(v.caption).trim())return String(v.caption).trim();
+      var n=v.crop_name!=null?String(v.crop_name):"—";
+      var c=v.crop_count!=null?String(v.crop_count):"—";
+      var l=v.leaf_count!=null?String(v.leaf_count):"—";
+      if(v.crop_name!=null||v.crop_count!=null||v.leaf_count!=null)
+        return "작물: "+n+" | 개수: "+c+" | 잎: "+l;
+    }
+    return String(v);
+  }
   function setCap(v){
     var t=document.getElementById("cf-ai-cap-txt");
-    if(!t||v==null||v==="")return;
-    if(typeof v==="object"&&v!==null){
-      if(v.caption!=null&&String(v.caption).trim()){ t.textContent=String(v.caption).trim(); return; }
-      return;
-    }
-    t.textContent=String(v);
+    if(!t)return;
+    var s=formatCropCap(v);
+    if(s)t.textContent=s;
   }
   if(typeof scope!=="undefined"&&scope&&typeof scope.$watch==="function"){
     scope.$watch("msg", function(m){ if(m)setCap(m.payload); }, true);
   }
   var el=document.getElementById("cf-ai-mjpeg-img");
   if(!el)return;
-  function piHost(){
-    if(typeof window.cfPiHost==="function") return window.cfPiHost();
-    return "ida.mango-larch.ts.net";
-  }
+  var CF_CAM_PATH="/farm/hailo-mjpeg/video_feed";
+  var CF_CAM_FALLBACK="/farm/ai-mjpeg/video_feed";
   function cfCamSrc(){
-    var h=location.hostname||"127.0.0.1";
+    var h=(location.hostname||"").toLowerCase();
     var pr=location.protocol||"http:";
-    var p=String(location.port||"");
-    if(p==="1881"||h==="127.0.0.1"||h==="localhost") return pr+"//"+piHost()+":8080/stream";
-    if(p==="1880"||p==="80"||p==="") return (location.origin||"")+"/farm/ai-mjpeg/video_feed";
-    if(/^(5188[0-2]|188[0-4])$/.test(p)) return pr+"//"+piHost()+":8080/stream";
-    return (location.origin||"")+"/farm/ai-mjpeg/video_feed";
+    if(h==="127.0.0.1"||h==="localhost") return pr+"//"+h+":8080/stream";
+    return (location.origin||"")+CF_CAM_PATH;
   }
-  function apply(){ el.src=cfCamSrc(); }
+  function apply(){
+    el.src=cfCamSrc();
+  }
   apply();
-  window.addEventListener("cf-pi-host", apply);
-  el.onerror=function(){ apply(); };
+  var errN=0;
+  el.onerror=function(){
+    errN++;
+    var u=el.src||"";
+    if(errN===1&&u.indexOf("hailo-mjpeg")>=0){
+      el.src=(location.origin||"")+CF_CAM_FALLBACK;
+      el.style.transform="scaleY(-1)";
+      return;
+    }
+    if(errN<6) setTimeout(apply, 1500*errN);
+  };
+""" + CAM_CLICK_JS + r"""
 })(scope);
 </script>"""
 
@@ -61,7 +103,7 @@ def main() -> None:
         if n.get("id") != STREAM_ID:
             continue
         n["format"] = FMT
-        n["height"] = 12
+        n["height"] = 8
         n["fwdInMessages"] = True
         n["resendOnRefresh"] = True
         break

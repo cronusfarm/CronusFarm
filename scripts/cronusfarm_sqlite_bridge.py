@@ -19,23 +19,30 @@ POST /settings/kv JSON: { device_id, key, value }
 GET  /health
 GET  /api/snapshot?device_id=...  JSON: tele/cmd 건수·마지막 tele 시각·settings_kv 목록
 GET  /api/schedule?device_id=...&channel=...  JSON: schedule_rule 목록
+GET  /api/schedule/batch?device_id=...  JSON: { channels: { ch: { rules, rule_count } } } 전 채널 1회
 PUT  /api/schedule?device_id=...&channel=...  JSON: rules[] 에 rule_kind(window|cycle), window 시 on_min/off_min(분), cycle 시 on_sec/off_sec(초)·선택 on_min/off_min(시간대)
 POST /api/schedule/seed_defaults  JSON: { device_id?, force? } 기본 스케줄 DB 시드
-GET  /api/channel/timeline?device_id=...&channel=...&hours=24  JSON: tele_channel_fact 시계열(그래프). anchor_ts_ms=창 시작(ms), points는 창 시작·끝 보간 포함
-GET  /api/channel/timeline/batch?device_id=...&channels=led_a1,pump_a1,...&hours=24  JSON: { channels: { ch: { points, ... } } } (느린 WAN/TS 왕복 1회로 Bed 전체)
+GET  /api/channel/timeline?device_id=...&channel=...&hours=24  JSON: tele_channel_fact 시계열(그래프). hours=24 기본=KST 오늘 0~24h. rolling=1 이면 지금−24h~지금
+GET  /api/channel/timeline/batch?device_id=...&channels=led_a1,pump_a1,...&hours=48&rolling=0|1  JSON: { channels, day_window? } (hours 최대 168)
 POST /api/channel/backfill  JSON: { device_id, channel|channel_key, hours? } tele_sample→tele_channel_fact 누락 행 보강
 GET  /api/channel/status?device_id=...  JSON: 채널별 최신 state·auto_mode(마지막 tele 적재)
 POST /api/channel-action  JSON: { device_id, channel, action } → SQLite + MQTT cmd(Arduino)
 GET  /api/audit_log?device_id=...&limit=100&channel=&since_ms=0  JSON: manual_switch_event 감사 로그(수동·스케줄 저장·자동 ON/OFF)
 POST /ingest/manual_event  JSON: UI 수동 조작 로그 → manual_switch_event (source: ui|system|…)
 POST /ingest/sensor  JSON: PHW3988 등 → sensor_reading (ph, ec, temp_c, zone, raw_json)
+POST /ingest/telegram-register  JSON: { chat_id, display_name?, telegram_username? } 텔레그램 알림 신청(pending)
 GET  /api/sensor/latest?device_id=...&zone=phw3988  JSON: 최신 sensor_reading 1건
+GET  /api/admin/me|members|telegram-users|notify-prefs|news|farm-diary|pest-forecast
+POST /api/admin/members|telegram-users|notify-prefs|farm-diary|ai-diagnose|news/seed
+PUT  /api/admin/members|telegram-users|notify-prefs
+DELETE /api/admin/farm-diary|telegram-users?id=
 OPTIONS  CORS 프리플라이트 (브라우저에서 dashboard→브리지 fetch용)
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -44,7 +51,37 @@ import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from socketserver import ThreadingMixIn
 from pathlib import Path
+import urllib.error
+import urllib.request
 from urllib.parse import parse_qs, quote, urlparse
+
+# 타임라인 batch 동시 1건만 — 다중 탭·폴링이 SQLite 단일 conn을 막아 /ui·status 타임아웃 방지
+_timeline_batch_slots = threading.Semaphore(
+    max(1, int(os.environ.get("CRONUSFARM_TIMELINE_BATCH_MAX", "1") or "1"))
+)
+
+
+def _open_sqlite_read(db_path: Path) -> sqlite3.Connection:
+    """읽기 전용 요청용 별도 연결(WAL) — ingest·batch와 write conn 분리."""
+    c = sqlite3.connect(str(db_path), timeout=5.0, check_same_thread=False)
+    c.execute("PRAGMA foreign_keys=ON")
+    c.execute("PRAGMA busy_timeout=5000")
+    try:
+        c.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.Error:
+        pass
+    return c
+
+
+def _configure_sqlite_conn(conn: sqlite3.Connection) -> None:
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA busy_timeout=5000")
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.Error:
+        pass
+
 
 # 기존 DB에 schedule_rule 없을 때 런타임 보강
 _SCHEDULE_RULE_DDL = """
@@ -77,6 +114,47 @@ def _ensure_schedule_rule_table(conn: sqlite3.Connection) -> None:
     _ensure_schedule_rule_columns(conn)
 
 
+def _schedule_rule_entry_from_row(r: tuple) -> dict[str, object]:
+    """SELECT id, dow_mask, slot_index, on_min, off_min, enabled, updated_at, rule_kind, on_sec, off_sec."""
+    rk = str(r[7] or "window")
+    entry: dict[str, object] = {
+        "id": int(r[0]),
+        "dow_mask": int(r[1]),
+        "slot_index": int(r[2]),
+        "on_min": int(r[3]),
+        "off_min": int(r[4]),
+        "enabled": int(r[5]),
+        "updated_at": r[6],
+        "rule_kind": rk,
+    }
+    if rk == "cycle":
+        entry["on_sec"] = int(r[8]) if r[8] is not None else 0
+        entry["off_sec"] = int(r[9]) if r[9] is not None else 0
+    else:
+        entry["on_sec"] = None
+        entry["off_sec"] = None
+    return entry
+
+
+def _fetch_schedule_rules_by_channel(
+    cur: sqlite3.Cursor, device_id: str
+) -> dict[str, list[dict[str, object]]]:
+    cur.execute(
+        """SELECT channel_key, id, dow_mask, slot_index, on_min, off_min, enabled, updated_at,
+                  COALESCE(rule_kind, 'window'), on_sec, off_sec
+           FROM schedule_rule
+           WHERE device_id=?
+           ORDER BY channel_key, slot_index, id""",
+        (device_id,),
+    )
+    out: dict[str, list[dict[str, object]]] = {}
+    for row in cur.fetchall():
+        ch = str(row[0])
+        entry = _schedule_rule_entry_from_row(row[1:])
+        out.setdefault(ch, []).append(entry)
+    return out
+
+
 def _ensure_schedule_rule_columns(conn: sqlite3.Connection) -> None:
     """기존 DB: schedule_rule 확장(window / 주기 cycle)."""
     cur = conn.cursor()
@@ -95,8 +173,109 @@ def _ensure_schedule_rule_columns(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
-def _mqtt_publish_cmd(device_id: str, payload: str) -> str:
-    """Arduino cmd 토픽에 key=value 토큰 문자열 발행."""
+def _mqtt_republish_status(
+    device_id: str, payload: str, topic: str = "", *, retain: bool = True
+) -> str:
+    """USB tele 수신 시 stale offline retain 제거용 status 재발행."""
+    flag = os.environ.get("CRONUSFARM_INGEST_REPUBLISH_MQTT", "1").strip().lower()
+    if flag in ("0", "false", "no", "off"):
+        return "skipped_env"
+    pl = (payload or "").strip()
+    if not pl:
+        return "empty"
+    exe = shutil.which("mosquitto_pub")
+    if not exe:
+        return "no_mosquitto_pub"
+    host = os.environ.get("CRONUSFARM_MQTT_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    port = os.environ.get("CRONUSFARM_MQTT_PORT", "1883").strip() or "1883"
+    tp = (topic or "").strip() or f"cronusfarm/{device_id}/status"
+    args = [exe, "-h", host, "-p", port, "-t", tp, "-m", pl]
+    if retain:
+        args.insert(-2, "-r")
+    try:
+        subprocess.run(
+            args,
+            check=False,
+            timeout=8,
+            capture_output=True,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "publish_error"
+    return "published"
+
+
+def _mqtt_republish_tele(device_id: str, raw: str, topic: str = "") -> str:
+    """HTTP ingest tele → Node-RED 구독용 MQTT tele 토픽 재발행."""
+    flag = os.environ.get("CRONUSFARM_INGEST_REPUBLISH_MQTT", "1").strip().lower()
+    if flag in ("0", "false", "no", "off"):
+        return "skipped_env"
+    if not raw.strip():
+        return "empty"
+    exe = shutil.which("mosquitto_pub")
+    if not exe:
+        return "no_mosquitto_pub"
+    host = os.environ.get("CRONUSFARM_MQTT_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    port = os.environ.get("CRONUSFARM_MQTT_PORT", "1883").strip() or "1883"
+    tp = (topic or "").strip() or f"cronusfarm/{device_id}/tele"
+    try:
+        subprocess.run(
+            [exe, "-h", host, "-p", port, "-t", tp, "-m", raw],
+            check=False,
+            timeout=8,
+            capture_output=True,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "publish_error"
+    return "published"
+
+
+def _r4_publish_cmd_serial(device_id: str, payload: str) -> str:
+    """R4 USB 시리얼 데몬(18767)으로 cmd 전달."""
+    # USB(특히 R4)에서 짧은 시간에 cmd를 몰아치면 USBD 워치독/끊김이 발생할 수 있어
+    # 최소 간격을 둔다(스케줄 sync/force_auto 등 연속 호출 완화).
+    global _LAST_SERIAL_CMD_MS
+    try:
+        now_ms = int(time.time() * 1000)
+        last = int(_LAST_SERIAL_CMD_MS or 0)
+        gap = now_ms - last
+        min_gap = int(os.environ.get("CRONUSFARM_SERIAL_CMD_MIN_MS", "400") or 400)
+        if gap >= 0 and gap < min_gap:
+            time.sleep((min_gap - gap) / 1000.0)
+        _LAST_SERIAL_CMD_MS = int(time.time() * 1000)
+    except Exception:
+        pass
+    base = os.environ.get(
+        "CRONUSFARM_R4_SERIAL_API_URL", "http://127.0.0.1:18767"
+    ).rstrip("/")
+    url = f"{base}/r4/cmd"
+    body = json.dumps(
+        {"device_id": device_id, "payload": payload}, ensure_ascii=False
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": "application/json; charset=utf-8"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+            if 200 <= resp.status < 300:
+                try:
+                    j = json.loads(raw)
+                    if j.get("ok"):
+                        return "serial_ok"
+                except json.JSONDecodeError:
+                    return "serial_ok"
+            return "serial_rejected"
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return "serial_error"
+
+
+_LAST_SERIAL_CMD_MS = 0
+
+
+def _mqtt_publish_cmd_mqtt_only(device_id: str, payload: str) -> str:
     flag = os.environ.get("CRONUSFARM_CMD_MQTT", "").strip().lower()
     if flag in ("0", "false", "no", "off"):
         return "skipped_env"
@@ -118,33 +297,115 @@ def _mqtt_publish_cmd(device_id: str, payload: str) -> str:
     return "published"
 
 
+def _mqtt_publish_cmd(device_id: str, payload: str) -> str:
+    """Arduino cmd — USB 시리얼 primary + 선택적 MQTT 미러(WiFi 경로)."""
+    transport = os.environ.get("CRONUSFARM_R4_CMD_TRANSPORT", "serial").strip().lower()
+    if transport in ("serial", "usb", "usb-serial"):
+        ser_st = _r4_publish_cmd_serial(device_id, payload)
+        mirror = os.environ.get("CRONUSFARM_R4_CMD_MQTT_MIRROR", "1").strip().lower()
+        if mirror not in ("0", "false", "no", "off"):
+            mqtt_st = _mqtt_publish_cmd_mqtt_only(device_id, payload)
+            if _r4_cmd_ok(ser_st):
+                return ser_st
+            if mqtt_st == "published":
+                return mqtt_st
+        return ser_st
+    return _mqtt_publish_cmd_mqtt_only(device_id, payload)
+
+
+def _r4_cmd_ok(st: str) -> bool:
+    """MQTT published 또는 USB serial_ok."""
+    return st in ("published", "serial_ok")
+
+
 def _channel_action_mqtt_parts(channel_key: str, action: str, body: dict) -> list[str]:
-    """UI channel-action → Arduino cmd 페이로드 조각."""
+    """UI channel-action → Arduino cmd (ui_<ch>=0|1|2). auto_=0 MQTT 단독은 펌웨어에서 무시됨."""
     ch = channel_key.strip()
     act = action.strip()
     parts: list[str] = []
-    if act == "set_output":
-        parts.append(f"auto_{ch}=0")
+
+    def _ui_val() -> int:
         onv = body.get("on")
         if onv in (True, 1, "1", "on", "true"):
-            parts.append(f"{ch}=1")
-        elif onv in (False, 0, "0", "off", "false"):
-            parts.append(f"{ch}=0")
-        elif body.get("new_state") in (0, 1):
-            parts.append(f"{ch}={int(body['new_state'])}")
-    elif act == "set_auto":
-        parts.append(f"auto_{ch}=1")
-    elif act == "set_manual":
-        parts.append(f"auto_{ch}=0")
+            return 1
+        if onv in (False, 0, "0", "off", "false"):
+            return 0
         ns = body.get("new_state")
-        ps = body.get("prev_state")
         if ns in (0, 1):
-            parts.append(f"{ch}={int(ns)}")
-        elif ps in (0, 1):
-            parts.append(f"{ch}={int(ps)}")
+            return int(ns)
+        ps = body.get("prev_state")
+        if ps in (0, 1):
+            return int(ps)
+        return 0
+
+    if act == "set_output":
+        parts.append(f"ui_{ch}={_ui_val()}")
+    elif act == "set_auto":
+        parts.append(f"ui_{ch}=2")
+    elif act == "set_manual":
+        parts.append(f"ui_{ch}={_ui_val()}")
     elif act == "revert_auto":
-        parts.append(f"auto_{ch}=1")
+        parts.append(f"ui_{ch}=2")
     return parts
+
+
+def _channel_action_applied(
+    channel_key: str, action: str, body: dict
+) -> dict[str, object]:
+    """UI 낙관적 갱신·응답용 — 요청 cmd와 동일한 state/auto."""
+    act = action.strip()
+    out: dict[str, object] = {"channel": channel_key}
+    if act == "set_auto":
+        out["auto_mode"] = 1
+        ps = body.get("prev_state")
+        if ps in (0, 1):
+            out["state"] = int(ps)
+        return out
+    if act in ("set_manual", "set_output"):
+        out["auto_mode"] = 0
+        onv = body.get("on")
+        if onv in (True, 1, "1", "on", "true"):
+            out["state"] = 1
+        elif onv in (False, 0, "0", "off", "false"):
+            out["state"] = 0
+        else:
+            ns = body.get("new_state")
+            if ns in (0, 1):
+                out["state"] = int(ns)
+        return out
+    return out
+
+
+def _mqtt_rule_for_publish(rule: dict[str, object]) -> dict[str, object]:
+    """Arduino SCHED_JSON 파서 호환 — window는 on_sec/off_sec null 제외."""
+    rk = str(rule.get("rule_kind") or "window").strip().lower()
+    out: dict[str, object] = {
+        "rule_kind": rk,
+        "dow_mask": int(rule.get("dow_mask") or 127),
+        "slot_index": int(rule.get("slot_index") or 0),
+        "on_min": int(rule.get("on_min") or 0),
+        "off_min": int(rule.get("off_min") or 0),
+        "enabled": int(rule.get("enabled", 1) or 0),
+    }
+    if rk == "cycle":
+        out["on_sec"] = int(rule.get("on_sec") or 0)
+        out["off_sec"] = int(rule.get("off_sec") or 0)
+    return out
+
+
+def _active_hold_channels(
+    conn: sqlite3.Connection, device_id: str, now_ms: int | None = None
+) -> set[str]:
+    """유효 UI 수동 홀드 채널 — boot/SCHED 동기화 시 auto 복귀 제외."""
+    if now_ms is None:
+        now_ms = int(time.time() * 1000)
+    _ensure_channel_manual_hold_table(conn)
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT channel_key FROM channel_manual_hold WHERE device_id=? AND expires_ms > ?",
+        (device_id, now_ms),
+    )
+    return {str(r[0]) for r in cur.fetchall()}
 
 
 def _publish_schedule_mqtt(
@@ -152,6 +413,7 @@ def _publish_schedule_mqtt(
     device_id: str,
     channel_key: str,
     rules: list[dict[str, object]],
+    held_channels: set[str] | None = None,
 ) -> tuple[str, int]:
     """PUT /api/schedule 직후 Arduino cmd 토픽으로 SCHED_JSON + auto 발행."""
     sch_ver = int(time.time())
@@ -159,16 +421,19 @@ def _publish_schedule_mqtt(
     if flag in ("0", "false", "no", "off"):
         return ("skipped_env", sch_ver)
     enabled = [r for r in rules if int(r.get("enabled", 1) or 0)]
+    mqtt_rules = [_mqtt_rule_for_publish(r) for r in enabled]
     envelope = {
         "sch_ver": sch_ver,
         "channel": channel_key,
-        "rules": enabled,
+        "rules": mqtt_rules,
     }
     raw_j = json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
     payload = "SCHED_JSON=" + quote(raw_j, safe="")
     st = _mqtt_publish_cmd(device_id, payload)
-    if enabled and st == "published":
-        _mqtt_publish_cmd(device_id, f"auto_{channel_key}=1")
+    if enabled and _r4_cmd_ok(st):
+        skip_auto = channel_key in (held_channels or ())
+        if not skip_auto:
+            _mqtt_publish_cmd(device_id, f"ui_{channel_key}=2")
     return (st, sch_ver)
 
 
@@ -203,6 +468,35 @@ def _in_revert_grace(device_id: str, channel_key: str) -> bool:
     with _revert_grace_lock:
         until = _revert_grace_until.get(key)
     return until is not None and time.time() < until
+
+
+def _latest_ui_channel_intent(
+    conn: sqlite3.Connection, device_id: str, channel_key: str
+) -> tuple[int, int, int] | None:
+    """최근 UI set_manual/set_output 의도 — (state, auto_mode=0, ts_ms)."""
+    _ensure_manual_switch_event_table(conn)
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT new_state, new_auto, ts_ms, meta_json FROM manual_switch_event
+        WHERE device_id=? AND channel_key=? AND source='ui'
+        ORDER BY ts_ms DESC LIMIT 12
+        """,
+        (device_id, channel_key),
+    )
+    for row in cur.fetchall():
+        try:
+            meta = json.loads(row[3] or "{}")
+        except json.JSONDecodeError:
+            meta = {}
+        act = str(meta.get("action") or "")
+        if act not in ("set_manual", "set_output"):
+            continue
+        ns = int(row[0]) if row[0] is not None and int(row[0]) >= 0 else -1
+        na = int(row[1]) if row[1] is not None and int(row[1]) >= 0 else -1
+        if ns in (0, 1) and na == 0:
+            return (ns, 0, int(row[2]))
+    return None
 
 
 def _read_hold_expires_ms(
@@ -355,10 +649,10 @@ def _read_channel_hold_minutes(
 def _revert_channel_to_auto(
     db_path: Path, lock: threading.Lock, device_id: str, channel_key: str
 ) -> None:
-    """홀드 만료·스위퍼: MQTT auto=1 + DB tele/감사 반영."""
+    """홀드 만료·스위퍼: ui_=2(AUTO) + DB tele/감사 반영."""
     _cancel_hold_revert(device_id, channel_key)
     _set_revert_grace(device_id, channel_key)
-    _mqtt_publish_cmd(device_id, f"auto_{channel_key}=1")
+    _mqtt_publish_cmd(device_id, f"ui_{channel_key}=2")
     with lock:
         conn = sqlite3.connect(str(db_path), check_same_thread=False)
         try:
@@ -669,26 +963,97 @@ def _boot_schedule_sync_delay_sec() -> float:
         return 60.0
 
 
+def force_device_all_auto(
+    db_path: Path, lock: threading.Lock, device_id: str
+) -> dict[str, object]:
+    """cmd retain 제거 + DB 홀드 삭제 + SCHED 동기화 + 전 채널 AUTO MQTT."""
+    host = os.environ.get("CRONUSFARM_MQTT_HOST", "127.0.0.1").strip() or "127.0.0.1"
+    port = os.environ.get("CRONUSFARM_MQTT_PORT", "1883").strip() or "1883"
+    topic = f"cronusfarm/{device_id}/cmd"
+    exe = shutil.which("mosquitto_pub")
+    retain_cleared = False
+    if exe:
+        try:
+            subprocess.run(
+                [exe, "-h", host, "-p", port, "-t", topic, "-r", "-n"],
+                check=False,
+                timeout=8,
+                capture_output=True,
+            )
+            retain_cleared = True
+        except (OSError, subprocess.TimeoutExpired):
+            pass
+        _mqtt_publish_cmd(device_id, "FORCE_AUTO_ALL=1")
+        time.sleep(0.35)
+    wconn = sqlite3.connect(str(db_path), check_same_thread=False, timeout=5.0)
+    try:
+        _configure_sqlite_conn(wconn)
+        with lock:
+            _ensure_channel_manual_hold_table(wconn)
+            wconn.execute(
+                "DELETE FROM channel_manual_hold WHERE device_id=?",
+                (device_id,),
+            )
+            wconn.commit()
+        n, auto_n = _sync_device_schedules_mqtt_full(
+            wconn, db_path, lock, device_id
+        )
+    finally:
+        wconn.close()
+    return {
+        "device_id": device_id,
+        "retain_cleared": retain_cleared,
+        "channels_published": n,
+        "auto_published": auto_n,
+    }
+
+
+def force_device_all_manual_on(
+    db_path: Path, lock: threading.Lock, device_id: str
+) -> dict[str, object]:
+    """개발·점검용: 전 채널 수동 ON (ui_<ch>=1, 펌웨어 패널과 동일 경로)."""
+    parts = [f"ui_{ch}=1" for ch in ALL_CHANNELS]
+    payload = " ".join(parts)
+    st = _mqtt_publish_cmd(device_id, payload)
+    with lock:
+        conn = sqlite3.connect(str(db_path), check_same_thread=False, timeout=5.0)
+        try:
+            _configure_sqlite_conn(conn)
+            _ensure_channel_manual_hold_table(conn)
+            _ensure_device(conn, device_id)
+            for ch in ALL_CHANNELS:
+                _upsert_channel_hold(conn, device_id, ch, 60)
+            conn.commit()
+        finally:
+            conn.close()
+    return {
+        "device_id": device_id,
+        "mqtt": st,
+        "cmd_preview": payload[:120] + ("…" if len(payload) > 120 else ""),
+        "channels": len(ALL_CHANNELS),
+    }
+
+
 def _mqtt_publish_all_auto(
     db_path: Path | None, lock: threading.Lock | None, device_id: str
 ) -> int:
-    """전 채널 auto_{ch}=1 MQTT 발행 + 만료 홀드 행 정리. 반환: 발행 성공 수."""
+    """전 채널 ui_=2(AUTO) — 유효 수동 홀드 채널은 건너뜀. 반환: 발행 성공 수."""
+    held: set[str] = set()
     if db_path is not None and lock is not None:
         with lock:
             conn = sqlite3.connect(str(db_path), check_same_thread=False)
             try:
                 _ensure_channel_manual_hold_table(conn)
-                conn.execute(
-                    "DELETE FROM channel_manual_hold WHERE device_id=?",
-                    (device_id,),
-                )
-                conn.commit()
+                held = _active_hold_channels(conn, device_id)
             finally:
                 conn.close()
     n = 0
     for ch in ALL_CHANNELS:
-        if _mqtt_publish_cmd(device_id, f"auto_{ch}=1") == "published":
+        if ch in held:
+            continue
+        if _r4_cmd_ok(_mqtt_publish_cmd(device_id, f"ui_{ch}=2")):
             n += 1
+        time.sleep(0.04)
     return n
 
 
@@ -702,6 +1067,7 @@ def _sync_device_schedules_mqtt(conn: sqlite3.Connection, device_id: str) -> int
     )
     db_ch = {str(r[0]) for r in cur.fetchall()}
     channels = [ch for ch in ALL_CHANNELS if ch in db_ch]
+    held = _active_hold_channels(conn, device_id)
     published = 0
     for channel in channels:
         cur.execute(
@@ -750,10 +1116,15 @@ def _sync_device_schedules_mqtt(conn: sqlite3.Connection, device_id: str) -> int
             device_id=device_id,
             channel_key=channel,
             rules=enabled_rules,
+            held_channels=held,
         )
-        if st == "published":
+        if _r4_cmd_ok(st):
             published += 1
+        time.sleep(0.06)
     return published
+
+
+_LAST_FULL_SCHED_SYNC: dict[str, float] = {}
 
 
 def _sync_device_schedules_mqtt_full(
@@ -763,6 +1134,16 @@ def _sync_device_schedules_mqtt_full(
     device_id: str,
 ) -> tuple[int, int]:
     """SCHED_JSON 동기화 + 전 채널 자동 모드. (published, auto_sent)"""
+    min_sec = max(
+        0,
+        int(os.environ.get("CRONUSFARM_SCHED_SYNC_MIN_SEC", "300") or 300),
+    )
+    if min_sec > 0:
+        now = time.time()
+        last = _LAST_FULL_SCHED_SYNC.get(device_id, 0.0)
+        if now - last < float(min_sec):
+            return 0, 0
+        _LAST_FULL_SCHED_SYNC[device_id] = now
     published = _sync_device_schedules_mqtt(conn, device_id)
     auto_sent = _mqtt_publish_all_auto(db_path, lock, device_id)
     return published, auto_sent
@@ -813,23 +1194,24 @@ def _cancel_boot_schedule_sync(device_id: str) -> None:
             old.cancel()
 
 
+# 펌웨어 CH_KEY[] 순서와 동일 (CronusFarm.ino)
 ALL_CHANNELS = [
     "led_a1",
     "led_a2",
+    "led_b1",
     "pump_a1",
     "pump_a2",
-    "fan_a1",
-    "fan_a2",
-    "led_b1",
-    "led_b2",
     "pump_b1",
     "pump_b2",
+    "fan_a1",
+    "fan_a2",
     "fan_b1",
     "fan_b2",
     "pump_c1",
     "pump_c2",
     "pump_d1",
     "pump_d2",
+    "led_b2",
 ]
 
 _MANUAL_SWITCH_DDL = """
@@ -1018,17 +1400,118 @@ def _latest_tele_sample(
     return kv_s, kv_a, ts_ms
 
 
+def _should_skip_tele_sample_insert(
+    cur: sqlite3.Cursor,
+    device_id: str,
+    raw: str,
+    via: str,
+    ts_ms: int,
+) -> bool:
+    """MQTT/Node-RED 지연 tele가 USB 직후 S:를 되돌리는 insert 방지."""
+    if via in ("usb-serial", "usb", "serial"):
+        return False
+    cur.execute(
+        "SELECT ts_ms, raw FROM tele_sample WHERE device_id=? ORDER BY ts_ms DESC LIMIT 1",
+        (device_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return False
+    last_raw = str(row[1] or "")
+    if raw == last_raw:
+        return True
+    new_s, new_a, _, _ = parse_tele_sections(raw)
+    last_s, last_a, _, _ = parse_tele_sections(last_raw)
+    if new_s == last_s and new_a == last_a:
+        return True
+    usb_ms = _kv_get_int(cur, device_id, "r4_usb_last_ms")
+    if usb_ms is None or ts_ms - usb_ms > 12_000:
+        return False
+    if new_s != last_s:
+        return True
+    return False
+
+
 def _channel_display_mode(
     auto_mode: int | None, hold_expires_ms: int | None, now_ms: int
 ) -> str:
-    """UI: 유효 수동 홀드가 있을 때만 manual (tele auto=0 만으로는 수동 표시 안 함)."""
-    if hold_expires_ms is not None and int(hold_expires_ms) > now_ms:
+    """UI 자동/수동 표시 — tele A: 만 사용(홀드는 복귀 타이머 메타, 릴레이와 분리)."""
+    del hold_expires_ms, now_ms
+    if auto_mode is not None and int(auto_mode) == 0:
         return "manual"
     return "auto"
 
 
+def _read_channel_holds(
+    conn: sqlite3.Connection, device_id: str
+) -> dict[str, tuple[int, int]]:
+    _ensure_channel_manual_hold_table(conn)
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT channel_key, expires_ms, hold_minutes
+        FROM channel_manual_hold WHERE device_id=?""",
+        (device_id,),
+    )
+    return {str(r[0]): (int(r[1]), int(r[2])) for r in cur.fetchall()}
+
+
+def _build_channel_status_live(
+    conn: sqlite3.Connection,
+    device_id: str,
+    now_ms: int,
+    *,
+    upsert_facts: bool = False,
+) -> dict[str, dict[str, object]]:
+    """설정/침대 UI용 — tele_sample S(릴레이 핀)·A(AUTO)만 사용(ON/OFF=실측 100%)."""
+    cur = conn.cursor()
+    kv_s, kv_a, tele_ts = _latest_tele_sample(cur, device_id)
+    holds = _read_channel_holds(conn, device_id)
+    chans: dict[str, dict[str, object]] = {}
+    for ch_key in ALL_CHANNELS:
+        st_raw = kv_s.get(ch_key)
+        au_raw = kv_a.get(ch_key)
+        if st_raw not in ("0", "1") and au_raw not in ("0", "1"):
+            continue
+        state_i = int(st_raw) if st_raw in ("0", "1") else 0
+        if au_raw in ("0", "1"):
+            auto_i = int(au_raw)
+        else:
+            auto_i = 1
+        ent: dict[str, object] = {
+            "state": state_i,
+            "auto_mode": auto_i,
+            "ts_ms": tele_ts if tele_ts is not None else now_ms,
+            "tele_ts_ms": tele_ts,
+        }
+        h = holds.get(ch_key)
+        if h:
+            ent["hold_expires_ms"] = h[0]
+            ent["hold_minutes"] = h[1]
+        ent["display_mode"] = _channel_display_mode(
+            ent.get("auto_mode"), ent.get("hold_expires_ms"), now_ms
+        )
+        chans[ch_key] = ent
+        if upsert_facts and tele_ts is not None:
+            cur.execute(
+                """SELECT state, auto_mode FROM tele_channel_fact
+                WHERE device_id=? AND channel_key=? ORDER BY ts_ms DESC LIMIT 1""",
+                (device_id, ch_key),
+            )
+            prev = cur.fetchone()
+            if prev is None or int(prev[0]) != state_i or int(prev[1]) != auto_i:
+                cur.execute(
+                    """INSERT INTO tele_channel_fact
+                    (device_id, ts_ms, channel_key, state, auto_mode, on_sec, off_sec)
+                    VALUES (?,?,?,?,?,?,?)""",
+                    (device_id, int(tele_ts), ch_key, state_i, auto_i, None, None),
+                )
+    if upsert_facts and chans:
+        conn.commit()
+    return chans
+
+
 def parse_tele_rtc_local(raw: str) -> str | None:
-    """tele `R:YYYYMMDDHHmmss` — Arduino RV3028 시각."""
+    """tele `R:YYYYMMDDHHmmss` — R4 소프트웨어 시계(Pi 동기)."""
     if not raw:
         return None
     for seg in raw.split("|"):
@@ -1041,6 +1524,13 @@ def parse_tele_rtc_local(raw: str) -> str | None:
     return None
 
 
+def parse_tele_time_cached(raw: str) -> bool:
+    """tele `Tc:1` — EEPROM 캐시 시각( Pi 부팅 대기)."""
+    if not raw:
+        return False
+    return "| Tc:1" in raw or "|Tc:1" in raw or " Tc:1" in raw
+
+
 def _format_rtc14_display(rtc14: str | None) -> str | None:
     if not rtc14 or len(rtc14) < 14:
         return None
@@ -1050,19 +1540,144 @@ def _format_rtc14_display(rtc14: str | None) -> str | None:
     )
 
 
+def _kv_get_int(cur: sqlite3.Cursor, device_id: str, key: str) -> int | None:
+    cur.execute(
+        "SELECT value FROM settings_kv WHERE device_id=? AND key=?",
+        (device_id, key),
+    )
+    row = cur.fetchone()
+    if not row or row[0] is None:
+        return None
+    try:
+        return int(str(row[0]).strip())
+    except ValueError:
+        return None
+
+
+def _kv_upsert_ms(c: sqlite3.Connection, device_id: str, key: str, ts_ms: int) -> None:
+    c.execute(
+        """INSERT INTO settings_kv (device_id, key, value, updated_at)
+        VALUES (?,?,?,datetime('now'))
+        ON CONFLICT(device_id, key) DO UPDATE SET
+          value=excluded.value, updated_at=excluded.updated_at""",
+        (device_id, key, str(int(ts_ms))),
+    )
+
+
+def parse_panel_from_tele(raw: str) -> dict[str, object]:
+    """tele `| P:i2c_rc=… ready=…` — R3 패널 I2C."""
+    m = re.search(r"\|\s*P:([^|]+)", raw or "")
+    if not m:
+        return {"r3_ok": None, "r3_hint": "tele P: 없음"}
+    p = m.group(1).strip()
+    ready = bool(re.search(r"ready=1", p))
+    rc_m = re.search(r"i2c_rc=(\d+)", p)
+    rc = int(rc_m.group(1)) if rc_m else 255
+    got_m = re.search(r"got=(\d+)", p)
+    got = int(got_m.group(1)) if got_m else 0
+    ok = ready and (rc == 0 or got > 0)
+    if ok:
+        hint = p if len(p) <= 56 else p[:56] + "…"
+    elif rc == 2 and got <= 0:
+        hint = "I2C 0x38 NACK — R3 미응답(배선·전원·R3펌웨어)"
+    elif not ready:
+        hint = f"R3 미준비 rc={rc} got={got}"
+    else:
+        hint = p if len(p) <= 56 else p[:56] + "…"
+    return {"r3_ok": ok, "r3_hint": hint, "r3_i2c_rc": rc}
+
+
+def _query_r4_connectivity(cur: sqlite3.Cursor, device_id: str) -> dict[str, object]:
+    """R4 MQTT 연결 — tele 수신 신선도(기본 90초)와 status retain."""
+    from cf_time import now_ms
+
+    pi_ts = now_ms()
+    cur.execute(
+        "SELECT ts_ms FROM tele_sample WHERE device_id=? ORDER BY ts_ms DESC LIMIT 1",
+        (device_id,),
+    )
+    row = cur.fetchone()
+    last_tele_ts_ms: int | None = int(row[0]) if row and row[0] is not None else None
+    tele_stale_sec: int | None = None
+    if last_tele_ts_ms is not None:
+        tele_stale_sec = max(0, int((pi_ts - last_tele_ts_ms) / 1000))
+    cur.execute(
+        "SELECT payload FROM mqtt_status_log WHERE device_id=? ORDER BY ts_ms DESC LIMIT 1",
+        (device_id,),
+    )
+    st_row = cur.fetchone()
+    last_status: str | None = None
+    if st_row and st_row[0] is not None:
+        last_status = str(st_row[0]).strip().lower() or None
+    # tele 1Hz 근처 — 90초 넘으면 offline 취급
+    r4_online = tele_stale_sec is not None and tele_stale_sec <= 90
+    return {
+        "r4_online": r4_online,
+        "last_status": last_status,
+        "tele_stale_sec": tele_stale_sec,
+        "last_tele_ts_ms": last_tele_ts_ms,
+    }
+
+
+def query_tele_last(cur: sqlite3.Cursor, device_id: str) -> dict[str, object]:
+    """USB·ingest 경로 최신 tele raw (Dashboard HTTP 폴링용)."""
+    cur.execute(
+        "SELECT ts_ms, topic, raw FROM tele_sample WHERE device_id=? ORDER BY ts_ms DESC LIMIT 1",
+        (device_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return {"ok": True, "device_id": device_id, "raw": "", "ts_ms": None, "via": "none"}
+    ts_ms = int(row[0])
+    via = "usb-serial" if "usb" in str(row[1] or "").lower() else "ingest"
+    return {
+        "ok": True,
+        "device_id": device_id,
+        "raw": str(row[2] or ""),
+        "ts_ms": ts_ms,
+        "via": via,
+    }
+
+
+def query_status_last(cur: sqlite3.Cursor, device_id: str) -> dict[str, object]:
+    cur.execute(
+        "SELECT ts_ms, payload FROM mqtt_status_log WHERE device_id=? ORDER BY ts_ms DESC LIMIT 1",
+        (device_id,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return {"ok": True, "device_id": device_id, "state": "", "ts_ms": None}
+    payload = str(row[1] or "").strip()
+    state = payload.lower()
+    if state.startswith("{"):
+        try:
+            o = json.loads(payload)
+            if isinstance(o, dict) and o.get("state") is not None:
+                state = str(o["state"]).strip().lower()
+        except Exception:
+            pass
+    return {"ok": True, "device_id": device_id, "state": state, "ts_ms": int(row[0])}
+
+
 def query_time_status(cur: sqlite3.Cursor, device_id: str) -> dict[str, object]:
     """Pi·tele·Arduino RTC 시각 비교."""
     from datetime import datetime
 
-    try:
-        from zoneinfo import ZoneInfo
+    from cf_time import (  # noqa: E402 — scripts/ 와 동일 디렉터리
+        CRONUSFARM_TZ,
+        format_local,
+        kst_calendar_day_window_ms,
+        now_kst,
+        now_ms,
+    )
 
-        kst = ZoneInfo("Asia/Seoul")
-        pi_dt = datetime.now(kst)
-        pi_ts_ms = int(pi_dt.timestamp() * 1000)
-        pi_local_display = pi_dt.strftime("%Y-%m-%d %H:%M:%S")
-        pi_tz = "Asia/Seoul"
+    try:
+        pi_dt = now_kst()
+        pi_ts_ms = now_ms()
+        pi_local_display = format_local(pi_ts_ms)
+        pi_tz = CRONUSFARM_TZ
     except Exception:
+        pi_dt = datetime.now()
         pi_ts_ms = int(time.time() * 1000)
         pi_local_display = time.strftime("%Y-%m-%d %H:%M:%S")
         pi_tz = ""
@@ -1078,6 +1693,11 @@ def query_time_status(cur: sqlite3.Cursor, device_id: str) -> dict[str, object]:
         last_tele_ts_ms = int(row[0])
         arduino_rtc_local = parse_tele_rtc_local(str(row[1] or ""))
 
+    time_cached = parse_tele_time_cached(str(row[1] or "") if row else "")
+    time_source = "none"
+    if arduino_rtc_local:
+        time_source = "eeprom_cache" if time_cached else "pi_sync"
+
     arduino_skew_sec: int | None = None
     if arduino_rtc_local and len(arduino_rtc_local) >= 14:
         try:
@@ -1090,34 +1710,45 @@ def query_time_status(cur: sqlite3.Cursor, device_id: str) -> dict[str, object]:
         except Exception:
             arduino_skew_sec = None
 
+    day_anchor_ms, day_end_ms, _ = kst_calendar_day_window_ms(pi_ts_ms)
+    conn_info = _query_r4_connectivity(cur, device_id)
+    panel = parse_panel_from_tele(str(row[1] or "") if row else "")
+    usb_last_ms = _kv_get_int(cur, device_id, "r4_usb_last_ms")
+    usb_stale_sec: int | None = None
+    if usb_last_ms is not None:
+        usb_stale_sec = max(0, int((pi_ts_ms - usb_last_ms) / 1000))
+    usb_online = usb_stale_sec is not None and usb_stale_sec <= 90
     return {
         "device_id": device_id,
         "pi_ts_ms": pi_ts_ms,
         "pi_local_display": pi_local_display,
         "pi_tz": pi_tz,
+        "day_anchor_ms": day_anchor_ms,
+        "day_end_ms": day_end_ms,
         "last_tele_ts_ms": last_tele_ts_ms,
         "control_display": (
-            time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(last_tele_ts_ms / 1000))
-            if last_tele_ts_ms
-            else None
+            format_local(last_tele_ts_ms) if last_tele_ts_ms else None
         ),
         "arduino_rtc_local": arduino_rtc_local,
         "arduino_rtc_display": _format_rtc14_display(arduino_rtc_local),
+        "r4_soft_clock_local": arduino_rtc_local,
+        "r4_soft_clock_display": _format_rtc14_display(arduino_rtc_local),
+        "r4_time_source": time_source,
+        "r4_time_cached": time_cached,
         "arduino_skew_sec": arduino_skew_sec,
+        "usb_last_ts_ms": usb_last_ms,
+        "usb_stale_sec": usb_stale_sec,
+        "usb_online": usb_online,
+        **panel,
+        **conn_info,
     }
 
 
 def kst_calendar_day_window_ms(now_ms: int | None = None) -> tuple[int, int, int]:
-    """오늘 0:00~내일 0:00 KST (epoch ms)."""
-    from datetime import datetime, timedelta
-    from zoneinfo import ZoneInfo
+    """오늘 0:00~내일 0:00 KST (epoch ms). cf_time 단일 구현."""
+    from cf_time import kst_calendar_day_window_ms as _kst_win
 
-    kst = ZoneInfo("Asia/Seoul")
-    ref = int(now_ms if now_ms is not None else time.time() * 1000)
-    dt = datetime.fromtimestamp(ref / 1000, tz=kst)
-    start = dt.replace(hour=0, minute=0, second=0, microsecond=0)
-    end = start + timedelta(days=1)
-    return int(start.timestamp() * 1000), int(end.timestamp() * 1000), ref
+    return _kst_win(now_ms)
 
 
 def query_channel_timeline(
@@ -1126,18 +1757,20 @@ def query_channel_timeline(
     device_id: str,
     channel: str,
     hours: int,
+    rolling: bool = False,
 ) -> dict[str, object]:
-    """채널 1개 24h 타임라인(호출 측에서 lock·cursor 보유)."""
+    """채널 1개 타임라인(호출 측에서 lock·cursor 보유)."""
     if hours < 1 or hours > 168:
         hours = 24
     now_ms = int(time.time() * 1000)
-    # 24h UI 그래프: 달력 하루(KST 0~24)와 동일 창. 그 외는 rolling N시간.
-    if hours == 24:
+    # hours=24 & rolling=0 → KST 오늘 0~24 (설정). rolling=1 → 지금−24h~지금 (모니터).
+    if hours == 24 and not rolling:
         anchor_ts_ms, day_end_ms, now_ms = kst_calendar_day_window_ms(now_ms)
         cutoff = anchor_ts_ms
         window_day_end_ms = day_end_ms
     else:
-        cutoff = now_ms - hours * 3600 * 1000
+        span_h = 24 if hours == 24 and rolling else hours
+        cutoff = now_ms - span_h * 3600 * 1000
         anchor_ts_ms = cutoff
         window_day_end_ms = None
     cur.execute(
@@ -1237,6 +1870,7 @@ def query_channel_timeline(
         "device_id": device_id,
         "channel_key": channel,
         "hours": hours,
+        "rolling": bool(rolling),
         "anchor_ts_ms": anchor_ts_ms,
         "window_end_ms": now_ms,
         "window_day_end_ms": window_day_end_ms,
@@ -1273,9 +1907,42 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
             else:
                 self.send_header("Access-Control-Allow-Origin", "*")
             self.send_header(
-                "Access-Control-Allow-Methods", "GET, PUT, POST, OPTIONS"
+                "Access-Control-Allow-Methods", "GET, PUT, POST, DELETE, OPTIONS"
             )
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header(
+                "Access-Control-Allow-Headers",
+                "Content-Type, X-Forwarded-Email, X-Auth-Request-Email",
+            )
+
+        def _write_json(self, code: int, body: object) -> None:
+            raw = (
+                json.dumps(body, ensure_ascii=False).encode("utf-8")
+                if isinstance(body, dict)
+                else str(body).encode("utf-8")
+            )
+            self.send_response(code)
+            self._cors_headers()
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+
+        def _admin_get(self, path: str, qs: dict) -> bool:
+            if not path.startswith("/api/admin/"):
+                return False
+            try:
+                from cronusfarm_admin_api import handle_admin_get
+
+                with lock:
+                    status, payload = handle_admin_get(conn, path, qs, self.headers)
+                if status == 404:
+                    self.send_error(404)
+                    return True
+                self._write_json(status, payload)
+                return True
+            except Exception as e:
+                self._write_json(500, {"ok": False, "error": str(e)})
+                return True
 
         def _json_body(self) -> dict:
             length = int(self.headers.get("Content-Length") or 0)
@@ -1295,11 +1962,36 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
         def do_GET(self) -> None:
             parsed = urlparse(self.path)
             path = parsed.path
+            qs = parse_qs(parsed.query or "")
+            if self._admin_get(path, qs):
+                return
             if path == "/health":
                 self.send_response(200)
                 self.end_headers()
                 self.wfile.write(b"ok")
                 return
+            if path == "/api/schedule/batch":
+                qs = parse_qs(parsed.query or "")
+                device_id = (qs.get("device_id") or ["cronusfarm-01"])[0].strip() or "cronusfarm-01"
+                with lock:
+                    _ensure_schedule_rule_table(conn)
+                    cur = conn.cursor()
+                    _ensure_device(conn, device_id)
+                    by_ch = _fetch_schedule_rules_by_channel(cur, device_id)
+                channels_body = {
+                    ch: {"channel_key": ch, "rules": rules, "rule_count": len(rules)}
+                    for ch, rules in by_ch.items()
+                }
+                body = {"device_id": device_id, "channels": channels_body}
+                raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+                self._cors_headers()
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+                return
+
             if path == "/api/schedule":
                 qs = parse_qs(parsed.query or "")
                 device_id = (qs.get("device_id") or [""])[0].strip()
@@ -1322,26 +2014,7 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                         ORDER BY slot_index, id""",
                         (device_id, channel),
                     )
-                    rules = []
-                    for r in cur.fetchall():
-                        rk = str(r[7] or "window")
-                        entry: dict[str, object] = {
-                            "id": int(r[0]),
-                            "dow_mask": int(r[1]),
-                            "slot_index": int(r[2]),
-                            "on_min": int(r[3]),
-                            "off_min": int(r[4]),
-                            "enabled": int(r[5]),
-                            "updated_at": r[6],
-                            "rule_kind": rk,
-                        }
-                        if rk == "cycle":
-                            entry["on_sec"] = int(r[8]) if r[8] is not None else 0
-                            entry["off_sec"] = int(r[9]) if r[9] is not None else 0
-                        else:
-                            entry["on_sec"] = None
-                            entry["off_sec"] = None
-                        rules.append(entry)
+                    rules = [_schedule_rule_entry_from_row(r) for r in cur.fetchall()]
                 body = {
                     "device_id": device_id,
                     "channel_key": channel,
@@ -1357,12 +2030,49 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                 self.wfile.write(raw)
                 return
 
+            if path == "/api/time/now":
+                from cf_time import query_time_now
+
+                body = query_time_now()
+                raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+                self._cors_headers()
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+                return
+
             if path == "/api/time/status":
                 qs = parse_qs(parsed.query or "")
                 device_id = (qs.get("device_id") or ["cronusfarm-01"])[0].strip() or "cronusfarm-01"
-                with lock:
-                    cur = conn.cursor()
-                    body = query_time_status(cur, device_id)
+                rconn = sqlite3.connect(str(db_path), timeout=5.0)
+                try:
+                    _configure_sqlite_conn(rconn)
+                    body = query_time_status(rconn.cursor(), device_id)
+                finally:
+                    rconn.close()
+                raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
+                self.send_response(200)
+                self._cors_headers()
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Content-Length", str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+                return
+
+            if path in ("/api/tele/last", "/api/status/last"):
+                qs = parse_qs(parsed.query or "")
+                device_id = (qs.get("device_id") or ["cronusfarm-01"])[0].strip() or "cronusfarm-01"
+                rconn = sqlite3.connect(str(db_path), timeout=5.0)
+                try:
+                    rcur = rconn.cursor()
+                    if path == "/api/tele/last":
+                        body = query_tele_last(rcur, device_id)
+                    else:
+                        body = query_status_last(rcur, device_id)
+                finally:
+                    rconn.close()
                 raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
                 self.send_response(200)
                 self._cors_headers()
@@ -1378,9 +2088,17 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                 with lock:
                     _ensure_schedule_rule_table(conn)
                     _ensure_device(conn, device_id)
+                    conn.commit()
+                wconn = sqlite3.connect(
+                    str(db_path), check_same_thread=False, timeout=5.0
+                )
+                try:
+                    _configure_sqlite_conn(wconn)
                     n, auto_n = _sync_device_schedules_mqtt_full(
-                        conn, db_path, lock, device_id
+                        wconn, db_path, lock, device_id
                     )
+                finally:
+                    wconn.close()
                 body = {
                     "ok": True,
                     "device_id": device_id,
@@ -1394,6 +2112,56 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                 self.send_header("Content-Length", str(len(raw)))
                 self.end_headers()
                 self.wfile.write(raw)
+                return
+
+            if path == "/api/device/force_all_auto":
+                qs = parse_qs(parsed.query or "")
+                device_id = (qs.get("device_id") or ["cronusfarm-01"])[0].strip() or "cronusfarm-01"
+                try:
+                    out = force_device_all_auto(db_path, lock, device_id)
+                    out["ok"] = True
+                    raw = json.dumps(out, ensure_ascii=False).encode("utf-8")
+                    self.send_response(200)
+                    self._cors_headers()
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Length", str(len(raw)))
+                    self.end_headers()
+                    self.wfile.write(raw)
+                except Exception as e:
+                    err = json.dumps(
+                        {"ok": False, "error": str(e)}, ensure_ascii=False
+                    ).encode("utf-8")
+                    self.send_response(500)
+                    self._cors_headers()
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Length", str(len(err)))
+                    self.end_headers()
+                    self.wfile.write(err)
+                return
+
+            if path == "/api/device/force_all_on":
+                qs = parse_qs(parsed.query or "")
+                device_id = (qs.get("device_id") or ["cronusfarm-01"])[0].strip() or "cronusfarm-01"
+                try:
+                    out = force_device_all_manual_on(db_path, lock, device_id)
+                    out["ok"] = True
+                    raw = json.dumps(out, ensure_ascii=False).encode("utf-8")
+                    self.send_response(200)
+                    self._cors_headers()
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Length", str(len(raw)))
+                    self.end_headers()
+                    self.wfile.write(raw)
+                except Exception as e:
+                    err = json.dumps(
+                        {"ok": False, "error": str(e)}, ensure_ascii=False
+                    ).encode("utf-8")
+                    self.send_response(500)
+                    self._cors_headers()
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.send_header("Content-Length", str(len(err)))
+                    self.end_headers()
+                    self.wfile.write(err)
                 return
 
             if path == "/api/sensor/series":
@@ -1553,6 +2321,11 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                 device_id = (qs.get("device_id") or [""])[0].strip()
                 ch_raw = (qs.get("channels") or [""])[0].strip()
                 hours = int((qs.get("hours") or ["24"])[0] or 24)
+                rolling = (qs.get("rolling") or ["0"])[0].strip().lower() in (
+                    "1",
+                    "true",
+                    "yes",
+                )
                 if not device_id or not ch_raw:
                     self.send_response(400)
                     self._cors_headers()
@@ -1570,16 +2343,38 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                     self.end_headers()
                     self.wfile.write(b"channels empty")
                     return
-                with lock:
-                    cur = conn.cursor()
-                    ch_map = {
-                        ch: query_channel_timeline(
-                            cur, device_id=device_id, channel=ch, hours=hours
-                        )
-                        for ch in channels
-                    }
+                if hours < 1 or hours > 168:
+                    hours = 24
+                if len(channels) > 16:
+                    channels = channels[:16]
+                if not _timeline_batch_slots.acquire(timeout=2.0):
+                    self.send_response(503)
+                    self._cors_headers()
+                    self.send_header("Content-Type", "application/json; charset=utf-8")
+                    self.end_headers()
+                    self.wfile.write(
+                        b'{"error":"timeline_batch_busy","retry_sec":3}'
+                    )
+                    return
+                ch_map: dict[str, object] = {}
+                try:
+                    rconn = _open_sqlite_read(db_path)
+                    try:
+                        cur = rconn.cursor()
+                        for ch in channels:
+                            ch_map[ch] = query_channel_timeline(
+                                cur,
+                                device_id=device_id,
+                                channel=ch,
+                                hours=hours,
+                                rolling=rolling,
+                            )
+                    finally:
+                        rconn.close()
+                finally:
+                    _timeline_batch_slots.release()
                 day_window: dict[str, object] | None = None
-                if hours == 24 and ch_map:
+                if hours == 24 and not rolling and ch_map:
                     first = next(iter(ch_map.values()))
                     a = first.get("anchor_ts_ms")
                     d = first.get("window_day_end_ms")
@@ -1594,6 +2389,7 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                 body = {
                     "device_id": device_id,
                     "hours": hours,
+                    "rolling": rolling,
                     "day_window": day_window,
                     "channels": ch_map,
                 }
@@ -1610,6 +2406,11 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                 device_id = (qs.get("device_id") or [""])[0].strip()
                 channel = (qs.get("channel") or [""])[0].strip()
                 hours = int((qs.get("hours") or ["24"])[0] or 24)
+                rolling = (qs.get("rolling") or ["0"])[0].strip().lower() in (
+                    "1",
+                    "true",
+                    "yes",
+                )
                 if not device_id or not channel:
                     self.send_response(400)
                     self._cors_headers()
@@ -1619,7 +2420,11 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                 with lock:
                     cur = conn.cursor()
                     body = query_channel_timeline(
-                        cur, device_id=device_id, channel=channel, hours=hours
+                        cur,
+                        device_id=device_id,
+                        channel=channel,
+                        hours=hours,
+                        rolling=rolling,
                     )
                 raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
                 self.send_response(200)
@@ -1632,90 +2437,14 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
             if path == "/api/channel/status":
                 qs = parse_qs(parsed.query or "")
                 device_id = (qs.get("device_id") or ["cronusfarm-01"])[0].strip() or "cronusfarm-01"
+                now_ms = int(time.time() * 1000)
+                rconn = _open_sqlite_read(db_path)
                 try:
-                    _ensure_auto_mode_unless_hold(db_path, lock, device_id)
-                except Exception as e:
-                    print(f"status ensure_auto {device_id}: {e}", flush=True)
-                with lock:
-                    cur = conn.cursor()
-                    now_ms = int(time.time() * 1000)
-                    cur.execute(
-                        """
-                        SELECT t.channel_key, t.state, t.auto_mode, t.ts_ms
-                        FROM tele_channel_fact t
-                        INNER JOIN (
-                          SELECT channel_key, MAX(ts_ms) AS mx
-                          FROM tele_channel_fact
-                          WHERE device_id=?
-                          GROUP BY channel_key
-                        ) u ON t.channel_key = u.channel_key AND t.ts_ms = u.mx
-                        WHERE t.device_id=?
-                        """,
-                        (device_id, device_id),
+                    chans = _build_channel_status_live(
+                        rconn, device_id, now_ms, upsert_facts=False
                     )
-                    chans = {}
-                    for r in cur.fetchall():
-                        chans[str(r[0])] = {
-                            "state": r[1],
-                            "auto_mode": r[2],
-                            "ts_ms": int(r[3]) if r[3] is not None else None,
-                        }
-                    _ensure_channel_manual_hold_table(conn)
-                    cur.execute(
-                        """SELECT channel_key, expires_ms, hold_minutes
-                        FROM channel_manual_hold WHERE device_id=?""",
-                        (device_id,),
-                    )
-                    holds = {
-                        str(r[0]): (int(r[1]), int(r[2]))
-                        for r in cur.fetchall()
-                    }
-                    kv_s, kv_a, tele_ts = _latest_tele_sample(cur, device_id)
-                    for ch_key, ent in chans.items():
-                        st_raw = kv_s.get(ch_key)
-                        if st_raw in ("0", "1"):
-                            ent["state"] = int(st_raw)
-                        if tele_ts is not None:
-                            ent["tele_ts_ms"] = tele_ts
-                            ent["ts_ms"] = int(tele_ts)
-                        h = holds.get(ch_key)
-                        if h:
-                            ent["hold_expires_ms"] = h[0]
-                            ent["hold_minutes"] = h[1]
-                        ent["display_mode"] = _channel_display_mode(
-                            ent.get("auto_mode"),
-                            ent.get("hold_expires_ms"),
-                            now_ms,
-                        )
-                        if ent["display_mode"] == "auto":
-                            ent["auto_mode"] = 1
-                    for ch_key in ALL_CHANNELS:
-                        if ch_key in chans:
-                            continue
-                        st_raw = kv_s.get(ch_key)
-                        if st_raw not in ("0", "1"):
-                            continue
-                        au_raw = kv_a.get(ch_key)
-                        h = holds.get(ch_key)
-                        ent = {
-                            "state": int(st_raw),
-                            "auto_mode": 1,
-                            "ts_ms": tele_ts,
-                            "tele_ts_ms": tele_ts,
-                        }
-                        if h:
-                            ent["hold_expires_ms"] = h[0]
-                            ent["hold_minutes"] = h[1]
-                        ent["display_mode"] = _channel_display_mode(
-                            ent.get("auto_mode"),
-                            ent.get("hold_expires_ms"),
-                            now_ms,
-                        )
-                        if ent["display_mode"] == "auto":
-                            ent["auto_mode"] = 1
-                        elif au_raw in ("0", "1"):
-                            ent["auto_mode"] = int(au_raw)
-                        chans[ch_key] = ent
+                finally:
+                    rconn.close()
                 body = {"device_id": device_id, "channels": chans}
                 raw = json.dumps(body, ensure_ascii=False).encode("utf-8")
                 self.send_response(200)
@@ -1772,9 +2501,48 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                 return
             self.send_error(404)
 
+        def do_DELETE(self) -> None:
+            parsed = urlparse(self.path)
+            path = parsed.path
+            if not path.startswith("/api/admin/"):
+                self.send_error(404)
+                return
+            try:
+                from cronusfarm_admin_api import handle_admin_delete
+
+                qs = parse_qs(parsed.query or "")
+                with lock:
+                        status, payload = handle_admin_delete(
+                            conn, path, qs, self.headers
+                        )
+                if status == 404:
+                    self.send_error(404)
+                    return
+                self._write_json(status, payload)
+            except Exception as e:
+                self._write_json(500, {"ok": False, "error": str(e)})
+
         def do_PUT(self) -> None:
             parsed = urlparse(self.path)
-            if parsed.path != "/api/schedule":
+            apath = parsed.path
+            if apath.startswith("/api/admin/"):
+                try:
+                    from cronusfarm_admin_api import handle_admin_put
+
+                    body = self._json_body()
+                    with lock:
+                        status, payload = handle_admin_put(
+                            conn, apath, body, self.headers
+                        )
+                    if status == 404:
+                        self.send_error(404)
+                        return
+                    self._write_json(status, payload)
+                    return
+                except Exception as e:
+                    self._write_json(500, {"ok": False, "error": str(e)})
+                    return
+            if apath != "/api/schedule":
                 self.send_error(404)
                 return
             qs = parse_qs(parsed.query or "")
@@ -1890,10 +2658,12 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                                 ),
                             )
                     conn.commit()
+                    held = _active_hold_channels(conn, device_id)
                 mqtt_st, sch_ver = _publish_schedule_mqtt(
                     device_id=device_id,
                     channel_key=channel,
                     rules=mqtt_rules,
+                    held_channels=held,
                 )
                 with lock:
                     _insert_manual_switch_event(
@@ -1943,6 +2713,22 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
         def do_POST(self) -> None:
             path = urlparse(self.path).path
             body = self._json_body()
+            if path.startswith("/api/admin/"):
+                try:
+                    from cronusfarm_admin_api import handle_admin_post
+
+                    with lock:
+                        status, payload = handle_admin_post(
+                            conn, path, body, self.headers
+                        )
+                    if status == 404:
+                        self.send_error(404)
+                        return
+                    self._write_json(status, payload)
+                    return
+                except Exception as e:
+                    self._write_json(500, {"ok": False, "error": str(e)})
+                    return
             if path == "/api/channel-action":
                 try:
                     device_id = str(body.get("device_id") or "cronusfarm-01").strip()
@@ -1960,6 +2746,8 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                         mqtt_st = _mqtt_publish_cmd(
                             device_id, " ".join(mqtt_parts)
                         )
+                        if not _r4_cmd_ok(mqtt_st):
+                            raise ValueError(f"cmd_delivery_failed:{mqtt_st}")
                     hold_exp_ms: int | None = None
                     with lock:
                         _ensure_device(conn, device_id)
@@ -1991,6 +2779,9 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                         "ok": True,
                         "mqtt": mqtt_st,
                         "cmd": " ".join(mqtt_parts) if mqtt_parts else "",
+                        "applied": _channel_action_applied(
+                            channel_key, action, body
+                        ),
                     }
                     raw = json.dumps(out, ensure_ascii=False).encode("utf-8")
                     self.send_response(200)
@@ -2042,11 +2833,34 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                     rtc14 = time.strftime("%Y%m%d%H%M%S", time.localtime())
                     payload = f"rtc_local={rtc14}"
                     mqtt_st = _mqtt_publish_cmd(device_id, payload)
+                    with lock:
+                        cur = conn.cursor()
+                        conn_info = _query_r4_connectivity(cur, device_id)
+                    warning: str | None = None
+                    if not _r4_cmd_ok(mqtt_st):
+                        warning = (
+                            f"cmd 발행 실패({mqtt_st}). "
+                            "USB serial·mosquitto·R4 전원을 확인하세요."
+                        )
+                    elif not conn_info.get("r4_online"):
+                        stale = conn_info.get("tele_stale_sec")
+                        stale_txt = (
+                            f"tele {stale}초 전"
+                            if stale is not None
+                            else "tele 없음"
+                        )
+                        warning = (
+                            f"R4가 MQTT offline({stale_txt}). "
+                            "rtc_local은 브로커에만 전달되었고 Arduino는 수신하지 못했습니다. "
+                            "R4 WiFi·전원·리셋 후 다시 시도하세요."
+                        )
                     out = {
                         "ok": True,
                         "device_id": device_id,
                         "rtc_local": rtc14,
                         "mqtt": mqtt_st,
+                        "warning": warning,
+                        **conn_info,
                     }
                     raw = json.dumps(out, ensure_ascii=False).encode("utf-8")
                     self.send_response(200)
@@ -2082,12 +2896,20 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                         result = apply_default_schedules_to_db(
                             conn, device_id, force=force
                         )
-                        n_pub = 0
-                        auto_pub = 0
-                        if not result.get("skipped"):
+                        conn.commit()
+                    n_pub = 0
+                    auto_pub = 0
+                    if not result.get("skipped"):
+                        wconn = sqlite3.connect(
+                            str(db_path), check_same_thread=False, timeout=5.0
+                        )
+                        try:
+                            _configure_sqlite_conn(wconn)
                             n_pub, auto_pub = _sync_device_schedules_mqtt_full(
-                                conn, db_path, lock, device_id
+                                wconn, db_path, lock, device_id
                             )
+                        finally:
+                            wconn.close()
                     out = {
                         "ok": True,
                         "device_id": device_id,
@@ -2162,9 +2984,16 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                 return
             try:
                 panel_holds: list[tuple[str, str, int]] = []
+                tg_register_out: dict | None = None
+                tele_republish: tuple[str, str, str] | None = None
                 with lock:
                     if path == "/ingest/tele":
                         panel_holds = self._post_tele(conn, body)
+                        tele_republish = (
+                            str(body.get("device_id") or "cronusfarm-01").strip(),
+                            str(body.get("raw") or ""),
+                            str(body.get("topic") or ""),
+                        )
                     elif path == "/ingest/cmd":
                         self._post_cmd(conn, body)
                     elif path == "/ingest/status":
@@ -2175,13 +3004,36 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                         self._post_manual_event(conn, body)
                     elif path == "/ingest/sensor":
                         self._post_sensor(conn, body)
+                    elif path == "/ingest/telegram-register":
+                        from cronusfarm_admin_api import register_telegram_application
+
+                        tg_register_out = register_telegram_application(
+                            conn,
+                            str(body.get("chat_id") or ""),
+                            str(body.get("display_name") or ""),
+                            str(body.get("telegram_username") or ""),
+                        )
                     else:
                         self.send_error(404)
                         return
                     conn.commit()
+                if path == "/ingest/telegram-register":
+                    self._write_json(200, tg_register_out or {"ok": False})
+                    return
                 if path == "/ingest/tele":
                     for dev, ch, exp_ms in panel_holds:
                         _arm_hold_timer_at_expiry(db_path, lock, dev, ch, int(exp_ms))
+                    if tele_republish:
+                        _mqtt_republish_tele(
+                            tele_republish[0],
+                            tele_republish[1],
+                            tele_republish[2],
+                        )
+                        via_ing = str(body.get("via") or "").strip().lower()
+                        if via_ing in ("usb-serial", "usb", "serial"):
+                            dev_id = tele_republish[0]
+                            st_tp = f"cronusfarm/{dev_id}/status"
+                            _mqtt_republish_status(dev_id, "online", st_tp)
                 self.send_response(204)
                 self.end_headers()
             except Exception as e:
@@ -2199,6 +3051,11 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
             topic = str(body.get("topic") or "")
             ts_ms = int(body.get("ts_ms") or (time.time() * 1000))
             _ensure_device(c, device_id)
+            via = str(body.get("via") or "").strip().lower()
+            if via in ("usb-serial", "usb", "serial"):
+                _kv_upsert_ms(c, device_id, "r4_usb_last_ms", ts_ms)
+            if _should_skip_tele_sample_insert(c, device_id, raw, via, ts_ms):
+                return []
             c.execute(
                 "INSERT INTO tele_sample (device_id, ts_ms, topic, raw) VALUES (?,?,?,?)",
                 (device_id, ts_ms, topic, raw),
@@ -2299,9 +3156,11 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                 (device_id, ts_ms, topic, payload),
             )
             pl = payload.strip().lower()
-            if pl == "online":
+            via_st = str(body.get("via") or "").strip().lower()
+            usb_status = via_st in ("usb-serial", "usb", "serial")
+            if pl == "online" and not usb_status:
                 _arm_boot_schedule_sync(db_path, device_id)
-            elif pl == "offline":
+            elif pl == "offline" and not usb_status:
                 _cancel_boot_schedule_sync(device_id)
 
         def _post_manual_event(self, c: sqlite3.Connection, body: dict) -> None:
@@ -2368,6 +3227,12 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
                 new_au = 1
             elif action == "set_manual":
                 new_au = 0
+                if ns in (0, 1):
+                    new_st = ns
+                elif body.get("on") in (True, 1, "1", "on", "true"):
+                    new_st = 1
+                elif body.get("on") in (False, 0, "0", "off", "false"):
+                    new_st = 0
             elif action == "revert_auto":
                 new_au = 1
             if new_st is None and ps >= 0:
@@ -2449,6 +3314,119 @@ def handle_bridge(conn: sqlite3.Connection, db_path: Path, lock: threading.Lock)
     return Handler
 
 
+_auto_rtc_last_attempt: dict[str, float] = {}
+_status_offline_last_pub: dict[str, float] = {}
+
+
+def _record_status_offline(
+    db_path: Path, lock: threading.RLock, device_id: str, tele_stale: int
+) -> None:
+    """tele 장시간 미수신 시 retain offline + DB 기록(구형 online retain 정리)."""
+    now_ms = int(time.time() * 1000)
+    topic = f"cronusfarm/{device_id}/status"
+    pub = _mqtt_republish_status(device_id, "offline", topic, retain=True)
+    with lock:
+        wconn = sqlite3.connect(str(db_path), timeout=5.0)
+        try:
+            _configure_sqlite_conn(wconn)
+            _ensure_device(wconn, device_id)
+            wconn.execute(
+                "INSERT INTO mqtt_status_log (device_id, ts_ms, topic, payload) VALUES (?,?,?,?)",
+                (device_id, now_ms, topic, "offline"),
+            )
+            wconn.commit()
+        finally:
+            wconn.close()
+    print(
+        f"[status_sweep] tele_stale={tele_stale}s → offline retain ({pub})",
+        flush=True,
+    )
+
+
+def _tele_stale_status_sweeper_loop(
+    db_path: Path, lock: threading.RLock, device_id: str
+) -> None:
+    """tele stale 시 MQTT status=offline retain(online 오탐 방지)."""
+    poll = max(30, int(os.environ.get("CRONUSFARM_STATUS_SWEEPER_SEC", "60") or 60))
+    offline_after = max(
+        90, int(os.environ.get("CRONUSFARM_STATUS_OFFLINE_AFTER_SEC", "120") or 120)
+    )
+    cooldown = max(
+        240, int(os.environ.get("CRONUSFARM_STATUS_OFFLINE_COOLDOWN_SEC", "300") or 300)
+    )
+    while True:
+        time.sleep(poll)
+        try:
+            rconn = sqlite3.connect(str(db_path), timeout=5.0)
+            try:
+                _configure_sqlite_conn(rconn)
+                st = query_time_status(rconn.cursor(), device_id)
+            finally:
+                rconn.close()
+            tele_stale = st.get("tele_stale_sec")
+            if tele_stale is None or int(tele_stale) < offline_after:
+                continue
+            last_status = str(st.get("last_status") or "").strip().lower()
+            if last_status == "offline":
+                continue
+            now = time.time()
+            if now - _status_offline_last_pub.get(device_id, 0.0) < cooldown:
+                continue
+            _status_offline_last_pub[device_id] = now
+            _record_status_offline(db_path, lock, device_id, int(tele_stale))
+        except Exception as e:
+            print(f"[status_sweep] loop error: {e}", flush=True)
+
+
+def _auto_rtc_sync_loop(db_path: Path, lock: threading.RLock) -> None:
+    """tele 10분+ 미수신 또는 RTC 편차 지속 시 Pi→R4 rtc_local 자동 발행."""
+    poll = max(60, int(os.environ.get("CRONUSFARM_AUTO_RTC_POLL_SEC", "120") or 120))
+    stale_sec = max(
+        300, int(os.environ.get("CRONUSFARM_AUTO_RTC_TELE_STALE_SEC", "600") or 600)
+    )
+    skew_thr = max(15, int(os.environ.get("CRONUSFARM_AUTO_RTC_SKEW_SEC", "30") or 30))
+    cooldown = max(
+        300, int(os.environ.get("CRONUSFARM_AUTO_RTC_COOLDOWN_SEC", "600") or 600)
+    )
+    device_id = os.environ.get("CRONUSFARM_DEVICE_ID", "cronusfarm-01").strip()
+    while True:
+        time.sleep(poll)
+        try:
+            with lock:
+                conn = sqlite3.connect(str(db_path), timeout=5.0)
+                _configure_sqlite_conn(conn)
+                cur = conn.cursor()
+                st = query_time_status(cur, device_id)
+                conn.close()
+            tele_stale = st.get("tele_stale_sec")
+            skew = st.get("arduino_skew_sec")
+            need_stale = tele_stale is not None and int(tele_stale) >= stale_sec
+            need_skew = (
+                skew is not None
+                and abs(int(skew)) >= skew_thr
+                and tele_stale is not None
+                and int(tele_stale) < stale_sec
+            )
+            if not need_stale and not need_skew:
+                continue
+            now = time.time()
+            eff_cooldown = cooldown
+            if need_skew and skew is not None and abs(int(skew)) >= 120:
+                eff_cooldown = min(cooldown, 120.0)
+            if now - _auto_rtc_last_attempt.get(device_id, 0.0) < eff_cooldown:
+                continue
+            _auto_rtc_last_attempt[device_id] = now
+            rtc14 = time.strftime("%Y%m%d%H%M%S", time.localtime())
+            cmd_st = _mqtt_publish_cmd(device_id, f"rtc_local={rtc14}")
+            reason = "tele_stale" if need_stale else "skew"
+            print(
+                f"[auto_rtc] {reason} tele_stale={tele_stale}s skew={skew}s cmd={cmd_st} rtc={rtc14}",
+                flush=True,
+            )
+        except Exception as e:
+            print(f"[auto_rtc] loop error: {e}", flush=True)
+
+
 def main() -> None:
     home = Path.home()
     default_db = home / ".node-red" / "cronusfarm.sqlite"
@@ -2471,11 +3449,18 @@ def main() -> None:
 
     host = os.environ.get("CRONUSFARM_BRIDGE_HOST", "127.0.0.1")
     port = int(os.environ.get("CRONUSFARM_BRIDGE_PORT", "18766"))
-    conn = sqlite3.connect(str(db_path), check_same_thread=False)
-    conn.execute("PRAGMA foreign_keys = ON")
+    conn = sqlite3.connect(str(db_path), check_same_thread=False, timeout=5.0)
+    _configure_sqlite_conn(conn)
     _ensure_manual_switch_event_table(conn)
     _ensure_channel_manual_hold_table(conn)
     _ensure_schedule_rule_table(conn)
+    try:
+        from cronusfarm_admin_api import _ensure_admin_tables
+
+        _ensure_admin_tables(conn)
+        conn.commit()
+    except Exception as e:
+        print(f"[admin] table init skipped: {e}", flush=True)
     seed_flag = os.environ.get("CRONUSFARM_SEED_SCHEDULES", "1").strip().lower()
     if seed_flag not in ("0", "false", "no", "off"):
         try:
@@ -2493,7 +3478,7 @@ def main() -> None:
         except Exception as e:
             print(f"[seed] default schedules skipped: {e}", flush=True)
     conn.commit()
-    lk = threading.Lock()
+    lk = threading.RLock()
     Handler = handle_bridge(conn, db_path, lk)
 
     class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
@@ -2501,6 +3486,19 @@ def main() -> None:
 
     threading.Thread(
         target=_hold_sweeper_loop, args=(db_path, lk), daemon=True
+    ).start()
+    threading.Thread(
+        target=_auto_rtc_sync_loop,
+        args=(db_path, lk),
+        daemon=True,
+        name="cf-auto-rtc-sync",
+    ).start()
+    _dev_id = os.environ.get("CRONUSFARM_DEVICE_ID", "cronusfarm-01").strip()
+    threading.Thread(
+        target=_tele_stale_status_sweeper_loop,
+        args=(db_path, lk, _dev_id),
+        daemon=True,
+        name="cf-status-sweep",
     ).start()
     _recover_hold_timers(db_path, lk)
     _sweep_revert_manual_without_hold(db_path, lk)

@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>크로노스 개발현황</title>
+  <link rel="stylesheet" href="/cronusfarm-static/cronusfarm_d1_shared.css"/>
+  <style>
+    html,body{min-height:100%;margin:0;background:var(--g0);color:var(--text);font-family:var(--fb);overflow-x:hidden;}
+    .cf-settings-app{max-width:1120px;margin:0 auto;padding:12px;}
+    .cf-settings-shell{
+      position:relative;border-radius:var(--r);border:1px solid var(--border);box-shadow:var(--glow);
+      background:linear-gradient(180deg,var(--g0),var(--g1) 55%,var(--g0));padding:14px 16px 24px;}
+    .cf-settings-shell::before{
+      content:'';position:absolute;inset:0;z-index:0;pointer-events:none;
+      background-image:linear-gradient(rgba(45,255,122,.022) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(45,255,122,.022) 1px,transparent 1px);background-size:48px 48px;}
+    .cf-settings-shell>*{position:relative;z-index:1;}
+    .cf-cd-h1{margin:0 0 8px;font-size:1.05rem;font-weight:900;color:var(--accent3);}
+    .cf-cd-lead{margin:0 0 16px;font-size:12px;color:var(--text2);line-height:1.55;}
+    .cf-cd-note{margin:12px 0;padding:10px 12px;border-left:3px solid var(--accent2);
+      background:rgba(0,0,0,.22);border-radius:0 10px 10px 0;font-size:12px;color:var(--text);}
+    .cf-cd-sec{margin:0 0 16px;padding:12px 14px;border-radius:var(--r);border:1px solid var(--border2);
+      background:rgba(15,36,21,.78);}
+    .cf-cd-sec h2{margin:0 0 8px;font-size:14px;color:var(--accent3);font-weight:900;}
+    .cf-cd-sec p,.cf-cd-sec li{font-size:12px;color:var(--text);line-height:1.5;}
+    .cf-cd-sec ul{margin:6px 0;padding-left:1.2rem;}
+    .cf-cd-sec code{font-size:0.88em;color:var(--accent3);background:rgba(0,0,0,.35);padding:1px 5px;border-radius:4px;}
+    .cf-cd-links a{color:var(--accent2);margin-right:12px;font-weight:800;font-size:12px;}
+  </style>
+</head>
+<body>
+<div class="cf-settings-app">
+  <div class="cf-settings-shell">
+    <h1 class="cf-cd-h1">크로노스 개발현황</h1>
+    <p class="cf-cd-lead">
+      이 페이지는 <strong>정적 HTML</strong>(<code>nodered/dashboard/cronusfarm_cronos_devstatus.html</code>)입니다.
+      Vue SPA가 아니라 설정 탭의 Bed·관제 iframe과 같은 방식으로 편집·배포합니다.
+    </p>
+    <div class="cf-cd-note">
+      <strong>CronusFarm 개발현황</strong> 탭(Node-RED ui_template·순서도 SVG)은 그대로 두었습니다.
+      앞으로 문서·링크 정리는 이 HTML에서 작업하세요.
+    </div>
+    <section id="sec-work" class="cf-cd-sec">
+      <h2>작업 영역</h2>
+      <p>아래에 섹션을 추가하면 됩니다. 저장소 수정 후 Pi에 <code>dashboard/*.html</code> 동기화만 하면 반영됩니다.</p>
+      <ul>
+        <li>병합: <code>python scripts/merge_nodered_deploy.py --use-split</code></li>
+        <li>배포: <code>.\scripts\deploy-cronusfarm-pi.ps1 -ApplyNodeRed -NodeRedFlowsOnly -UseSplitFlows -SkipArduino</code></li>
+      </ul>
+    </section>
+    <section id="sec-links" class="cf-cd-sec cf-cd-links">
+      <h2>바로가기</h2>
+      <p>
+        <a href="/ui/#ui-tab_devflow" target="_top" rel="noopener">개발환경 (NR · 순서도 SVG)</a>
+        <a href="/farm/ui/#/" target="_top" rel="noopener">CronusFarm 설정 (SPA)</a>
+        <a href="/farm/ui/#/admin" target="_top" rel="noopener">CronusFarm 관리</a>
+      </p>
+    </section>
+  </div>
+</div>
+<script>
+(function(){
+  function resize(){
+    try{
+      var h=document.documentElement.scrollHeight;
+      parent.postMessage({type:'cf-cronos-devstatus-resize',height:h,iframe:'cronos'},'*');
+    }catch(e){}
+  }
+  window.addEventListener('load',function(){resize();setTimeout(resize,400);});
+  window.addEventListener('resize',resize);
+  setInterval(resize,2500);
+  resize();
+})();
+</script>
+</body>
+</html>

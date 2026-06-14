@@ -87,9 +87,25 @@ if [[ ! -f "$SVC_SRC" ]]; then
   echo "ERROR: $SVC_SRC 없음 (git pull)" >&2
   exit 1
 fi
+UST_SRC="$CRONUS_ROOT/deploy/systemd/cronusfarm-ustreamer.service"
+if [[ -f "$UST_SRC" ]]; then
+  sudo cp -f "$UST_SRC" /etc/systemd/system/cronusfarm-ustreamer.service
+  sudo systemctl enable cronusfarm-ustreamer.service
+  sudo systemctl restart cronusfarm-ustreamer.service || true
+  sleep 1
+fi
 sudo cp -f "$SVC_SRC" "/etc/systemd/system/$SVC_NAME"
 sudo systemctl daemon-reload
 sudo systemctl enable "$SVC_NAME"
+
+# Node-RED drop-in: NR 기동 시 camera-ai 대신 ustreamer+hailo
+NR_DROP="$CRONUS_ROOT/deploy/systemd/nodered.service.d/20-cronusfarm-hailo-camera.conf"
+if [[ -f "$NR_DROP" ]]; then
+  sudo mkdir -p /etc/systemd/system/nodered.service.d
+  sudo cp -f "$NR_DROP" /etc/systemd/system/nodered.service.d/20-cronusfarm-hailo-camera.conf
+  sudo rm -f /etc/systemd/system/nodered.service.d/20-cronusfarm-camera-ai.conf
+  sudo systemctl daemon-reload
+fi
 
 # 8081 포트 충돌: CPU YOLO 카메라 서비스 중지 후 Hailo 스트림 기동
 if systemctl is-active --quiet cronusfarm-camera-ai.service 2>/dev/null; then

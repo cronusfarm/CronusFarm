@@ -22,7 +22,7 @@ NR = ROOT / "nodered"
 PI_FLOW = NR / "flows_pi_editor_latest.json"
 
 MQTT_TAB = "b1c5a1f1d7a2a3a1"
-DASH_TABS = frozenset({"tab_cronus_dash", "tab_cronus_flexdash"})
+DASH_TABS = frozenset({"tab_cronus_dash"})
 DEVFLOW_TABS = frozenset({"tab_cronus_devflow"})
 
 

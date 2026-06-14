@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 echo "=== services ==="
+systemctl is-active cronusfarm-ustreamer.service 2>/dev/null || echo ustreamer inactive
 systemctl is-active cronusfarm-camera-ai.service 2>/dev/null || echo camera-ai inactive
 systemctl is-active cronusfarm-hailo-stream.service 2>/dev/null || echo hailo inactive
-echo "=== port 8081 ==="
+echo "=== port 8081 owner ==="
+curl -sS -m 2 http://127.0.0.1:8081/ 2>/dev/null | head -1 || echo no8081
 ss -ltnp 2>/dev/null | grep 8081 || true
 echo "=== video devices ==="
 ls -la /dev/video* 2>/dev/null || echo no video

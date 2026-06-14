@@ -27,7 +27,7 @@ def patch_dashboard(nodes: list) -> list:
         {
             "id": NEW_GH,
             "type": "ui_group",
-            "name": "센서 Data",
+            "name": "양액 상태 Data",
             "tab": MON_TAB,
             "order": 6,
             "disp": True,
@@ -61,7 +61,7 @@ def patch_pi(nodes: list) -> list:
             {
                 "id": NEW_GH,
                 "type": "ui_group",
-                "name": "센서 Data",
+                "name": "양액 상태 Data",
                 "tab": MON_TAB,
                 "order": 6,
                 "disp": True,

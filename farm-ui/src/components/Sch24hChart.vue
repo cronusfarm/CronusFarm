@@ -4,7 +4,7 @@ import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useChartClock } from '@/composables/useChartClock'
 import {
   cfDayWindowMs,
-  hasTeleTimelineData,
+  mergeTeleLiveTail,
   nowMarkerMs,
   scheduleOnSegments,
   shouldShowNowMarker,
@@ -50,14 +50,8 @@ const cronusFarmSchChartPlugin = {
       'rgba(45,255,122,0.38)',
       '#2dff7a',
     )
-    drawMsSegments(
-      ctx,
-      xs,
-      area,
-      chart.$cfTeleSegs,
-      'rgba(255,214,10,0.55)',
-      '#ffd60a',
-    )
+    /* tele(실측) — plan 위에 그려 겹침에서도 노란색이 보이게 */
+    drawMsSegments(ctx, xs, area, chart.$cfTeleSegs, 'rgba(255,214,10,0.08)', 'rgba(255,214,10,0.28)')
   },
   afterDraw(chart) {
     const w = chart.$cfWin
@@ -98,7 +92,7 @@ const props = defineProps({
   showTimeAxis: { type: Boolean, default: true },
 })
 
-const { chartNowMs } = useChartClock()
+const { chartNowMs, piDayWindow } = useChartClock()
 
 const wrapRef = ref(null)
 const canvasRef = ref(null)
@@ -173,15 +167,13 @@ function render() {
   if (!canvas) return
 
   const nowMs = chartNowMs()
-  const { tStart, tEnd } = cfDayWindowMs(props.execData, props.dayWindow, nowMs)
+  const dayWin = props.dayWindow || piDayWindow()
+  const { tStart, tEnd } = cfDayWindowMs(props.execData, dayWin, nowMs)
   const nowLineMs = nowMarkerMs(tStart, tEnd, nowMs)
   const showNow = shouldShowNowMarker(tStart, tEnd, nowMs)
-  const teleReady = hasTeleTimelineData(props.execData)
-
   const planSegs = scheduleOnSegments(props.rules, tStart, tEnd)
-  const teleSegs = teleReady
-    ? teleOnSegments(props.execData.points, tStart, tEnd, nowMs)
-    : []
+  const telePts = mergeTeleLiveTail(props.execData, tEnd, nowMs)
+  const teleSegs = teleOnSegments(telePts, tStart, tEnd, nowMs)
 
   const datasets = [
     {
@@ -222,7 +214,7 @@ function destroyChart() {
 
 onMounted(() => {
   render()
-  tickTimer = setInterval(() => render(), 1000)
+  tickTimer = setInterval(() => render(), 5000)
   if (typeof ResizeObserver !== 'undefined' && wrapRef.value) {
     resizeObs = new ResizeObserver(() => {
       chart?.resize()

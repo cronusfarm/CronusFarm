@@ -1,41 +1,55 @@
-<div class="cf-fe cf-fe-wide">
+<div class="cf-fe cf-fe-wide cf-fe-scroll">
   <div class="cf-fe-frame">
-    <div class="cf-fe-grid">
+    <div class="cf-fe-grid cf-fe-grid--dual">
       <div class="cf-fe-box">
         <div class="cf-fe-kma-head"><span class="cf-fe-box-title">기상청 KMA</span><span class="cf-fe-box-sub">{{msg.payload.kma_obs_label ? ('관측 ' + msg.payload.kma_obs_label) : ''}}</span></div>
         <div class="cf-fe-box-rule"></div>
         <div class="cf-fe-kv">
           <span class="k">기온</span><span class="v">{{(msg.payload.kma_temp != null && msg.payload.kma_temp !== '') ? (msg.payload.kma_temp + ' °C') : '—'}}</span>
           <span class="k">습도</span><span class="v">{{(msg.payload.kma_humidity != null && msg.payload.kma_humidity !== '') ? (msg.payload.kma_humidity + ' %') : '—'}}</span>
-          <span class="k">풍향</span><span class="v">{{(msg.payload.kma_wind_dir != null && msg.payload.kma_wind_dir !== '') ? (msg.payload.kma_wind_dir + ' °') : '—'}}</span>
+          <span class="k">풍향</span><span class="v">{{msg.payload.kma_wind_compass ? (msg.payload.kma_wind_compass + ' · ' + msg.payload.kma_wind_dir + '°') : ((msg.payload.kma_wind_dir != null && msg.payload.kma_wind_dir !== '') ? (msg.payload.kma_wind_dir + ' °') : '—')}}</span>
           <span class="k">풍속</span><span class="v">{{(msg.payload.kma_wind_speed != null && msg.payload.kma_wind_speed !== '') ? (msg.payload.kma_wind_speed + ' m/s') : '—'}}</span>
+          <span class="k">강수량</span><span class="v">{{msg.payload.kma_precip_display || '—'}}</span>
+          <span class="k">자외선</span><span class="v cf-fe-aq-v"><span ng-if="msg.payload.kma_uv_mw">{{msg.payload.kma_uv_mw}} mW/cm² <span class="cf-fe-aq-sub">({{msg.payload.kma_uv_idx}}·0~11)</span> <span class="cf-fe-aq-lvl cf-fe-aq-uv-{{msg.payload.kma_uv_level_key}}">{{msg.payload.kma_uv_level}}</span></span><span ng-if="!msg.payload.kma_uv_mw">—</span></span>
+          <span class="k">미세먼지</span><span class="v cf-fe-aq-v"><span ng-if="msg.payload.kma_pm_val">{{msg.payload.kma_pm_val}} <span class="cf-fe-aq-lvl cf-fe-aq-pm-{{msg.payload.kma_pm_level_key}}">{{msg.payload.kma_pm_level}}</span></span><span ng-if="!msg.payload.kma_pm_val">—</span></span>
         </div>
       </div>
-
       <div class="cf-fe-box">
         <div class="cf-fe-box-title">온실</div>
         <div class="cf-fe-box-rule"></div>
         <div class="cf-fe-kv">
-          <span class="k">온도</span><span class="v dim">—</span>
-          <span class="k">습도</span><span class="v dim">—</span>
+          <span class="k">온도</span><span class="v">{{(msg.payload.gh_temp != null && msg.payload.gh_temp !== '') ? (msg.payload.gh_temp + ' °C') : '—'}}</span>
+          <span class="k">습도</span><span class="v">{{(msg.payload.gh_humidity != null && msg.payload.gh_humidity !== '') ? (msg.payload.gh_humidity + ' %') : '—'}}</span>
         </div>
       </div>
     </div>
   </div>
-
   <style>
-    .cf-fe{ padding:0; color:var(--cf-text,#e6edf7); font-family:system-ui,'Malgun Gothic',sans-serif; }
-    .cf-fe-frame{ border:0; border-radius:14px; padding:12px 12px; background:rgba(255,255,255,.02); }
-    .cf-fe-grid{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-    @media(max-width:640px){ .cf-fe-grid{ grid-template-columns:1fr; } }
-    .cf-fe-box{ border:1px solid rgba(255,255,255,.08); border-radius:12px; padding:10px 10px; background:rgba(255,255,255,.02); }
-    .cf-fe-kma-head{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; flex-wrap:wrap; }
-    .cf-fe-box-title{ font-weight:900; font-size:13px; color:#81c784; letter-spacing:.02em; }
-    .cf-fe-box-sub{ font-size:11px; opacity:.65; font-weight:600; white-space:nowrap; margin-left:auto; text-align:right; }
-    .cf-fe-box-rule{ height:1px; background:rgba(255,255,255,.10); margin:8px 0 10px; }
-    .cf-fe-kv{ display:grid; grid-template-columns:1fr auto; gap:6px 14px; align-items:baseline; font-size:13px; }
-    .cf-fe-kv .k{ opacity:.78; }
-    .cf-fe-kv .v{ font-weight:800; text-align:right; }
-    .cf-fe-kv .v.dim{ opacity:.5; font-weight:700; }
+    .cf-fe-wide.cf-fe-scroll{overflow:visible!important;max-height:none!important;min-height:0!important;height:auto!important;display:block}
+    .cf-fe-frame{border:0;border-radius:14px;padding:6px 10px 4px;background:rgba(255,255,255,.02)}
+    .cf-fe-grid--dual{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
+    @media(max-width:640px){.cf-fe-grid--dual{grid-template-columns:1fr}}
+    .cf-fe-box{border:1px solid rgba(255,255,255,.10);border-radius:12px;padding:8px 10px;background:rgba(255,255,255,.03);min-width:0}
+    .cf-fe-kma-head{display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap}
+    .cf-fe-box-title{font-weight:900;font-size:13px;color:#81c784;letter-spacing:.02em}
+    .cf-fe-box-sub{font-size:10px;opacity:.7;font-weight:600;color:#9db0cc;white-space:normal;text-align:right}
+    .cf-fe-box-rule{height:1px;background:rgba(255,255,255,.10);margin:6px 0 8px}
+    .cf-fe-kv{display:grid;grid-template-columns:minmax(3.5em,auto) 1fr;gap:4px 10px;align-items:baseline;font-size:12px;line-height:1.3}
+    .cf-fe-kv .k{opacity:.85;color:#9db0cc;white-space:nowrap}
+    .cf-fe-kv .v{font-weight:800;text-align:right;color:#e6edf7;word-break:keep-all}
+    .cf-fe-aq-v{white-space:normal;line-height:1.35}
+    .cf-fe-aq-sub{opacity:.75;font-weight:600;font-size:11px;margin:0 2px}
+    .cf-fe-aq-lvl{font-weight:900;margin-left:4px}
+    .cf-fe-aq-uv-low,.cf-fe-aq-pm-good{color:#4caf50}
+    .cf-fe-aq-uv-normal,.cf-fe-aq-pm-normal{color:#9ccc65}
+    .cf-fe-aq-uv-high,.cf-fe-aq-pm-bad{color:#ff9800}
+    .cf-fe-aq-uv-vhigh{color:#ff7043}
+    .cf-fe-aq-uv-danger,.cf-fe-aq-pm-vbad{color:#f44336}
+    .nr-dashboard-theme .nr-dashboard-group:has(.cf-fe-wide){overflow:visible!important}
+    .nr-dashboard-theme .nr-dashboard-group:has(.cf-fe-wide) md-card,
+    .nr-dashboard-theme .nr-dashboard-group:has(.cf-fe-wide) md-card-content{overflow:visible!important;height:auto!important;max-height:none!important;min-height:0!important;padding-bottom:4px!important}
+    .nr-dashboard-theme .nr-dashboard-template:has(.cf-fe-wide),
+    .nr-dashboard-theme .nr-dashboard-template:has(.cf-fe-wide) md-card,
+    .nr-dashboard-theme .nr-dashboard-template:has(.cf-fe-wide) md-card-content{height:auto!important;min-height:0!important;max-height:none!important;padding-bottom:2px!important}
   </style>
 </div>

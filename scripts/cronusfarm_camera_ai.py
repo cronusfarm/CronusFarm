@@ -2,11 +2,23 @@
 import json
 import os
 import re
+import sys
 import threading
 import time
 from collections import Counter
+from pathlib import Path
 
 import cv2
+
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+from cronusfarm_crop_caption import (  # noqa: E402
+    CropDet,
+    analyze_crop_detections,
+    draw_subtitle_on_bgr,
+    ultralytics_boxes_to_crop_dets,
+)
 import numpy as np
 import paho.mqtt.client as mqtt
 from flask import Flask, Response
@@ -114,31 +126,45 @@ def _ko_label_for_class(raw: str) -> str:
     return s
 
 
-def _caption_from_result(result, model) -> str:
-    """MQTT·대시보드 오버레이용 한 줄 캡션."""
+def _normalize_yolo_label(raw: str, conf: float) -> str | None:
+    del conf
+    ko = _ko_label_for_class(raw)
+    return ko if ko and ko != "알 수 없음" else None
+
+
+def _analysis_from_result(result, model) -> dict:
+    """MQTT·자막용 — 작물명·개수·잎 수."""
     try:
         boxes = result.boxes
         if boxes is None or len(boxes) == 0:
-            return "포착: 없음 (검출된 작물·객체 없음)"
+            return analyze_crop_detections([])
         names = getattr(result, "names", None) or getattr(model, "names", None) or {}
         if not isinstance(names, dict):
             try:
                 names = dict(names)
             except Exception:
                 names = {}
-        labels: list[str] = []
-        for c in boxes.cls:
-            ci = int(c.item())
-            raw = str(names.get(ci, str(ci)))
-            labels.append(_ko_label_for_class(raw))
-        ctr = Counter(labels)
-        parts = []
-        for k in sorted(ctr.keys()):
-            v = ctr[k]
-            parts.append(f"{k}×{v}" if v > 1 else k)
-        return "포착: " + " · ".join(parts)
+        items = ultralytics_boxes_to_crop_dets(boxes, names, _normalize_yolo_label)
+        if not items:
+            for i, c in enumerate(boxes.cls):
+                ci = int(c.item())
+                ko = _ko_label_for_class(str(names.get(ci, str(ci))))
+                cx = cy = None
+                xywhn = getattr(boxes, "xywhn", None)
+                if xywhn is not None and len(xywhn) > i:
+                    cx = float(xywhn[i][0].item())
+                    cy = float(xywhn[i][1].item())
+                items.append(CropDet(label=ko, conf=1.0, cx=cx, cy=cy))
+        ko_map = {d.label: d.label for d in items}
+        return analyze_crop_detections(items, ko_map=ko_map)
     except Exception:
-        return "포착: (캡션 생성 실패)"
+        return {
+            "count": 0,
+            "crop_name": "없음",
+            "crop_count": 0,
+            "leaf_count": 0,
+            "caption": "작물: 없음 | 개수: 0 | 잎: 0",
+        }
 
 
 def _open_first_working_camera() -> tuple[cv2.VideoCapture | None, int]:
@@ -205,23 +231,29 @@ def camera_loop():
             time.sleep(0.1)
             continue
 
-        caption = "포착: 없음 (모델 없음)"
+        analysis = {
+            "count": 0,
+            "caption": "작물: 없음 | 개수: 0 | 잎: 0",
+            "crop_name": "없음",
+            "crop_count": 0,
+            "leaf_count": 0,
+        }
         if model is not None:
             try:
                 results = model.predict(frame, conf=0.5, verbose=False)
                 result = results[0]
                 annotated_frame = result.plot()
-                count = len(result.boxes)
-                caption = _caption_from_result(result, model)
+                analysis = _analysis_from_result(result, model)
             except Exception as e:
                 print(f"추론 스킵(원본): {e}")
                 annotated_frame = frame
-                count = 0
-                caption = "포착: 없음 (추론 오류)"
         else:
             annotated_frame = frame
-            count = 0
-            caption = "포착: 없음 (모델 없음)"
+
+        caption = str(analysis.get("caption") or "")
+        count = int(analysis.get("count") or 0)
+        if caption.strip():
+            annotated_frame = draw_subtitle_on_bgr(annotated_frame, caption)
 
         with lock:
             latest_frame = annotated_frame.copy()
@@ -230,14 +262,21 @@ def camera_loop():
         current_time = time.time()
         if current_time - last_publish_time >= 1.0:
             payload = json.dumps(
-                {"count": count, "caption": caption, "timestamp": current_time},
+                {
+                    "count": count,
+                    "caption": caption,
+                    "crop_name": analysis.get("crop_name"),
+                    "crop_count": analysis.get("crop_count"),
+                    "leaf_count": analysis.get("leaf_count"),
+                    "timestamp": current_time,
+                },
                 ensure_ascii=False,
             )
+            last_publish_time = current_time
             try:
                 mqtt_client.publish(MQTT_TOPIC, payload)
             except Exception:
                 pass
-            last_publish_time = current_time
 
 
 def generate_mjpeg():

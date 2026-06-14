@@ -1,0 +1,5 @@
+{
+  "detection_threshold": 0.15,
+  "max_boxes": 50,
+  "labels": ["tomato", "fig", "butterhead", "basil"]
+}

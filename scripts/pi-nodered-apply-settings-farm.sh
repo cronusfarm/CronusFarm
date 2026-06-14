@@ -2,7 +2,7 @@
 # Pi에서 실행: Node-RED settings.js 경로 루트 설정
 # - Editor/Admin: /admin
 # - Dashboard(UI): /ui
-# - FlexDash: /flexdash 유지 (httpNodeRoot를 건드리지 않음)
+# - FlexDash 제거됨 (모니터 /ui/, 설정 /farm/ui/ 만 사용)
 # - HTTP API 프리픽스(/farm/cronusfarm/...)는 플로우의 http in url에서 직접 처리
 #
 # 사용:
@@ -25,6 +25,12 @@ fi
 python3 - <<'PY'
 import re
 from pathlib import Path
+
+def resolve_cctv_root(home: str) -> str:
+    usb = "/mnt/usb/CCTV"
+    if Path(usb).is_dir():
+        return usb
+    return f"{home}/CronusFarm/CCTV"
 
 settings = Path.home() / ".node-red" / "settings.js"
 src = settings.read_text(encoding="utf-8", errors="replace")
@@ -101,7 +107,7 @@ def ensure_http_static(js: str) -> str:
             entry = f"\n        {{path: '/cronusfarm-static', root: '{root}'}},\n"
             return js[:ins] + entry + js[ins:]
         return js
-    cctv_root = home + "/CronusFarm/CCTV"
+    cctv_root = resolve_cctv_root(home)
     block = (
         "    // CronusFarm: dashboard HTML + CCTV 스냅샷(/cctv/...)\n"
         "    httpStatic: [\n"
@@ -118,7 +124,7 @@ def ensure_http_static(js: str) -> str:
 # CCTV 스냅샷: Grafana/브라우저에서 /cctv/cam01/latest.jpg (scripts/cronusfarm_cctv_capture_daemon.py 출력과 동일 경로)
 def ensure_cctv_http_static(js: str) -> str:
     home = str(Path.home()).replace("\\", "/")
-    cctv_root = home + "/CronusFarm/CCTV"
+    cctv_root = resolve_cctv_root(home)
     m = re.search(
         r"(path\s*:\s*['\"]/cctv['\"]\s*,\s*root\s*:\s*['\"])([^'\"]*)(['\"])",
         js,

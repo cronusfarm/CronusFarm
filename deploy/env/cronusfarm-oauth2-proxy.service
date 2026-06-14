@@ -1,0 +1,14 @@
+[Unit]
+Description=CronusFarm oauth2-proxy (Google)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/cronusfarm/oauth2-proxy.env
+ExecStart=/usr/local/bin/oauth2-proxy --config=/etc/cronusfarm/oauth2-proxy.cfg
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

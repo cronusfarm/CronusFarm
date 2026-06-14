@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Pi → R4 RTC MQTT 동기 systemd 타이머 설치(5분마다 rtc_local 발행)
+# Pi → R4 시각 동기 타이머 (USB serial 우선, MQTT 폴백) — R4가 Pi보다 먼저 부팅해도 OnBootSec에 1회
 #
 # 사용:
 #   sudo bash ./pi-install-mqtt-rtc-r4-timer.sh
@@ -31,7 +31,7 @@ cat >"/tmp/$TMR" <<'EOF'
 Description=Timer — CronusFarm R4 RTC sync via MQTT
 
 [Timer]
-OnBootSec=90
+OnBootSec=45
 OnUnitActiveSec=5min
 AccuracySec=30
 Unit=cronusfarm-mqtt-rtc-r4.service

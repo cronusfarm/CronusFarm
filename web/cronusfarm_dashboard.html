@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="CronusFarm">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#040d07">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;500;700;800&family=Noto+Sans+KR:wght@300;400;500&display=swap" rel="stylesheet">
+<title>CronusFarm — SmartFarm Dashboard</title>
+<style>
+:root{
+  --g0:#040d07;--g1:#0a1a0f;--g2:#0f2415;--g3:#152e1a;
+  --accent:#2dff7a;--accent2:#00e5ff;--accent3:#ffb830;--warn:#ff6b35;--pu:#bb86fc;
+  --muted:#3a5c42;--text:#c8e6c9;--text2:#6b9c73;--text3:#3a5c42;
+  --border:rgba(45,255,122,.07);--border2:rgba(45,255,122,.16);
+  --card:rgba(10,26,15,.9);--glow:0 0 28px rgba(45,255,122,.07);
+  --fh:'Syne',sans-serif;--fm:'DM Mono',monospace;--fb:'Noto Sans KR',sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--g0);color:var(--text);font-family:var(--fb);overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background-image:linear-gradient(rgba(45,255,122,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(45,255,122,.022) 1px,transparent 1px);
+  background-size:48px 48px;animation:gp 8s ease-in-out infinite}
+body::after{content:'';position:fixed;inset:0;z-index:0;pointer-events:none;
+  background:radial-gradient(ellipse 55% 40% at 15% 15%,rgba(45,255,122,.04) 0%,transparent 70%),
+             radial-gradient(ellipse 45% 55% at 85% 85%,rgba(0,229,255,.025) 0%,transparent 70%)}
+@keyframes gp{0%,100%{opacity:.5}50%{opacity:1}}
+
+/* ── TOPBAR ── */
+.topbar{position:fixed;top:0;left:0;right:0;z-index:100;height:54px;
+  background:rgba(4,13,7,.92);backdrop-filter:blur(24px);
+  border-bottom:1px solid var(--border2);display:flex;align-items:center}
+.logo-block{width:58px;height:54px;background:var(--accent);display:flex;align-items:center;justify-content:center;
+  clip-path:polygon(0 0,100% 0,82% 100%,0 100%);flex-shrink:0;font-size:20px}
+.brand{padding:0 16px 0 12px;border-right:1px solid var(--border2);height:54px;display:flex;flex-direction:column;justify-content:center}
+.brand-name{font-family:var(--fh);font-size:16px;font-weight:800;letter-spacing:.06em;color:var(--accent);text-transform:uppercase}
+.brand-sub{font-family:var(--fm);font-size:9px;color:var(--text2);letter-spacing:.14em;margin-top:1px}
+.statusbar{display:flex;align-items:center;gap:18px;padding:0 18px;flex:1;overflow:hidden}
+.si{display:flex;align-items:center;gap:5px;flex-shrink:0}
+.sdot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);animation:blink 2s ease-in-out infinite}
+.sdot.w{background:var(--accent3);box-shadow:0 0 8px var(--accent3)}
+.sdot.e{background:var(--warn);box-shadow:0 0 8px var(--warn)}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
+.sl{font-family:var(--fm);font-size:9px;color:var(--text3);letter-spacing:.1em}
+.sv{font-family:var(--fm);font-size:9px;color:var(--text);font-weight:500}
+.clock{margin-left:auto;padding-right:18px;font-family:var(--fm);font-size:11px;color:var(--text2);letter-spacing:.04em;flex-shrink:0}
+.clock span{color:var(--accent);font-weight:500}
+
+/* ── SIDEBAR ── */
+.sidebar{position:fixed;top:54px;left:0;bottom:0;z-index:90;width:60px;
+  background:rgba(4,13,7,.85);backdrop-filter:blur(16px);
+  border-right:1px solid var(--border);display:flex;flex-direction:column;align-items:center;padding:10px 0;gap:2px}
+.nb{width:42px;height:42px;border-radius:7px;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  cursor:pointer;border:1px solid transparent;color:var(--text3);transition:all .2s;gap:3px;text-decoration:none;position:relative}
+.nb:hover,.nb.on{background:rgba(45,255,122,.06);border-color:var(--border2);color:var(--accent)}
+.nb.on::before{content:'';position:absolute;left:-1px;top:50%;transform:translateY(-50%);
+  width:3px;height:18px;background:var(--accent);border-radius:0 2px 2px 0;box-shadow:0 0 8px var(--accent)}
+.nb-ic{font-size:16px;line-height:1}
+.nb-lbl{font-family:var(--fm);font-size:7px;letter-spacing:.05em;line-height:1}
+.ndiv{width:30px;height:1px;background:var(--border2);margin:5px 0}
+
+/* ── MAIN ── */
+.main{position:relative;z-index:1;margin-top:54px;margin-left:60px;min-height:calc(100vh - 54px);padding:18px}
+
+/* ── TABS ── */
+.tabs{display:flex;gap:1px;margin-bottom:16px;background:var(--border);border-radius:6px;padding:2px;width:fit-content}
+.tab{padding:6px 14px;border-radius:4px;font-family:var(--fm);font-size:10px;letter-spacing:.1em;
+  color:var(--text3);cursor:pointer;transition:all .2s;text-transform:uppercase}
+.tab.on{background:rgba(45,255,122,.1);color:var(--accent);border:1px solid var(--border2)}
+
+/* ── SECTION ── */
+.sec{display:flex;align-items:center;gap:10px;margin:18px 0 12px}
+.sec:first-child{margin-top:0}
+.secline{flex:1;height:1px;background:var(--border2)}
+.sectl{font-family:var(--fh);font-size:9px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--text2);white-space:nowrap}
+.secbdg{font-family:var(--fm);font-size:8px;color:var(--text3);background:rgba(45,255,122,.04);
+  border:1px solid var(--border);padding:2px 6px;border-radius:2px;letter-spacing:.06em;white-space:nowrap}
+
+/* ── GRID ── */
+.g{display:grid;gap:7px}
+.g2{grid-template-columns:1fr 1fr}
+.g3{grid-template-columns:1fr 1fr 1fr}
+.g4{grid-template-columns:repeat(4,1fr)}
+.g5{grid-template-columns:repeat(5,1fr)}
+.g6{grid-template-columns:repeat(6,1fr)}
+.g3x1{grid-template-columns:3fr 1fr}
+.g2x1{grid-template-columns:2fr 1fr}
+.g14{grid-template-columns:1fr 4fr}
+
+/* ── CARD ── */
+.card{background:var(--card);border:1px solid var(--border);border-radius:6px;padding:11px 13px;
+  backdrop-filter:blur(8px);transition:border-color .2s,box-shadow .2s;position:relative;overflow:hidden}
+.card::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(135deg,rgba(45,255,122,.025) 0%,transparent 55%)}
+.card:hover{border-color:var(--border2);box-shadow:var(--glow)}
+.card.wc{border-color:rgba(255,184,48,.18)}
+.card.ec{border-color:rgba(255,107,53,.22)}
+.clbl{font-family:var(--fm);font-size:9px;color:var(--text3);letter-spacing:.13em;text-transform:uppercase;
+  margin-bottom:6px;display:flex;align-items:center;justify-content:space-between}
+.ctype{font-size:8px;background:rgba(45,255,122,.04);border:1px solid var(--border);
+  color:var(--text3);padding:1px 5px;border-radius:2px}
+
+/* ── VALUES ── */
+.val{font-family:var(--fm);font-size:24px;font-weight:500;line-height:1}
+.val.sm{font-size:17px}.val.lg{font-size:30px}.val.xl{font-size:36px}
+.vu{font-size:11px;color:var(--text2);margin-left:2px}
+.ok{color:var(--accent)}.wn{color:var(--accent3)}.er{color:var(--warn)}.inf{color:var(--accent2)}.pu{color:var(--pu)}
+.muted{color:var(--text2)}
+.sublbl{font-size:9px;color:var(--text3);margin-top:3px;font-family:var(--fm)}
+
+/* ── BAR ── */
+.bar{height:3px;background:rgba(45,255,122,.07);border-radius:2px;margin-top:7px;overflow:hidden}
+.bf{height:100%;border-radius:2px;transition:width .8s ease}
+.bok{background:var(--accent);box-shadow:0 0 7px rgba(45,255,122,.35)}
+.bwn{background:var(--accent3);box-shadow:0 0 7px rgba(255,184,48,.35)}
+.ber{background:var(--warn)}
+.binf{background:var(--accent2)}
+.bpu{background:var(--pu)}
+
+/* ── GAUGE ── */
+.gauge{display:flex;flex-direction:column;align-items:center;margin-top:4px;gap:2px}
+.gauge svg{display:block}
+.gval{font-family:var(--fm);font-size:13px;font-weight:500;line-height:1}
+
+/* ── TIMELINE ── */
+.tl{display:flex;flex-direction:column;gap:4px;margin-top:5px}
+.tlrow{display:flex;align-items:center;gap:5px}
+.tllbl{font-family:var(--fm);font-size:9px;color:var(--text3);width:34px;flex-shrink:0}
+.tltrack{flex:1;display:flex;gap:1px;height:9px}
+.seg{flex:1;border-radius:1px}
+.son{background:var(--accent);opacity:.82}
+.soff{background:rgba(45,255,122,.06)}
+.smid{background:rgba(45,255,122,.32)}
+.sinf{background:var(--accent2);opacity:.75}
+.spu{background:var(--pu);opacity:.75}
+
+/* ── MINI CHART ── */
+.mini{display:flex;align-items:flex-end;gap:2px}
+.mb{flex:1;border-radius:2px 2px 0 0;min-height:2px;transition:height .5s ease}
+.mok{background:linear-gradient(to top,rgba(45,255,122,.55),rgba(45,255,122,.12))}
+.minf{background:linear-gradient(to top,rgba(0,229,255,.55),rgba(0,229,255,.1))}
+.mwn{background:linear-gradient(to top,rgba(255,184,48,.55),rgba(255,184,48,.1))}
+.mpu{background:linear-gradient(to top,rgba(187,134,252,.55),rgba(187,134,252,.1))}
+
+/* ── RPM BAR ── */
+.rpmrow{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.rpmlbl{font-family:var(--fm);font-size:9px;color:var(--text3);width:36px}
+.rpmtrk{flex:1;height:5px;background:rgba(45,255,122,.06);border-radius:3px;overflow:hidden}
+.rpmfil{height:100%;border-radius:3px;background:var(--accent2);transition:width .8s ease}
+.rpmval{font-family:var(--fm);font-size:9px;color:var(--text);width:40px;text-align:right;font-weight:500}
+
+/* ── TABLE ── */
+.tbl{width:100%}
+.tr{display:flex;gap:7px;padding:5px 0;border-bottom:1px solid rgba(45,255,122,.04);align-items:center}
+.tr:last-child{border-bottom:none}
+.tr.hdr .td{color:var(--text3);font-weight:500;font-size:8px}
+.td{font-family:var(--fm);font-size:9px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.td.b{color:var(--text);font-weight:500}
+.td.w2{flex:2}.td.w3{flex:3}
+
+/* ── BADGES ── */
+.bdg{font-family:var(--fm);font-size:8px;padding:2px 6px;border-radius:2px;font-weight:500;letter-spacing:.05em;display:inline-block;white-space:nowrap}
+.bok2{background:rgba(45,255,122,.09);color:var(--accent);border:1px solid rgba(45,255,122,.18)}
+.bwn2{background:rgba(255,184,48,.09);color:var(--accent3);border:1px solid rgba(255,184,48,.18)}
+.ber2{background:rgba(255,107,53,.1);color:var(--warn);border:1px solid rgba(255,107,53,.22)}
+.binf2{background:rgba(0,229,255,.09);color:var(--accent2);border:1px solid rgba(0,229,255,.18)}
+.bpu2{background:rgba(187,134,252,.09);color:var(--pu);border:1px solid rgba(187,134,252,.18)}
+
+/* ── DOT ── */
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:4px;flex-shrink:0}
+.don{background:var(--accent);box-shadow:0 0 6px var(--accent)}
+.doff{background:var(--muted)}
+.dwn{background:var(--accent3);box-shadow:0 0 6px var(--accent3)}
+.derr{background:var(--warn);box-shadow:0 0 6px var(--warn)}
+
+/* ── DEVICE STATUS ROW ── */
+.devrow{display:flex;align-items:center;gap:5px;margin-bottom:3px}
+.devname{font-family:var(--fm);font-size:11px;font-weight:500}
+
+/* ── DASH PAGES ── */
+.dash{display:none}.dash.on{display:block}
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar{width:3px;height:3px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px}
+
+/* ── RESPONSIVE ── */
+@media(max-width:900px){
+  .g6{grid-template-columns:repeat(3,1fr)}
+  .g5{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(2,1fr)}
+  .sidebar{width:44px}.main{margin-left:44px}
+  .statusbar .si:nth-child(n+5){display:none}
+}
+@media(max-width:600px){
+  .g3,.g6{grid-template-columns:1fr 1fr}
+  .g2,.g3x1{grid-template-columns:1fr}
+  .main{padding:12px}
+}
+</style>
+</head>
+<body>
+
+<!-- ── TOPBAR ── -->
+<header class="topbar">
+  <div class="logo-block">🌿</div>
+  <div class="brand">
+    <div class="brand-name">CronusFarm</div>
+    <div class="brand-sub">ARTICHOKE SMART SYSTEM v2.1</div>
+  </div>
+  <div class="statusbar">
+    <div class="si"><div class="sdot" id="dot-sys"></div><div class="sl">SYSTEM</div><div class="sv" id="sv-sys">LIVE</div></div>
+    <div class="si"><div class="sdot" id="dot-db"></div><div class="sl">INFLUXDB</div><div class="sv">OK</div></div>
+    <div class="si"><div class="sdot" id="dot-ec"></div><div class="sl">EC</div><div class="sv" id="sv-ec">—</div></div>
+    <div class="si"><div class="sdot" id="dot-ph"></div><div class="sl">pH</div><div class="sv" id="sv-ph">—</div></div>
+    <div class="si"><div class="sdot" id="dot-tmp"></div><div class="sl">TEMP</div><div class="sv" id="sv-tmp">—</div></div>
+    <div class="si"><div class="sdot e" id="dot-alrt"></div><div class="sl">ALERT</div><div class="sv" id="sv-alrt">2건</div></div>
+  </div>
+  <div class="clock" id="clock"></div>
+</header>
+
+<!-- ── SIDEBAR ── -->
+<nav class="sidebar">
+  <div class="nb on" onclick="showDash('main',this)" title="메인"><div class="nb-ic">⊞</div><div class="nb-lbl">MAIN</div></div>
+  <div class="nb" onclick="showDash('env',this)" title="환경"><div class="nb-ic">◎</div><div class="nb-lbl">ENV</div></div>
+  <div class="nb" onclick="showDash('dev',this)" title="장치"><div class="nb-ic">⚙</div><div class="nb-lbl">DEV</div></div>
+  <div class="nb" onclick="showDash('crop',this)" title="작물·AI"><div class="nb-ic">◈</div><div class="nb-lbl">CROP</div></div>
+  <div class="nb" onclick="showDash('pwr',this)" title="전력"><div class="nb-ic">⌁</div><div class="nb-lbl">PWR</div></div>
+  <div class="ndiv"></div>
+  <div class="nb" onclick="showDash('alrt',this)" title="알림"><div class="nb-ic">△</div><div class="nb-lbl">ALRT</div></div>
+</nav>
+
+<!-- ── MAIN ── -->
+<main class="main">
+
+<!-- ═══════════════ D1: 메인 ═══════════════ -->
+<div class="dash on" id="dash-main">
+  <div class="sec"><div class="secline"></div><div class="sectl">실시간 환경</div><div class="secbdg">sensor_readings · 1min</div><div class="secline"></div></div>
+  <div class="g g6">
+    <div class="card" id="c-temp"><div class="clbl">내부 온도 <span class="ctype">stat</span></div><div class="val ok" id="v-temp">—<span class="vu">℃</span></div><div class="bar"><div class="bf bok" id="b-temp" style="width:0%"></div></div><div class="sublbl" id="s-temp">기준 15~25℃</div></div>
+    <div class="card" id="c-hum"><div class="clbl">내부 습도 <span class="ctype">stat</span></div><div class="val ok" id="v-hum">—<span class="vu">%</span></div><div class="bar"><div class="bf bok" id="b-hum" style="width:0%"></div></div><div class="sublbl">기준 50~75%</div></div>
+    <div class="card" id="c-ph"><div class="clbl">pH <span class="ctype">gauge</span></div><div class="val ok" id="v-ph">—</div><div class="bar"><div class="bf bok" id="b-ph" style="width:0%"></div></div><div class="sublbl">기준 6.0~7.5</div></div>
+    <div class="card" id="c-ec"><div class="clbl">EC <span class="ctype">gauge</span></div><div class="val" id="v-ec">—<span class="vu">mS/cm</span></div><div class="bar"><div class="bf" id="b-ec" style="width:0%"></div></div><div class="sublbl" id="s-ec">기준 1.5~3.0</div></div>
+    <div class="card" id="c-co2"><div class="clbl">CO₂ <span class="ctype">stat</span></div><div class="val ok" id="v-co2">—<span class="vu">ppm</span></div><div class="bar"><div class="bf bok" id="b-co2" style="width:0%"></div></div><div class="sublbl">최적 800~1200</div></div>
+    <div class="card"><div class="clbl">외부온도 KMA <span class="ctype">api</span></div><div class="val inf" id="v-kma">—<span class="vu">℃</span></div><div class="bar"><div class="bf binf" id="b-kma" style="width:0%"></div></div><div class="sublbl" id="s-kma">기상청 10min</div></div>
+  </div>
+
+  <div class="g g2" style="margin-top:7px">
+    <div class="card"><div class="clbl">온도·습도 24h 추이 <span class="ctype">time series</span></div><div class="mini" id="chart-temphum" style="height:52px"></div></div>
+    <div class="card"><div class="clbl">pH·EC·TDS 추이 <span class="ctype">time series</span></div><div class="mini" id="chart-phec" style="height:52px"></div></div>
+  </div>
+
+  <div class="sec"><div class="secline"></div><div class="sectl">장치 현황</div><div class="secbdg">state timeline · 24h</div><div class="secline"></div></div>
+  <div class="g g3">
+    <div class="card"><div class="clbl">LED 1~5 <span class="ctype">state</span></div><div class="tl" id="tl-led"></div></div>
+    <div class="card"><div class="clbl">Pump 1~8 <span class="ctype">state</span></div><div class="tl" id="tl-pump"></div></div>
+    <div class="card">
+      <div class="clbl">Fan 1~4 + RPM <span class="ctype">state+rpm</span></div>
+      <div class="tl" id="tl-fan"></div>
+      <div style="margin-top:8px" id="rpm-bars"></div>
+    </div>
+  </div>
+
+  <div class="sec"><div class="secline"></div><div class="sectl">최근 알림</div><div class="secbdg">alert_events · SQLite</div><div class="secline"></div></div>
+  <div class="card">
+    <div class="tbl">
+      <div class="tr hdr"><div class="td">발생시각</div><div class="td w2">메시지</div><div class="td">소스</div><div class="td">구역</div><div class="td">심각도</div><div class="td">상태</div></div>
+      <div id="alert-table"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ D2: 환경 ═══════════════ -->
+<div class="dash" id="dash-env">
+  <div class="sec"><div class="secline"></div><div class="sectl">센서 현재값 (7종)</div><div class="secbdg">sensor_readings</div><div class="secline"></div></div>
+  <div class="g g6" id="env-gauges"></div>
+  <div class="sec"><div class="secline"></div><div class="sectl">기상청 외부 데이터</div><div class="secbdg">weather_kma · 10min</div><div class="secline"></div></div>
+  <div class="g" style="grid-template-columns:repeat(5,1fr)" id="kma-stats"></div>
+  <div class="sec"><div class="secline"></div><div class="sectl">시계열 추이 24h</div><div class="secbdg">time series</div><div class="secline"></div></div>
+  <div class="g g2">
+    <div class="card"><div class="clbl">온도 (내부 vs 외부)</div><div class="mini" id="ec-temp2" style="height:54px"></div></div>
+    <div class="card"><div class="clbl">pH · EC 변화</div><div class="mini" id="ec-phec2" style="height:54px"></div></div>
+    <div class="card"><div class="clbl">TDS · ORP · CF</div><div class="mini" id="ec-tds" style="height:54px"></div></div>
+    <div class="card"><div class="clbl">CO₂ · 조도 · PM2.5</div><div class="mini" id="ec-co2" style="height:54px"></div></div>
+  </div>
+</div>
+
+<!-- ═══════════════ D3: 장치 ═══════════════ -->
+<div class="dash" id="dash-dev">
+  <div class="sec"><div class="secline"></div><div class="sectl">LED 현황 (1~5)</div><div class="secbdg">led_status</div><div class="secline"></div></div>
+  <div class="g g5" id="led-cards"></div>
+  <div class="sec"><div class="secline"></div><div class="sectl">Pump 현황 (1~8)</div><div class="secbdg">pump_status</div><div class="secline"></div></div>
+  <div class="g g4" id="pump-cards"></div>
+  <div class="sec"><div class="secline"></div><div class="sectl">Fan 현황 (1~4)</div><div class="secbdg">fan_status · RPM</div><div class="secline"></div></div>
+  <div class="g g4" id="fan-cards"></div>
+  <div class="sec"><div class="secline"></div><div class="sectl">당일 누적 가동시간</div><div class="secbdg">operation_logs · bar chart</div><div class="secline"></div></div>
+  <div class="card"><div class="clbl">장치별 가동시간 (분)</div><div style="display:flex;align-items:flex-end;gap:3px;height:60px;margin-top:6px" id="op-barchart"></div></div>
+</div>
+
+<!-- ═══════════════ D4: 작물·AI ═══════════════ -->
+<div class="dash" id="dash-crop">
+  <div class="sec"><div class="secline"></div><div class="sectl">카메라 상태</div><div class="secbdg">camera_status</div><div class="secline"></div></div>
+  <div class="g g4" id="cam-stats"></div>
+  <div class="sec"><div class="secline"></div><div class="sectl">AI 감지 현황</div><div class="secbdg">ai_detections · SQLite</div><div class="secline"></div></div>
+  <div class="g g4" id="ai-stats"></div>
+  <div class="g g2" style="margin-top:7px">
+    <div class="card">
+      <div class="clbl">AI 감지 이력 <span class="ctype">table</span></div>
+      <div class="tbl"><div class="tr hdr"><div class="td">시각</div><div class="td">유형</div><div class="td w2">레이블</div><div class="td">신뢰도</div><div class="td">심각도</div><div class="td">조치</div></div><div id="ai-table"></div></div>
+    </div>
+    <div class="card">
+      <div class="clbl">생육 단계 분포 <span class="ctype">bar chart</span></div>
+      <div style="display:flex;gap:6px;margin-top:8px;align-items:flex-end;height:60px" id="growth-chart"></div>
+      <div style="margin-top:12px" id="harvest-stats"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ D5: 전력 ═══════════════ -->
+<div class="dash" id="dash-pwr">
+  <div class="sec"><div class="secline"></div><div class="sectl">전력 현황</div><div class="secbdg">power_consumption</div><div class="secline"></div></div>
+  <div class="g g4" id="pwr-stats"></div>
+  <div class="g g2" style="margin-top:7px">
+    <div class="card"><div class="clbl">회로별 소비전력 <span class="ctype">bar gauge</span></div><div id="pwr-bars" style="margin-top:6px"></div></div>
+    <div class="card"><div class="clbl">24h 전력 추이 <span class="ctype">time series</span></div><div class="mini" id="pwr-chart" style="height:54px"></div></div>
+  </div>
+  <div class="sec"><div class="secline"></div><div class="sectl">탱크 수위</div><div class="secbdg">tank_level · gauge</div><div class="secline"></div></div>
+  <div class="g g4" id="tank-gauges"></div>
+  <div class="card" style="margin-top:7px"><div class="clbl">탱크 수위 추이 <span class="ctype">time series</span></div><div class="mini" id="tank-chart" style="height:44px"></div></div>
+</div>
+
+<!-- ═══════════════ D6: 알림 ═══════════════ -->
+<div class="dash" id="dash-alrt">
+  <div class="g g4" style="margin-bottom:12px" id="alrt-stats"></div>
+  <div class="g g3x1">
+    <div class="card">
+      <div class="clbl">전체 알림 이력 <span class="ctype">table</span></div>
+      <div class="tbl"><div class="tr hdr"><div class="td">시각</div><div class="td">심각도</div><div class="td w2">메시지</div><div class="td">소스</div><div class="td">채널</div><div class="td">상태</div></div><div id="full-alert-table"></div></div>
+    </div>
+    <div class="card">
+      <div class="clbl">유지보수 예정</div>
+      <div id="maint-list" style="margin-top:4px"></div>
+    </div>
+  </div>
+</div>
+
+</main>
+
+<script>
+// ═══════════════════════════════════════════════════
+// 랜덤 데이터 시뮬레이터
+// ═══════════════════════════════════════════════════
+var R = {
+  // 범위 내 랜덤 float
+  f: function(min,max,dec){return +(Math.random()*(max-min)+min).toFixed(dec||1)},
+  // 범위 내 랜덤 int
+  i: function(min,max){return Math.floor(Math.random()*(max-min+1)+min)},
+  // 배열에서 랜덤 선택
+  pick: function(arr){return arr[Math.floor(Math.random()*arr.length)]},
+  // 히스토리 데이터 (24포인트)
+  hist: function(base,amp,min,max,dec){
+    var a=[];
+    var v=base;
+    for(var i=0;i<24;i++){
+      v+=R.f(-amp,amp,dec);
+      if(v<min)v=min; if(v>max)v=max;
+      a.push(+v.toFixed(dec||1));
+    }
+    return a;
+  }
+};
+
+// ── 상태 저장소 ──
+var S = {
+  temp: 22.4, hum: 68, ph: 6.8, ec: 2.4, orp: 420, tds: 1120, cf: 32, co2: 940,
+  kma_temp: 18.1, kma_hum: 54, kma_wind: 3.2, kma_dir: 'NNE', kma_rain: 0.0, kma_uv: 3,
+  led: [true,true,false,true,true],
+  led_bri: [100,80,0,100,60],
+  led_pwr: [320,256,0,320,192],
+  pump: [true,true,false,true,false,true,false,true],
+  pump_types: ['영양액A','영양액B','용수','순환','배수','보충','비상','점적'],
+  pump_flow: [3.2,2.8,0,1.5,0,0.8,0,2.1],
+  fan: [true,true,false,true],
+  fan_rpm: [1200,850,0,1450],
+  fan_types: ['intake','exhaust','circ.','intake'],
+  alerts: [
+    {t:'08:42',m:'EC 상한 초과 (3.2 mS/cm)',src:'sensor_01',z:'zone_a',sev:'warning',st:'미해결',ch:'telegram'},
+    {t:'08:30',m:'진딧물 의심 감지 (AI 91%)',src:'cam_main',z:'zone_a',sev:'critical',st:'미해결',ch:'telegram'},
+    {t:'07:15',m:'Pump 3 스케줄 자동 가동',src:'pump_3',z:'zone_b',sev:'info',st:'해결됨',ch:'-'},
+    {t:'22:30',m:'야간 온도 하한 경고 (14.2℃)',src:'sensor_02',z:'zone_a',sev:'warning',st:'확인됨',ch:'email'},
+    {t:'18:00',m:'pH 하한 주의 (5.9)',src:'sensor_01',z:'zone_b',sev:'warning',st:'해결됨',ch:'telegram'},
+    {t:'14:20',m:'수확 적기 감지 — cam_close',src:'cam_close',z:'zone_a',sev:'info',st:'해결됨',ch:'-'},
+  ],
+  ai_det: [
+    {t:'08:42',type:'disease',label:'진딧물 의심',conf:'91%',sev:'critical',act:'알림 발송'},
+    {t:'07:15',type:'growth',label:'budding',conf:'96%',sev:'info',act:'기록'},
+    {t:'06:30',type:'harvest',label:'수확 적기 아님',conf:'88%',sev:'info',act:'기록'},
+    {t:'05:00',type:'anomaly',label:'잎 황화 의심',conf:'73%',sev:'warning',act:'모니터링'},
+    {t:'03:10',type:'pest',label:'응애 의심',conf:'68%',sev:'warning',act:'알림 발송'},
+  ],
+  growth_stages: [
+    {n:'발아',v:10,c:'#1a4a2a'},{n:'유묘',v:15,c:'#1d9e75'},{n:'영양',v:40,c:'#2dff7a'},
+    {n:'발뢰',v:25,c:'#ffb830'},{n:'개화',v:10,c:'#bb86fc'}
+  ],
+  tanks: [
+    {n:'양액 A',id:'ta',v:72,ok:true},{n:'양액 B',id:'tb',v:45,ok:false},
+    {n:'용수',id:'tw',v:88,ok:true},{n:'배수',id:'td',v:31,ok:true}
+  ]
+};
+
+// ── 색상 헬퍼 ──
+function sevClass(s){return s==='critical'?'ber2':s==='warning'?'bwn2':s==='info'?'binf2':'bok2'}
+function okClass(v,min,max){return (v<min||v>max)?'wn':'ok'}
+function barClass(v,min,max){return (v<min||v>max)?'bwn':'bok'}
+
+// ── 시계 ──
+function tick(){
+  var d=new Date();
+  var pad=function(n){return String(n).padStart(2,'0')};
+  document.getElementById('clock').innerHTML=
+    '<span>'+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())+'</span>&nbsp; '+
+    d.getFullYear()+'.'+(pad(d.getMonth()+1))+'.'+pad(d.getDate());
+}
+tick(); setInterval(tick,1000);
+
+// ── 미니 차트 렌더 ──
+function renderMini(id,data,cls,h){
+  var el=document.getElementById(id);
+  if(!el)return;
+  var mn=Math.min.apply(null,data),mx=Math.max.apply(null,data),rng=mx-mn||1;
+  el.innerHTML=data.map(function(v){
+    var pct=Math.round(((v-mn)/rng)*80+15);
+    return '<div class="mb '+cls+'" style="height:'+pct+'%;flex:1;border-radius:2px 2px 0 0"></div>';
+  }).join('');
+}
+
+// ── 타임라인 렌더 ──
+function renderTimeline(id,rows){
+  var el=document.getElementById(id);
+  if(!el)return;
+  el.innerHTML=rows.map(function(r){
+    var segs=r.segs.map(function(s){return '<div class="seg '+s+'"></div>'}).join('');
+    return '<div class="tlrow"><div class="tllbl">'+r.label+'</div><div class="tltrack">'+segs+'</div></div>';
+  }).join('');
+}
+
+// ── 타임라인 데이터 생성 (현재 ON/OFF 패턴 반영) ──
+function makeSegs(isOn,style){
+  // 6시간 각 ~15분 단위 = 24세그
+  var segs=[];
+  for(var i=0;i<24;i++){
+    if(i<3||i>21) segs.push('soff');
+    else if(isOn) segs.push(style||'son');
+    else segs.push('soff');
+  }
+  return segs;
+}
+function makePumpSegs(isOn){
+  var segs=[];
+  for(var i=0;i<24;i++){
+    if(!isOn) segs.push('soff');
+    else segs.push(i%4===0?'son':i%4===2?'smid':'soff');
+  }
+  return segs;
+}
+function makeFanSegs(isOn){
+  var segs=[];
+  for(var i=0;i<24;i++) segs.push(i>8&&isOn?'son':'soff');
+  return segs;
+}
+
+// ── 게이지 SVG ──
+function gaugeArc(val,min,max,col){
+  var pct=Math.max(0,Math.min(1,(val-min)/(max-min)));
+  var dash=Math.round(pct*107);
+  return '<svg viewBox="0 0 80 46" width="80" height="46">'+
+    '<path d="M8,42 A32,32 0 0,1 72,42" fill="none" stroke="rgba(45,255,122,.07)" stroke-width="5" stroke-linecap="round"/>'+
+    '<path d="M8,42 A32,32 0 0,1 72,42" fill="none" stroke="'+col+'" stroke-width="5" stroke-linecap="round" stroke-dasharray="'+dash+' 107" style="filter:drop-shadow(0 0 4px '+col+')"/>'+
+    '</svg>';
+}
+
+// ── 환경 업데이트 ──
+function updateEnvStat(id,val,unit,min,max,barId,cardId){
+  var v=document.getElementById(id);
+  if(v){
+    var cls=okClass(val,min,max);
+    v.className='val '+cls;
+    v.innerHTML=val+'<span class="vu">'+unit+'</span>';
+  }
+  var b=document.getElementById(barId);
+  if(b){
+    var pct=Math.round((val-min)/(max-min)*100);
+    pct=Math.max(0,Math.min(100,pct));
+    var bc=barClass(val,min,max);
+    b.className='bf '+bc;
+    b.style.width=pct+'%';
+  }
+  var c=document.getElementById(cardId);
+  if(c){
+    var bad=val<min||val>max;
+    c.className='card'+(bad?' wc':'');
+  }
+}
+
+function updateMainStats(){
+  // 살짝씩 값 변화
+  S.temp = Math.max(14,Math.min(30, S.temp+R.f(-0.3,0.3,1)));
+  S.hum  = Math.max(40,Math.min(90, S.hum +R.f(-1,1,0)));
+  S.ph   = Math.max(5.5,Math.min(8, S.ph  +R.f(-0.05,0.05,2)));
+  S.ec   = Math.max(1.0,Math.min(4.5,S.ec  +R.f(-0.05,0.05,2)));
+  S.co2  = Math.max(400,Math.min(1800,S.co2+R.i(-20,20)));
+  S.kma_temp = Math.max(5,Math.min(35,S.kma_temp+R.f(-0.2,0.2,1)));
+
+  updateEnvStat('v-temp',S.temp,'℃',15,25,'b-temp','c-temp');
+  updateEnvStat('v-hum', S.hum, '%', 50,75,'b-hum', 'c-hum');
+  updateEnvStat('v-ph',  S.ph,  '', 6.0,7.5,'b-ph','c-ph');
+  updateEnvStat('v-ec',  S.ec,  'mS/cm',1.5,3.0,'b-ec','c-ec');
+  updateEnvStat('v-co2', S.co2, 'ppm',400,1200,'b-co2','c-co2');
+  updateEnvStat('v-kma', S.kma_temp,'℃',0,40,'b-kma',null);
+
+  // EC 상태 표시
+  var ecBad=S.ec>3.0||S.ec<1.5;
+  var svec=document.getElementById('sv-ec');
+  if(svec) svec.textContent=S.ec.toFixed(2)+' mS';
+  var dec=document.getElementById('dot-ec');
+  if(dec) dec.className='sdot'+(ecBad?' w':'');
+  var sec=document.getElementById('s-ec');
+  if(sec) sec.textContent=ecBad?'⚠ 범위 이탈':'기준 1.5~3.0';
+
+  var svph=document.getElementById('sv-ph');
+  if(svph) svph.textContent=S.ph.toFixed(2);
+  var svtmp=document.getElementById('sv-tmp');
+  if(svtmp) svtmp.textContent=S.temp.toFixed(1)+'℃';
+
+  // topbar
+  var kmas=document.getElementById('s-kma');
+  if(kmas) kmas.textContent=S.kma_dir+' · '+S.kma_wind.toFixed(1)+'m/s';
+}
+
+// ── 차트 초기화 ──
+function initCharts(){
+  renderMini('chart-temphum',R.hist(22,1.5,14,30,1),'mok',52);
+  renderMini('chart-phec',   R.hist(6.8,.1,5,9,2),  'mwn',52);
+  renderMini('ec-temp2',     R.hist(22,2,12,32,1),   'mok',54);
+  renderMini('ec-phec2',     R.hist(6.8,.08,5.5,8,2),'mwn',54);
+  renderMini('ec-tds',       R.hist(1100,60,600,2000,0),'minf',54);
+  renderMini('ec-co2',       R.hist(950,50,400,1800,0),'mpu',54);
+  renderMini('pwr-chart',    R.hist(1200,120,400,2400,0),'mwn',54);
+  renderMini('tank-chart',   R.hist(65,3,10,100,0),  'minf',44);
+}
+
+// ── 타임라인 초기화 ──
+function initTimelines(){
+  var ledRows=S.led.map(function(on,i){
+    return {label:'LED '+(i+1),segs:makeSegs(on)};
+  });
+  renderTimeline('tl-led',ledRows);
+
+  var pumpRows=S.pump.map(function(on,i){
+    return {label:'P'+(i+1),segs:makePumpSegs(on)};
+  });
+  renderTimeline('tl-pump',pumpRows);
+
+  var fanRows=S.fan.map(function(on,i){
+    return {label:'Fan '+(i+1),segs:makeFanSegs(on)};
+  });
+  renderTimeline('tl-fan',fanRows);
+
+  // RPM bars
+  var el=document.getElementById('rpm-bars');
+  if(el) el.innerHTML=S.fan.map(function(on,i){
+    var rpm=S.fan_rpm[i];
+    var pct=Math.round(rpm/1500*100);
+    return '<div class="rpmrow"><div class="rpmlbl">Fan '+(i+1)+'</div>'+
+      '<div class="rpmtrk"><div class="rpmfil" id="rpm-'+(i+1)+'" style="width:'+pct+'%"></div></div>'+
+      '<div class="rpmval" id="rpmval-'+(i+1)+'">'+rpm.toLocaleString()+'</div></div>';
+  }).join('');
+}
+
+// ── 알림 테이블 ──
+function initAlerts(){
+  var sevC={'critical':'ber2','warning':'bwn2','info':'binf2'};
+  var stC={'미해결':'bwn2','확인됨':'binf2','해결됨':'bok2'};
+  var html=S.alerts.map(function(a){
+    return '<div class="tr">'+
+      '<div class="td">'+a.t+'</div>'+
+      '<div class="td b w2">'+a.m+'</div>'+
+      '<div class="td">'+a.src+'</div>'+
+      '<div class="td">'+a.z+'</div>'+
+      '<div class="td"><span class="bdg '+(sevC[a.sev]||'binf2')+'">'+a.sev.toUpperCase()+'</span></div>'+
+      '<div class="td"><span class="bdg '+(stC[a.st]||'binf2')+'">'+a.st+'</span></div>'+
+      '</div>';
+  }).join('');
+  var el=document.getElementById('alert-table');
+  if(el) el.innerHTML=html;
+  var el2=document.getElementById('full-alert-table');
+  if(el2) el2.innerHTML=html;
+}
+
+// ── 환경 게이지 (D2) ──
+function initEnvGauges(){
+  var gauges=[
+    {lbl:'pH',val:S.ph,min:0,max:14,dec:2,col:'var(--accent)',ref:'6.0~7.5'},
+    {lbl:'ORP',val:S.orp,min:-500,max:1000,dec:0,col:'var(--accent2)',ref:'300~700mV'},
+    {lbl:'TDS',val:S.tds,min:0,max:2500,dec:0,col:'var(--pu)',ref:'800~1500ppm'},
+    {lbl:'EC',val:S.ec,min:0,max:5,dec:2,col:'var(--accent3)',ref:'1.5~3.0mS'},
+    {lbl:'CF',val:S.cf,min:0,max:100,dec:0,col:'var(--accent)',ref:'15~35'},
+    {lbl:'온도',val:S.temp,min:0,max:40,dec:1,col:'var(--warn)',ref:'15~25℃'},
+  ];
+  var el=document.getElementById('env-gauges');
+  if(!el)return;
+  el.innerHTML=gauges.map(function(g){
+    var col=g.col.replace('var(','').replace(')','').replace('--accent','var(--accent').replace('var(--accent)','var(--accent)');
+    var c=g.col.includes('accent3')?'wn':g.col.includes('warn')?'er':g.col.includes('pu')?'pu':g.col.includes('accent2')?'inf':'ok';
+    return '<div class="card"><div class="clbl">'+g.lbl+' <span class="ctype">gauge</span></div>'+
+      '<div class="gauge">'+gaugeArc(g.val,g.min,g.max,g.col.replace(/var\(([^)]+)\)/,function(_,v){
+        var map={'--accent':'#2dff7a','--accent2':'#00e5ff','--accent3':'#ffb830','--warn':'#ff6b35','--pu':'#bb86fc'};
+        return map[v]||'#2dff7a';
+      }))+
+      '<div class="gval '+c+'">'+g.val+'</div></div>'+
+      '<div class="sublbl">기준 '+g.ref+'</div></div>';
+  }).join('');
+}
+
+// ── KMA Stats ──
+function initKmaStats(){
+  var el=document.getElementById('kma-stats');
+  if(!el)return;
+  el.innerHTML=[
+    ['외부 온도',S.kma_temp+'℃','inf'],
+    ['외부 습도',S.kma_hum+'%','ok'],
+    ['풍속',S.kma_wind+' m/s','ok'],
+    ['풍향',S.kma_dir,'inf'],
+    ['강수량',S.kma_rain+' mm','ok'],
+  ].map(function(r){
+    return '<div class="card"><div class="clbl">'+r[0]+'</div><div class="val sm '+r[2]+'">'+r[1]+'</div></div>';
+  }).join('');
+}
+
+// ── LED 카드 ──
+function initLedCards(){
+  var el=document.getElementById('led-cards');
+  if(!el)return;
+  el.innerHTML=S.led.map(function(on,i){
+    return '<div class="card'+(on?'':' ') +'">'
+      +'<div class="clbl">LED '+(i+1)+'</div>'
+      +'<div class="devrow"><span class="dot '+(on?'don':'doff')+'"></span>'
+      +'<span class="devname '+(on?'ok':'muted')+'">'+(on?'ON':'OFF')+'</span></div>'
+      +'<div class="sublbl">밝기 '+S.led_bri[i]+'%</div>'
+      +'<div class="sublbl">'+S.led_pwr[i]+'W</div>'
+      +'<div class="bar" style="margin-top:5px"><div class="bf bok" style="width:'+S.led_bri[i]+'%"></div></div>'
+      +'</div>';
+  }).join('');
+}
+
+// ── Pump 카드 ──
+function initPumpCards(){
+  var el=document.getElementById('pump-cards');
+  if(!el)return;
+  el.innerHTML=S.pump.map(function(on,i){
+    var pct=on?R.i(30,80):0;
+    return '<div class="card"><div class="clbl">P'+(i+1)+' · '+S.pump_types[i]+'</div>'
+      +'<div class="devrow"><span class="dot '+(on?'don':'doff')+'"></span>'
+      +'<span class="devname '+(on?'inf':'muted')+'">'+(on?'ON':'OFF')+'</span></div>'
+      +'<div class="sublbl">'+(on?S.pump_flow[i]+' L/min':'대기')+'</div>'
+      +'<div class="bar" style="margin-top:5px"><div class="bf binf" style="width:'+pct+'%"></div></div>'
+      +'</div>';
+  }).join('');
+}
+
+// ── Fan 카드 ──
+function initFanCards(){
+  var el=document.getElementById('fan-cards');
+  if(!el)return;
+  el.innerHTML=S.fan.map(function(on,i){
+    var rpm=S.fan_rpm[i];
+    var pct=Math.round(rpm/1500*100);
+    return '<div class="card"><div class="clbl">Fan '+(i+1)+' · '+S.fan_types[i]+'</div>'
+      +'<div class="devrow"><span class="dot '+(on?'don':'doff')+'"></span>'
+      +'<span class="devname '+(on?'pu':'muted')+'">'+(on?'ON':'OFF')+'</span></div>'
+      +'<div class="val sm pu" style="margin:3px 0">'+rpm.toLocaleString()+' <span class="vu">RPM</span></div>'
+      +'<div class="bar" style="margin-top:3px"><div class="bf bpu" style="width:'+pct+'%"></div></div>'
+      +'</div>';
+  }).join('');
+}
+
+// ── 가동 시간 바 차트 ──
+function initOpBarChart(){
+  var el=document.getElementById('op-barchart');
+  if(!el)return;
+  var items=[
+    {l:'L1',h:85,c:'#f5a623'},{l:'L2',h:80,c:'#f5a623'},{l:'L3',h:0,c:'#f5a623'},
+    {l:'L4',h:85,c:'#f5a623'},{l:'L5',h:60,c:'#f5a623'},
+    {l:'P1',h:60,c:'#00e5ff'},{l:'P2',h:55,c:'#00e5ff'},{l:'P3',h:0,c:'#00e5ff'},
+    {l:'P4',h:45,c:'#00e5ff'},{l:'P5',h:0,c:'#00e5ff'},{l:'P6',h:30,c:'#00e5ff'},
+    {l:'P7',h:0,c:'#00e5ff'},{l:'P8',h:50,c:'#00e5ff'},
+    {l:'F1',h:80,c:'#bb86fc'},{l:'F2',h:55,c:'#bb86fc'},{l:'F3',h:0,c:'#bb86fc'},{l:'F4',h:90,c:'#bb86fc'},
+  ];
+  el.innerHTML=items.map(function(it){
+    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px">'
+      +'<div style="width:100%;background:'+it.c+';border-radius:2px 2px 0 0;height:'+it.h+'%;min-height:'+(it.h>0?2:0)+'px;opacity:.8"></div>'
+      +'<div style="font-family:var(--fm);font-size:8px;color:var(--text3)">'+it.l+'</div>'
+      +'</div>';
+  }).join('');
+}
+
+// ── 카메라 stats ──
+function initCamStats(){
+  var el=document.getElementById('cam-stats');
+  if(!el)return;
+  el.innerHTML=[
+    ['메인 카메라','정상','ok'],
+    ['근접 카메라','정상','ok'],
+    ['AI 추론 FPS','28 fps','inf'],
+    ['Pi5 CPU 온도','52 ℃','ok'],
+  ].map(function(r){
+    return '<div class="card"><div class="clbl">'+r[0]+'</div><div class="val sm '+r[2]+'">'+r[1]+'</div></div>';
+  }).join('');
+}
+
+// ── AI Stats ──
+function initAiStats(){
+  var el=document.getElementById('ai-stats');
+  if(!el)return;
+  el.innerHTML=[
+    ['오늘 총 감지','12건','inf'],
+    ['병해충 의심','2건','wn'],
+    ['수확 적기','0건','ok'],
+    ['평균 신뢰도','87%','ok'],
+  ].map(function(r){
+    return '<div class="card"><div class="clbl">'+r[0]+'</div><div class="val sm '+r[1]+'">'+r[2]+'</div></div>';
+  }).join('');
+}
+
+// ── AI 감지 테이블 ──
+function initAiTable(){
+  var el=document.getElementById('ai-table');
+  if(!el)return;
+  var sevC={'critical':'ber2','warning':'bwn2','info':'binf2'};
+  el.innerHTML=S.ai_det.map(function(a){
+    return '<div class="tr"><div class="td">'+a.t+'</div><div class="td">'+a.type+'</div>'+
+      '<div class="td b w2">'+a.label+'</div><div class="td">'+a.conf+'</div>'+
+      '<div class="td"><span class="bdg '+(sevC[a.sev]||'binf2')+'">'+a.sev.toUpperCase()+'</span></div>'+
+      '<div class="td">'+a.act+'</div></div>';
+  }).join('');
+}
+
+// ── 생육 단계 차트 ──
+function initGrowthChart(){
+  var el=document.getElementById('growth-chart');
+  if(!el)return;
+  el.innerHTML=S.growth_stages.map(function(g){
+    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px">'
+      +'<div style="width:100%;background:'+g.c+';border-radius:2px 2px 0 0;height:'+g.v+'%;opacity:.9"></div>'
+      +'<div style="font-family:var(--fm);font-size:8px;color:var(--text3)">'+g.n+'</div>'
+      +'</div>';
+  }).join('');
+  var hs=document.getElementById('harvest-stats');
+  if(hs) hs.innerHTML=[
+    ['수확 예정 (7일내)','3개','ok'],
+    ['평균 예상 중량','420 g','inf'],
+    ['이번달 수확량','28 kg','ok'],
+    ['월 목표 달성율','78%','wn'],
+  ].map(function(r){
+    return '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+      +'<div style="font-size:9px;color:var(--text3);font-family:var(--fm)">'+r[0]+'</div>'
+      +'<div style="font-family:var(--fm);font-size:11px;font-weight:500" class="'+r[2]+'">'+r[1]+'</div>'
+      +'</div>';
+  }).join('');
+}
+
+// ── 전력 Stats ──
+function initPwrStats(){
+  var el=document.getElementById('pwr-stats');
+  if(!el)return;
+  el.innerHTML=[
+    ['현재 소비전력','1,248 W','wn'],
+    ['오늘 전력량','18.4 kWh','ok'],
+    ['전월 대비','+3.2%','wn'],
+    ['예상 월 요금','142,000원','ok'],
+  ].map(function(r){
+    return '<div class="card"><div class="clbl">'+r[0]+'</div><div class="val sm '+r[2]+'">'+r[1]+'</div></div>';
+  }).join('');
+  var bp=document.getElementById('pwr-bars');
+  if(bp) bp.innerHTML=[
+    ['LED 회로','680W',68,'#f5a623'],
+    ['Pump 회로','312W',31,'#00e5ff'],
+    ['Fan 회로','180W',18,'#bb86fc'],
+    ['시스템','76W',8,'var(--text3)'],
+  ].map(function(r){
+    return '<div class="rpmrow"><div class="rpmlbl">'+r[0]+'</div>'
+      +'<div class="rpmtrk"><div class="rpmfil" style="width:'+r[2]+'%;background:'+r[3]+'"></div></div>'
+      +'<div class="rpmval">'+r[1]+'</div></div>';
+  }).join('');
+}
+
+// ── 탱크 게이지 ──
+function initTankGauges(){
+  var el=document.getElementById('tank-gauges');
+  if(!el)return;
+  el.innerHTML=S.tanks.map(function(t){
+    var col=t.ok?'#2dff7a':'#ffb830';
+    var colHex=t.ok?'#2dff7a':'#ffb830';
+    return '<div class="card'+(t.ok?'':' wc')+'">'
+      +'<div class="clbl">'+t.n+'</div>'
+      +'<div class="gauge">'+gaugeArc(t.v,0,100,colHex)
+      +'<div class="gval '+(t.ok?'ok':'wn')+'">'+t.v+'%</div></div>'
+      +'</div>';
+  }).join('');
+}
+
+// ── 알림 통계 ──
+function initAlrtStats(){
+  var el=document.getElementById('alrt-stats');
+  if(!el)return;
+  el.innerHTML=[
+    ['미해결 Critical','2건','er'],
+    ['미해결 Warning','3건','wn'],
+    ['7일 해결율','89%','ok'],
+    ['텔레그램 발송','8건','inf'],
+  ].map(function(r){
+    return '<div class="card"><div class="clbl">'+r[0]+'</div><div class="val sm '+r[2]+'">'+r[1]+'</div></div>';
+  }).join('');
+  var ml=document.getElementById('maint-list');
+  if(ml) ml.innerHTML=[
+    ['D-3','Fan 3 정기 점검','wn'],
+    ['D-12','센서 캘리브레이션','ok'],
+    ['D-20','양액 탱크 세척','ok'],
+    ['D-28','LED 모듈 점검','ok'],
+  ].map(function(r){
+    return '<div style="display:flex;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid var(--border)">'
+      +'<span class="bdg '+(r[2]==='wn'?'bwn2':'bok2')+'">'+r[0]+'</span>'
+      +'<span style="font-family:var(--fm);font-size:10px;color:var(--text2)">'+r[1]+'</span>'
+      +'</div>';
+  }).join('');
+}
+
+// ── 탭 전환 ──
+function showDash(id,el){
+  document.querySelectorAll('.dash').forEach(function(d){d.classList.remove('on')});
+  document.querySelectorAll('.nb').forEach(function(b){b.classList.remove('on')});
+  var d=document.getElementById('dash-'+id);
+  if(d) d.classList.add('on');
+  if(el) el.classList.add('on');
+}
+
+// ── 센서 랜덤 업데이트 (5초 주기) ──
+function liveUpdate(){
+  updateMainStats();
+  // 미니 차트도 살짝 업데이트
+  var arr=[];
+  for(var i=0;i<24;i++) arr.push(R.f(18,28,1));
+  renderMini('chart-temphum',arr,'mok',52);
+  arr=[];
+  for(var i=0;i<24;i++) arr.push(R.f(6.2,7.4,2));
+  renderMini('chart-phec',arr,'mwn',52);
+}
+
+// ── 초기화 ──
+(function init(){
+  initCharts();
+  initTimelines();
+  initAlerts();
+  updateMainStats();
+  initEnvGauges();
+  initKmaStats();
+  initLedCards();
+  initPumpCards();
+  initFanCards();
+  initOpBarChart();
+  initCamStats();
+  initAiStats();
+  initAiTable();
+  initGrowthChart();
+  initPwrStats();
+  initTankGauges();
+  initAlrtStats();
+  setInterval(liveUpdate,5000);
+})();
+</script>
+</body>
+</html>

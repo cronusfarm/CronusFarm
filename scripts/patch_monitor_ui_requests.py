@@ -79,15 +79,32 @@ PHW_CHART_FMT = r"""<div class="cf-phw-24h">
 .cfw24-wrap canvas{width:100%!important;height:200px!important;display:block}
 .cfw24-msg{font-size:11px;color:#9db0cc;padding:4px 0}
 </style>
-<div class="cfw24-hd">Water Quality (24h)</div>
+<div class="cfw24-hd">Water Quality (24h) <span style="font-size:10px;font-weight:400;color:#9db0cc">지금-24H ~ 지금</span></div>
 <div id="cf-phw-chart-msg" class="cfw24-msg"></div>
 <div class="cfw24-wrap"><canvas id="cf-phw-chart-24h" height="200"></canvas></div>
 <script src="/cronusfarm-static/vendor/chart.umd.min.js"></script>
 <script type="text/javascript">
 (function(scope){
   const API=(location.origin||'')+'/farm/cronusfarm-sqlite/api/sensor/series';
+  const API_TIME=(location.origin||'')+'/farm/cronusfarm-sqlite/api/time/status?device_id=cronusfarm-01';
   let chart=null;
   function setMsg(t){var m=document.getElementById('cf-phw-chart-msg');if(m)m.textContent=t||'';}
+  async function nowMs(){
+    try{
+      if(window.__cfPiNowMs && (Date.now() - window.__cfPiNowMsAt) < 15000) return window.__cfPiNowMs;
+      const r=await fetch(API_TIME,{credentials:'same-origin'});
+      if(r.ok){
+        const j=await r.json();
+        const ms=Number(j.pi_ts_ms);
+        if(ms && isFinite(ms)){
+          window.__cfPiNowMs = ms;
+          window.__cfPiNowMsAt = Date.now();
+          return ms;
+        }
+      }
+    }catch(e){}
+    return Date.now();
+  }
   function ensureChart(cb){
     if(typeof Chart!=='undefined'){cb();return;}
     var s=document.querySelector('script[src*="chart.umd"]');
@@ -115,12 +132,14 @@ PHW_CHART_FMT = r"""<div class="cf-phw-24h">
       const lp=lastY(ph),le=lastY(ec),lt=lastY(tp);
       const t1=pts.length?new Date(pts[pts.length-1].ts_ms).toLocaleString('ko-KR',{hour:'2-digit',minute:'2-digit'}):'';
       setMsg('최신 pH '+fnum(lp,2)+' · EC '+fnum(le,0)+' µS/cm · Temp '+fnum(lt,1)+'℃  (24h '+pts.length+'건'+(t1?' · '+t1:'')+')');
-      const tEnd=Date.now();
+      const tEnd=await nowMs();
       const tStart=tEnd-24*3600*1000;
+      function clip(arr){return arr.filter(function(p){return p.x>=tStart&&p.x<=tEnd;});}
+      const phC=clip(ph), ecC=clip(ec), tpC=clip(tp);
       const data={datasets:[
-        {label:'pH',data:ph,borderColor:'#4fc3f7',borderWidth:2,fill:false,yAxisID:'y',tension:.2,pointRadius:0},
-        {label:'EC µS/cm',data:ec,borderColor:'#ffb74d',borderWidth:2,fill:false,yAxisID:'y1',tension:.2,pointRadius:0},
-        {label:'Temp ℃',data:tp,borderColor:'#81c784',borderWidth:2,fill:false,yAxisID:'y2',tension:.2,pointRadius:0,hidden:tp.length===0}
+        {label:'pH',data:phC,borderColor:'#4fc3f7',borderWidth:2,fill:false,yAxisID:'y',tension:.4,cubicInterpolationMode:'monotone',stepped:false,pointRadius:0,spanGaps:true},
+        {label:'EC µS/cm',data:ecC,borderColor:'#ffb74d',borderWidth:2.5,fill:false,yAxisID:'y1',tension:.5,cubicInterpolationMode:'monotone',stepped:false,pointRadius:0,spanGaps:true},
+        {label:'Temp ℃',data:tpC,borderColor:'#81c784',borderWidth:2,fill:false,yAxisID:'y2',tension:.4,cubicInterpolationMode:'monotone',stepped:false,pointRadius:0,hidden:tpC.length===0,spanGaps:true}
       ]};
       const opt={responsive:true,maintainAspectRatio:false,animation:false,
         interaction:{mode:'index',intersect:false},
@@ -296,12 +315,12 @@ def patch_fn_map_salt(node: dict) -> None:
 def patch_gauges(by: dict[str, dict]) -> None:
     """게이지 name·title·label·min/max — UI에 보이는 제목은 title/label."""
     specs = {
-        "480e017a1bfbfe7b": ("Cronus pH", "Cronus pH", "pH", 0, 14),
-        "2141fe178c3e2c88": ("Cronus EC (µS/cm)", "Cronus EC", "µS/cm", 0, 5000),
-        "a0a33715ba8ca5eb": ("Cronus TDS (ppm)", "Cronus TDS", "ppm", 0, 5000),
-        "f61aebaa74026feb": ("Cronus SALT (‰)", "Cronus SALT", "‰", 0, 50),
-        "9d76b919dae993f9": ("Cronus S.G", "Cronus S.G", "SG", 0, 1.05),
-        "1800ba1474d7135c": ("Cronus Temp (℃)", "Cronus Temp (℃)", "℃", -20, 50),
+        "480e017a1bfbfe7b": ("pH", "pH", "pH", 0, 14),
+        "2141fe178c3e2c88": ("EC (µS/cm)", "EC (µS/cm)", "µS/cm", 0, 5000),
+        "a0a33715ba8ca5eb": ("TDS (ppm)", "TDS (ppm)", "ppm", 0, 5000),
+        "f61aebaa74026feb": ("SALT (‰)", "SALT (‰)", "‰", 0, 50),
+        "9d76b919dae993f9": ("S.G", "S.G", "SG", 0, 1.05),
+        "1800ba1474d7135c": ("Temp (℃)", "Temp (℃)", "℃", -20, 50),
     }
     for gid, (name, title, label, mn, mx) in specs.items():
         n = by.get(gid)
@@ -546,7 +565,7 @@ def main() -> int:
         by[GH_GROUP] = {
             "id": GH_GROUP,
             "type": "ui_group",
-            "name": "온실 Data (PHW3988)",
+            "name": "양액 상태 Data",
             "tab": "ui_tab_monitor",
             "order": 6,
             "disp": True,

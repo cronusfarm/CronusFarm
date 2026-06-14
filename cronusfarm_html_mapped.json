@@ -1,0 +1,371 @@
+{
+  "uid": "cronusfarm-html-mapped",
+  "title": "CronusFarm — HTML 레이아웃(tele 맵핑)",
+  "tags": ["cronusfarm", "html", "mapped"],
+  "timezone": "Asia/Seoul",
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "type": "text",
+      "id": 1,
+      "title": "CronusFarm — SmartFarm Dashboard",
+      "gridPos": { "x": 0, "y": 0, "w": 24, "h": 6 },
+      "options": {
+        "mode": "html",
+        "content": "<style>\n:root{\n  --g0:#040d07;--g1:#0a1a0f;--g2:#0f2415;--g3:#152e1a;\n  --accent:#2dff7a;--accent2:#00e5ff;--accent3:#ffb830;--warn:#ff6b35;--pu:#bb86fc;\n  --muted:#3a5c42;--text:#c8e6c9;--text2:#6b9c73;--text3:#3a5c42;\n  --border:rgba(45,255,122,.07);--border2:rgba(45,255,122,.16);\n  --card:rgba(10,26,15,.9);--glow:0 0 28px rgba(45,255,122,.07);\n  --fm:'DM Mono',monospace;--fb:'Noto Sans KR',system-ui,sans-serif;\n}\n\n/* Grafana 패널 내부에서만 HTML 레이아웃 재현 */\n.cf-wrap{position:relative;background:var(--g0);color:var(--text);font-family:var(--fb);padding:14px;border-radius:10px;overflow:hidden;border:1px solid var(--border)}\n.cf-wrap::before{content:'';position:absolute;inset:0;pointer-events:none;\n  background-image:linear-gradient(rgba(45,255,122,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(45,255,122,.022) 1px,transparent 1px);\n  background-size:48px 48px;opacity:.7}\n.cf-wrap::after{content:'';position:absolute;inset:0;pointer-events:none;\n  background:radial-gradient(ellipse 55% 40% at 15% 15%,rgba(45,255,122,.04) 0%,transparent 70%),\n             radial-gradient(ellipse 45% 55% at 85% 85%,rgba(0,229,255,.025) 0%,transparent 70%)}\n\n.cf-top{position:relative;z-index:1;display:flex;align-items:center;gap:12px;margin-bottom:10px}\n.cf-logo{width:44px;height:44px;background:var(--accent);display:flex;align-items:center;justify-content:center;\n  clip-path:polygon(0 0,100% 0,82% 100%,0 100%);flex-shrink:0;font-size:18px}\n.cf-brand{display:flex;flex-direction:column}\n.cf-name{font-family:var(--fm);font-size:14px;font-weight:700;letter-spacing:.08em;color:var(--accent);text-transform:uppercase}\n.cf-sub{font-family:var(--fm);font-size:10px;color:var(--text2);letter-spacing:.12em;margin-top:2px}\n\n.cf-sec{position:relative;z-index:1;display:flex;align-items:center;gap:10px;margin:14px 0 10px}\n.cf-line{flex:1;height:1px;background:var(--border2)}\n.cf-sectl{font-family:var(--fm);font-size:10px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:var(--text2);white-space:nowrap}\n.cf-bdg{font-family:var(--fm);font-size:9px;color:var(--text3);background:rgba(45,255,122,.04);\n  border:1px solid var(--border);padding:2px 6px;border-radius:3px;letter-spacing:.06em;white-space:nowrap}\n\n.cf-g{position:relative;z-index:1;display:grid;gap:7px}\n.cf-g6{grid-template-columns:repeat(6,1fr)}\n.cf-g4{grid-template-columns:repeat(4,1fr)}\n\n.cf-card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;overflow:hidden}\n.cf-clbl{font-family:var(--fm);font-size:10px;color:var(--text3);letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between;gap:8px}\n.cf-ctype{font-size:9px;background:rgba(45,255,122,.04);border:1px solid var(--border);color:var(--text3);padding:1px 6px;border-radius:4px;white-space:nowrap}\n.cf-val{font-family:var(--fm);font-size:22px;font-weight:500;line-height:1;color:var(--text)}\n.cf-vu{font-size:11px;color:var(--text2);margin-left:2px}\n.cf-bar{height:3px;background:rgba(45,255,122,.07);border-radius:2px;margin-top:7px;overflow:hidden}\n.cf-bf{height:100%;border-radius:2px}\n.cf-ok{color:var(--accent)}.cf-inf{color:var(--accent2)}.cf-wn{color:var(--accent3)}.cf-er{color:var(--warn)}\n\n@media(max-width:1200px){.cf-g6{grid-template-columns:repeat(3,1fr)}}\n@media(max-width:700px){.cf-g6,.cf-g4{grid-template-columns:repeat(2,1fr)}}\n</style>\n\n<div class=\"cf-wrap\">\n  <div class=\"cf-top\">\n    <div class=\"cf-logo\">🌿</div>\n    <div class=\"cf-brand\">\n      <div class=\"cf-name\">CronusFarm</div>\n      <div class=\"cf-sub\">ARTICHOKE SMART SYSTEM · LIVE</div>\n    </div>\n  </div>\n\n  <div class=\"cf-sec\"><div class=\"cf-line\"></div><div class=\"cf-sectl\">실시간 환경</div><div class=\"cf-bdg\">tele · last</div><div class=\"cf-line\"></div></div>\n  <div class=\"cf-g cf-g6\">\n    <div class=\"cf-card\"><div class=\"cf-clbl\">내부 온도 <span class=\"cf-ctype\">stat</span></div><div class=\"cf-val cf-ok\">Grafana 패널(아래)에서 값을 표시합니다</div><div class=\"cf-bar\"><div class=\"cf-bf\" style=\"width:40%;background:var(--accent)\"></div></div></div>\n    <div class=\"cf-card\"><div class=\"cf-clbl\">내부 습도 <span class=\"cf-ctype\">stat</span></div><div class=\"cf-val cf-ok\">—<span class=\"cf-vu\">%</span></div><div class=\"cf-bar\"><div class=\"cf-bf\" style=\"width:50%;background:var(--accent)\"></div></div></div>\n    <div class=\"cf-card\"><div class=\"cf-clbl\">pH <span class=\"cf-ctype\">gauge</span></div><div class=\"cf-val cf-ok\">—</div><div class=\"cf-bar\"><div class=\"cf-bf\" style=\"width:60%;background:var(--accent)\"></div></div></div>\n    <div class=\"cf-card\"><div class=\"cf-clbl\">EC <span class=\"cf-ctype\">gauge</span></div><div class=\"cf-val cf-wn\">—<span class=\"cf-vu\">mS/cm</span></div><div class=\"cf-bar\"><div class=\"cf-bf\" style=\"width:30%;background:var(--accent3)\"></div></div></div>\n    <div class=\"cf-card\"><div class=\"cf-clbl\">CO₂ <span class=\"cf-ctype\">stat</span></div><div class=\"cf-val cf-ok\">—<span class=\"cf-vu\">ppm</span></div><div class=\"cf-bar\"><div class=\"cf-bf\" style=\"width:45%;background:var(--accent)\"></div></div></div>\n    <div class=\"cf-card\"><div class=\"cf-clbl\">외부온도(KMA) <span class=\"cf-ctype\">api</span></div><div class=\"cf-val cf-inf\">(추후 tele.kma_temp)</div><div class=\"cf-bar\"><div class=\"cf-bf\" style=\"width:20%;background:var(--accent2)\"></div></div></div>\n  </div>\n\n  <div class=\"cf-sec\"><div class=\"cf-line\"></div><div class=\"cf-sectl\">장치 현황</div><div class=\"cf-bdg\">tele · state</div><div class=\"cf-line\"></div></div>\n  <div class=\"cf-g cf-g4\">\n    <div class=\"cf-card\"><div class=\"cf-clbl\">LED A1 <span class=\"cf-ctype\">state</span></div><div class=\"cf-val\">(아래 패널에서 맵핑)</div></div>\n    <div class=\"cf-card\"><div class=\"cf-clbl\">Pump C1 <span class=\"cf-ctype\">state</span></div><div class=\"cf-val\">(아래 패널에서 맵핑)</div></div>\n    <div class=\"cf-card\"><div class=\"cf-clbl\">Fan A1 <span class=\"cf-ctype\">state</span></div><div class=\"cf-val\">(아래 패널에서 맵핑)</div></div>\n    <div class=\"cf-card\"><div class=\"cf-clbl\">Fan B1 <span class=\"cf-ctype\">state</span></div><div class=\"cf-val\">(아래 패널에서 맵핑)</div></div>\n  </div>\n</div>"
+      }
+    },
+
+    {
+      "type": "row",
+      "id": 10,
+      "title": "📌 HTML 카드 값 맵핑(tele → 카드)",
+      "gridPos": { "x": 0, "y": 6, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+
+    {
+      "id": 11,
+      "type": "marcusolsson-dynamictext-panel",
+      "title": "내부 온도 (tele.temp)",
+      "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+      "gridPos": { "x": 0, "y": 7, "w": 4, "h": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"temp\")\n  |> last()"
+        }
+      ],
+      "options": {
+        "content": "<div class=\"card\"><div class=\"clbl\">내부 온도 <span class=\"ctype\">stat</span></div><div class=\"val ok\">{{_value}}<span class=\"vu\">℃</span></div><div class=\"sublbl\">tele.temp</div></div>",
+        "defaultContent": "No data",
+        "helpers": "",
+        "afterRender": "",
+        "styles": ":root{--accent:#2dff7a;--border:rgba(45,255,122,.07);--card:rgba(10,26,15,.9);--text:#c8e6c9;--text2:#6b9c73;--text3:#3a5c42;--fm:'DM Mono',monospace}.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;height:100%}.clbl{font-family:var(--fm);font-size:10px;color:var(--text3);letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between}.ctype{font-size:9px;background:rgba(45,255,122,.04);border:1px solid var(--border);color:var(--text3);padding:1px 6px;border-radius:4px}.val{font-family:var(--fm);font-size:26px;color:var(--text)}.vu{font-size:12px;color:var(--text2);margin-left:2px}.ok{color:var(--accent)}.sublbl{margin-top:6px;font-family:var(--fm);font-size:10px;color:var(--text2)}",
+        "externalStyles": [],
+        "contentPartials": [],
+        "wrap": false,
+        "status": ""
+      }
+    },
+    {
+      "id": 12,
+      "type": "marcusolsson-dynamictext-panel",
+      "title": "내부 습도 (tele.humidity)",
+      "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+      "gridPos": { "x": 4, "y": 7, "w": 4, "h": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"humidity\")\n  |> last()"
+        }
+      ],
+      "options": {
+        "content": "<div class=\"card\"><div class=\"clbl\">내부 습도 <span class=\"ctype\">stat</span></div><div class=\"val ok\">{{_value}}<span class=\"vu\">%</span></div><div class=\"sublbl\">tele.humidity</div></div>",
+        "defaultContent": "No data",
+        "helpers": "",
+        "afterRender": "",
+        "styles": ":root{--accent:#2dff7a;--border:rgba(45,255,122,.07);--card:rgba(10,26,15,.9);--text:#c8e6c9;--text2:#6b9c73;--text3:#3a5c42;--fm:'DM Mono',monospace}.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;height:100%}.clbl{font-family:var(--fm);font-size:10px;color:var(--text3);letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between}.ctype{font-size:9px;background:rgba(45,255,122,.04);border:1px solid var(--border);color:var(--text3);padding:1px 6px;border-radius:4px}.val{font-family:var(--fm);font-size:26px;color:var(--text)}.vu{font-size:12px;color:var(--text2);margin-left:2px}.ok{color:var(--accent)}.sublbl{margin-top:6px;font-family:var(--fm);font-size:10px;color:var(--text2)}",
+        "externalStyles": [],
+        "contentPartials": [],
+        "wrap": false,
+        "status": ""
+      }
+    },
+    {
+      "id": 13,
+      "type": "marcusolsson-dynamictext-panel",
+      "title": "pH (tele.ph)",
+      "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+      "gridPos": { "x": 8, "y": 7, "w": 4, "h": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"ph\")\n  |> last()"
+        }
+      ],
+      "options": {
+        "content": "<div class=\"card\"><div class=\"clbl\">pH <span class=\"ctype\">gauge</span></div><div class=\"val ok\">{{_value}}</div><div class=\"sublbl\">tele.ph</div></div>",
+        "defaultContent": "No data",
+        "helpers": "",
+        "afterRender": "",
+        "styles": ":root{--accent:#2dff7a;--border:rgba(45,255,122,.07);--card:rgba(10,26,15,.9);--text:#c8e6c9;--text2:#6b9c73;--text3:#3a5c42;--fm:'DM Mono',monospace}.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;height:100%}.clbl{font-family:var(--fm);font-size:10px;color:var(--text3);letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between}.ctype{font-size:9px;background:rgba(45,255,122,.04);border:1px solid var(--border);color:var(--text3);padding:1px 6px;border-radius:4px}.val{font-family:var(--fm);font-size:26px;color:var(--text)}.ok{color:var(--accent)}.sublbl{margin-top:6px;font-family:var(--fm);font-size:10px;color:var(--text2)}",
+        "externalStyles": [],
+        "contentPartials": [],
+        "wrap": false,
+        "status": ""
+      }
+    },
+    {
+      "id": 14,
+      "type": "marcusolsson-dynamictext-panel",
+      "title": "EC (tele.ec)",
+      "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+      "gridPos": { "x": 12, "y": 7, "w": 4, "h": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"ec\")\n  |> last()"
+        }
+      ],
+      "options": {
+        "content": "<div class=\"card\"><div class=\"clbl\">EC <span class=\"ctype\">gauge</span></div><div class=\"val wn\">{{_value}}<span class=\"vu\">mS/cm</span></div><div class=\"sublbl\">tele.ec</div></div>",
+        "defaultContent": "No data",
+        "helpers": "",
+        "afterRender": "",
+        "styles": ":root{--accent3:#ffb830;--border:rgba(45,255,122,.07);--card:rgba(10,26,15,.9);--text:#c8e6c9;--text2:#6b9c73;--text3:#3a5c42;--fm:'DM Mono',monospace}.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;height:100%}.clbl{font-family:var(--fm);font-size:10px;color:var(--text3);letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between}.ctype{font-size:9px;background:rgba(45,255,122,.04);border:1px solid var(--border);color:var(--text3);padding:1px 6px;border-radius:4px}.val{font-family:var(--fm);font-size:26px;color:var(--text)}.vu{font-size:12px;color:var(--text2);margin-left:2px}.wn{color:var(--accent3)}.sublbl{margin-top:6px;font-family:var(--fm);font-size:10px;color:var(--text2)}",
+        "externalStyles": [],
+        "contentPartials": [],
+        "wrap": false,
+        "status": ""
+      }
+    },
+    {
+      "id": 15,
+      "type": "marcusolsson-dynamictext-panel",
+      "title": "CO₂ (tele.co2)",
+      "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+      "gridPos": { "x": 16, "y": 7, "w": 4, "h": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"co2\")\n  |> last()"
+        }
+      ],
+      "options": {
+        "content": "<div class=\"card\"><div class=\"clbl\">CO₂ <span class=\"ctype\">stat</span></div><div class=\"val ok\">{{_value}}<span class=\"vu\">ppm</span></div><div class=\"sublbl\">tele.co2</div></div>",
+        "defaultContent": "No data",
+        "helpers": "",
+        "afterRender": "",
+        "styles": ":root{--accent:#2dff7a;--border:rgba(45,255,122,.07);--card:rgba(10,26,15,.9);--text:#c8e6c9;--text2:#6b9c73;--text3:#3a5c42;--fm:'DM Mono',monospace}.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;height:100%}.clbl{font-family:var(--fm);font-size:10px;color:var(--text3);letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between}.ctype{font-size:9px;background:rgba(45,255,122,.04);border:1px solid var(--border);color:var(--text3);padding:1px 6px;border-radius:4px}.val{font-family:var(--fm);font-size:26px;color:var(--text)}.vu{font-size:12px;color:var(--text2);margin-left:2px}.ok{color:var(--accent)}.sublbl{margin-top:6px;font-family:var(--fm);font-size:10px;color:var(--text2)}",
+        "externalStyles": [],
+        "contentPartials": [],
+        "wrap": false,
+        "status": ""
+      }
+    },
+    {
+      "id": 16,
+      "type": "marcusolsson-dynamictext-panel",
+      "title": "외부온도 KMA (tele.kma_temp)",
+      "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+      "gridPos": { "x": 20, "y": 7, "w": 4, "h": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -2h)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"kma_temp\")\n  |> last()"
+        }
+      ],
+      "options": {
+        "content": "<div class=\"card\"><div class=\"clbl\">외부온도(KMA) <span class=\"ctype\">api</span></div><div class=\"val inf\">{{_value}}<span class=\"vu\">℃</span></div><div class=\"sublbl\">tele.kma_temp</div></div>",
+        "defaultContent": "No data",
+        "helpers": "",
+        "afterRender": "",
+        "styles": ":root{--accent2:#00e5ff;--border:rgba(45,255,122,.07);--card:rgba(10,26,15,.9);--text:#c8e6c9;--text2:#6b9c73;--text3:#3a5c42;--fm:'DM Mono',monospace}.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;height:100%}.clbl{font-family:var(--fm);font-size:10px;color:var(--text3);letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between}.ctype{font-size:9px;background:rgba(45,255,122,.04);border:1px solid var(--border);color:var(--text3);padding:1px 6px;border-radius:4px}.val{font-family:var(--fm);font-size:26px;color:var(--text)}.vu{font-size:12px;color:var(--text2);margin-left:2px}.inf{color:var(--accent2)}.sublbl{margin-top:6px;font-family:var(--fm);font-size:10px;color:var(--text2)}",
+        "externalStyles": [],
+        "contentPartials": [],
+        "wrap": false,
+        "status": ""
+      }
+    },
+
+    {
+      "type": "row",
+      "id": 20,
+      "title": "🧩 장치 상태(tele) — LED/Pump/Fan",
+      "gridPos": { "x": 0, "y": 13, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "id": 21,
+      "type": "marcusolsson-dynamictext-panel",
+      "title": "LED A1 (tele.led_a1)",
+      "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+      "gridPos": { "x": 0, "y": 14, "w": 4, "h": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"led_a1\")\n  |> last()"
+        }
+      ],
+      "options": {
+        "content": "<div class=\"card\"><div class=\"clbl\">LED A1 <span class=\"ctype\">state</span></div><div class=\"val {{#if (eq _value 1)}}ok{{else}}muted{{/if}}\">{{#if (eq _value 1)}}● ON{{else}}● OFF{{/if}}</div><div class=\"sublbl\">tele.led_a1</div></div>",
+        "defaultContent": "No data",
+        "helpers": "",
+        "afterRender": "",
+        "styles": ":root{--accent:#2dff7a;--border:rgba(45,255,122,.07);--card:rgba(10,26,15,.9);--text:#c8e6c9;--text2:#6b9c73;--text3:#3a5c42;--muted:#3a5c42;--fm:'DM Mono',monospace}.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;height:100%}.clbl{font-family:var(--fm);font-size:10px;color:var(--text3);letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between}.ctype{font-size:9px;background:rgba(45,255,122,.04);border:1px solid var(--border);color:var(--text3);padding:1px 6px;border-radius:4px}.val{font-family:var(--fm);font-size:22px;color:var(--text)}.ok{color:var(--accent)}.muted{color:var(--muted)}.sublbl{margin-top:6px;font-family:var(--fm);font-size:10px;color:var(--text2)}",
+        "externalStyles": [],
+        "contentPartials": [],
+        "wrap": false,
+        "status": ""
+      }
+    },
+    {
+      "id": 22,
+      "type": "marcusolsson-dynamictext-panel",
+      "title": "LED A2 (tele.led_a2)",
+      "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+      "gridPos": { "x": 4, "y": 14, "w": 4, "h": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"led_a2\")\n  |> last()"
+        }
+      ],
+      "options": {
+        "content": "<div class=\"card\"><div class=\"clbl\">LED A2 <span class=\"ctype\">state</span></div><div class=\"val {{#if (eq _value 1)}}ok{{else}}muted{{/if}}\">{{#if (eq _value 1)}}● ON{{else}}● OFF{{/if}}</div><div class=\"sublbl\">tele.led_a2</div></div>",
+        "defaultContent": "No data",
+        "helpers": "",
+        "afterRender": "",
+        "styles": ":root{--accent:#2dff7a;--border:rgba(45,255,122,.07);--card:rgba(10,26,15,.9);--text:#c8e6c9;--text2:#6b9c73;--text3:#3a5c42;--muted:#3a5c42;--fm:'DM Mono',monospace}.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;height:100%}.clbl{font-family:var(--fm);font-size:10px;color:var(--text3);letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between}.ctype{font-size:9px;background:rgba(45,255,122,.04);border:1px solid var(--border);color:var(--text3);padding:1px 6px;border-radius:4px}.val{font-family:var(--fm);font-size:22px;color:var(--text)}.ok{color:var(--accent)}.muted{color:var(--muted)}.sublbl{margin-top:6px;font-family:var(--fm);font-size:10px;color:var(--text2)}",
+        "externalStyles": [],
+        "contentPartials": [],
+        "wrap": false,
+        "status": ""
+      }
+    },
+    {
+      "id": 23,
+      "type": "marcusolsson-dynamictext-panel",
+      "title": "LED B1 (tele.led_b1)",
+      "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+      "gridPos": { "x": 8, "y": 14, "w": 4, "h": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"led_b1\")\n  |> last()"
+        }
+      ],
+      "options": {
+        "content": "<div class=\"card\"><div class=\"clbl\">LED B1 <span class=\"ctype\">state</span></div><div class=\"val {{#if (eq _value 1)}}ok{{else}}muted{{/if}}\">{{#if (eq _value 1)}}● ON{{else}}● OFF{{/if}}</div><div class=\"sublbl\">tele.led_b1</div></div>",
+        "defaultContent": "No data",
+        "helpers": "",
+        "afterRender": "",
+        "styles": ":root{--accent:#2dff7a;--border:rgba(45,255,122,.07);--card:rgba(10,26,15,.9);--text:#c8e6c9;--text2:#6b9c73;--text3:#3a5c42;--muted:#3a5c42;--fm:'DM Mono',monospace}.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;height:100%}.clbl{font-family:var(--fm);font-size:10px;color:var(--text3);letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between}.ctype{font-size:9px;background:rgba(45,255,122,.04);border:1px solid var(--border);color:var(--text3);padding:1px 6px;border-radius:4px}.val{font-family:var(--fm);font-size:22px;color:var(--text)}.ok{color:var(--accent)}.muted{color:var(--muted)}.sublbl{margin-top:6px;font-family:var(--fm);font-size:10px;color:var(--text2)}",
+        "externalStyles": [],
+        "contentPartials": [],
+        "wrap": false,
+        "status": ""
+      }
+    },
+
+    {
+      "id": 24,
+      "type": "marcusolsson-dynamictext-panel",
+      "title": "Pump C1 (tele.pump_a1)",
+      "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+      "gridPos": { "x": 12, "y": 14, "w": 4, "h": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"pump_a1\")\n  |> last()"
+        }
+      ],
+      "options": {
+        "content": "<div class=\"card\"><div class=\"clbl\">Pump C1 <span class=\"ctype\">state</span></div><div class=\"val {{#if (eq _value 1)}}inf{{else}}muted{{/if}}\">{{#if (eq _value 1)}}● ON{{else}}● OFF{{/if}}</div><div class=\"sublbl\">tele.pump_a1</div></div>",
+        "defaultContent": "No data",
+        "helpers": "",
+        "afterRender": "",
+        "styles": ":root{--accent2:#00e5ff;--border:rgba(45,255,122,.07);--card:rgba(10,26,15,.9);--text:#c8e6c9;--text2:#6b9c73;--text3:#3a5c42;--muted:#3a5c42;--fm:'DM Mono',monospace}.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;height:100%}.clbl{font-family:var(--fm);font-size:10px;color:var(--text3);letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between}.ctype{font-size:9px;background:rgba(45,255,122,.04);border:1px solid var(--border);color:var(--text3);padding:1px 6px;border-radius:4px}.val{font-family:var(--fm);font-size:22px;color:var(--text)}.inf{color:var(--accent2)}.muted{color:var(--muted)}.sublbl{margin-top:6px;font-family:var(--fm);font-size:10px;color:var(--text2)}",
+        "externalStyles": [],
+        "contentPartials": [],
+        "wrap": false,
+        "status": ""
+      }
+    },
+    {
+      "id": 25,
+      "type": "marcusolsson-dynamictext-panel",
+      "title": "Pump C2 (tele.pump_a2)",
+      "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+      "gridPos": { "x": 16, "y": 14, "w": 4, "h": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"pump_a2\")\n  |> last()"
+        }
+      ],
+      "options": {
+        "content": "<div class=\"card\"><div class=\"clbl\">Pump C2 <span class=\"ctype\">state</span></div><div class=\"val {{#if (eq _value 1)}}inf{{else}}muted{{/if}}\">{{#if (eq _value 1)}}● ON{{else}}● OFF{{/if}}</div><div class=\"sublbl\">tele.pump_a2</div></div>",
+        "defaultContent": "No data",
+        "helpers": "",
+        "afterRender": "",
+        "styles": ":root{--accent2:#00e5ff;--border:rgba(45,255,122,.07);--card:rgba(10,26,15,.9);--text:#c8e6c9;--text2:#6b9c73;--text3:#3a5c42;--muted:#3a5c42;--fm:'DM Mono',monospace}.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;height:100%}.clbl{font-family:var(--fm);font-size:10px;color:var(--text3);letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between}.ctype{font-size:9px;background:rgba(45,255,122,.04);border:1px solid var(--border);color:var(--text3);padding:1px 6px;border-radius:4px}.val{font-family:var(--fm);font-size:22px;color:var(--text)}.inf{color:var(--accent2)}.muted{color:var(--muted)}.sublbl{margin-top:6px;font-family:var(--fm);font-size:10px;color:var(--text2)}",
+        "externalStyles": [],
+        "contentPartials": [],
+        "wrap": false,
+        "status": ""
+      }
+    },
+    {
+      "id": 26,
+      "type": "marcusolsson-dynamictext-panel",
+      "title": "Fan A1 (tele.fan_a1)",
+      "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+      "gridPos": { "x": 20, "y": 14, "w": 4, "h": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -6h)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"fan_a1\")\n  |> last()"
+        }
+      ],
+      "options": {
+        "content": "<div class=\"card\"><div class=\"clbl\">Fan A1 <span class=\"ctype\">state</span></div><div class=\"val {{#if (eq _value 1)}}pu{{else}}muted{{/if}}\">{{#if (eq _value 1)}}● ON{{else}}● OFF{{/if}}</div><div class=\"sublbl\">tele.fan_a1</div></div>",
+        "defaultContent": "No data",
+        "helpers": "",
+        "afterRender": "",
+        "styles": ":root{--pu:#bb86fc;--border:rgba(45,255,122,.07);--card:rgba(10,26,15,.9);--text:#c8e6c9;--text2:#6b9c73;--text3:#3a5c42;--muted:#3a5c42;--fm:'DM Mono',monospace}.card{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;height:100%}.clbl{font-family:var(--fm);font-size:10px;color:var(--text3);letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px;display:flex;justify-content:space-between}.ctype{font-size:9px;background:rgba(45,255,122,.04);border:1px solid var(--border);color:var(--text3);padding:1px 6px;border-radius:4px}.val{font-family:var(--fm);font-size:22px;color:var(--text)}.pu{color:var(--pu)}.muted{color:var(--muted)}.sublbl{margin-top:6px;font-family:var(--fm);font-size:10px;color:var(--text2)}",
+        "externalStyles": [],
+        "contentPartials": [],
+        "wrap": false,
+        "status": ""
+      }
+    },
+
+    {
+      "type": "row",
+      "id": 30,
+      "title": "⏱️ 상태 타임라인(tele)",
+      "gridPos": { "x": 0, "y": 20, "w": 24, "h": 1 },
+      "collapsed": false
+    },
+    {
+      "type": "state-timeline",
+      "id": 31,
+      "title": "LED/Pump/Fan 타임라인",
+      "gridPos": { "x": 0, "y": 21, "w": 24, "h": 10 },
+      "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" },
+      "targets": [
+        { "refId": "A", "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" }, "query": "from(bucket: \"CronusFarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"led_a1\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> yield(name: \"LED A1\")" },
+        { "refId": "B", "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" }, "query": "from(bucket: \"CronusFarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"led_a2\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> yield(name: \"LED A2\")" },
+        { "refId": "C", "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" }, "query": "from(bucket: \"CronusFarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"led_b1\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> yield(name: \"LED B1\")" },
+        { "refId": "D", "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" }, "query": "from(bucket: \"CronusFarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"pump_a1\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> yield(name: \"Pump C1\")" },
+        { "refId": "E", "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" }, "query": "from(bucket: \"CronusFarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"pump_a2\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> yield(name: \"Pump C2\")" },
+        { "refId": "F", "datasource": { "type": "influxdb", "uid": "efjwqrorrfxtsf" }, "query": "from(bucket: \"CronusFarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"tele\" and r._field == \"fan_a1\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> yield(name: \"Fan A1\")" }
+      ],
+      "options": { "mergeValues": false, "rowHeight": 0.75, "fillOpacity": 85, "legend": { "displayMode": "list" } },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "#888780", "value": null }, { "color": "#1D9E75", "value": 1 }] },
+          "mappings": [{ "type": "value", "options": { "0": { "text": "OFF", "color": "#888780" }, "1": { "text": "ON", "color": "#1D9E75" } } }]
+        },
+        "overrides": []
+      }
+    }
+  ]
+}

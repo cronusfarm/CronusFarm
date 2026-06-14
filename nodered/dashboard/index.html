@@ -32,7 +32,263 @@
       rel="stylesheet"
     />
     <title>CronusFarm</title>
-  </head>
+    <!-- 설정: 상단 메뉴 링크 → /farm/ui/#/ SPA (Dashboard1 탭·중간 페이지 없음) -->
+    <!-- 모니터 탭 툴바 시계: Asia/Seoul 고정 (PC 로컬 TZ·구 가드 무관) -->
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <script type="text/javascript">
+      (function () {
+        var SPA = (location.origin || '') + '/farm/ui/#/';
+        function isSettingsHash() {
+          var h = (location.hash || '').replace(/^#/, '');
+          return /^!\/1(?:[?#/]|$)/.test(h);
+        }
+        function go() {
+          if (!isSettingsHash()) return false;
+          location.replace(SPA);
+          return true;
+        }
+        go();
+        window.addEventListener('hashchange', go);
+        var n = 0;
+        var iv = setInterval(function () {
+          if (go() || ++n > 100) clearInterval(iv);
+        }, 100);
+      })();
+    </script>
+
+    <script type="text/javascript">
+      (function () {
+        var ORIGIN = location.origin || '';
+        var SPA = ORIGIN + '/farm/ui/#/';
+        var SPA_ADMIN = ORIGIN + '/farm/ui/#/admin';
+        function isSettingsLabel(label) {
+          return /CronusFarm\s*설정/.test(label || '');
+        }
+        function redirectSettingsTab() {
+          var h0 = (location.hash || '').replace(/^#/, '');
+          if (/^!\/1(?:[?#/]|$)/.test(h0)) { location.replace(SPA); return true; }
+          return false;
+        }
+        var drawerOpen = false;
+        
+        function openCronosDevstatus(ev) {
+          if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+          closeDrawer();
+          goHref(ORIGIN + '/farm/ui/#/devstatus', ev);
+        }
+
+        function goHref(href, ev) {
+          if (ev) { ev.preventDefault(); ev.stopPropagation(); }
+          closeDrawer();
+          try { (window.top || window).location.replace(href); }
+          catch (e) { location.replace(href); }
+        }
+        function findTools() {
+          var list = document.querySelectorAll('md-toolbar .md-toolbar-tools');
+          for (var i = 0; i < list.length; i++) {
+            if (list[i].querySelector('md-tabs')) return list[i];
+          }
+          return document.querySelector('md-toolbar .md-toolbar-tools');
+        }
+        function nrTabs() {
+          var root = document.querySelector('md-tabs');
+          if (!root) return [];
+          return Array.prototype.slice.call(root.querySelectorAll('md-tab'));
+        }
+        function activeTabTitle() {
+          var tabs = nrTabs();
+          for (var i = 0; i < tabs.length; i++) {
+            if (tabs[i].classList.contains('md-active')) return (tabs[i].textContent || '').trim();
+          }
+          return (tabs[0] && tabs[0].textContent || 'CronusFarm 모니터').trim();
+        }
+        function clickNrTab(ix) {
+          var tabs = nrTabs();
+          if (!tabs[ix]) return;
+          var label = (tabs[ix].textContent || '').trim();
+          if (isSettingsLabel(label)) { goHref(SPA); return; }
+          tabs[ix].click();
+          var t = document.getElementById('cf-d1-title');
+          if (t) t.textContent = label || 'CronusFarm';
+        }
+        function hijackSettingsSidenav() {
+          var items = document.querySelectorAll('md-sidenav md-list-item');
+          for (var i = 0; i < items.length; i++) {
+            if (!isSettingsLabel((items[i].textContent || '').trim())) continue;
+            if (items[i].__cfSpaNav) continue;
+            items[i].__cfSpaNav = 1;
+            items[i].addEventListener('click', function (e) {
+              goHref(SPA, e);
+            }, true);
+          }
+        }
+        function closeDrawer() {
+          drawerOpen = false;
+          var d = document.getElementById('cf-d1-drawer');
+          var b = document.getElementById('cf-d1-drawer-back');
+          if (d) d.classList.remove('open');
+          if (b) b.style.display = 'none';
+        }
+        function openDrawer() {
+          drawerOpen = true;
+          rebuildDrawerTabs();
+          var d = document.getElementById('cf-d1-drawer');
+          var b = document.getElementById('cf-d1-drawer-back');
+          if (d) d.classList.add('open');
+          if (b) b.style.display = 'block';
+        }
+        function rebuildDrawerTabs() {
+          var host = document.getElementById('cf-d1-drawer-tabs');
+          if (!host) return;
+          host.innerHTML = '';
+          var tabs = nrTabs();
+          for (var i = 0; i < tabs.length; i++) {
+            (function (ix, label) {
+              var btn = document.createElement('button');
+              btn.type = 'button';
+              btn.className = 'cf-d1-drawer-item';
+              btn.textContent = label;
+              btn.addEventListener('click', function () {
+                if (isSettingsLabel(label)) goHref(SPA);
+                else clickNrTab(ix);
+                closeDrawer();
+              });
+              host.appendChild(btn);
+            })(i, (tabs[i].textContent || '').trim());
+          }
+        }
+        function ensureDrawer() {
+          if (document.getElementById('cf-d1-drawer')) return;
+          var back = document.createElement('div');
+          back.id = 'cf-d1-drawer-back';
+          back.className = 'cf-d1-drawer-back';
+          back.style.display = 'none';
+          back.addEventListener('click', closeDrawer);
+          var nav = document.createElement('nav');
+          nav.id = 'cf-d1-drawer';
+          nav.className = 'cf-d1-drawer';
+          nav.setAttribute('aria-label', '메뉴');
+          nav.innerHTML =
+            '<div class="cf-d1-drawer-hd">메뉴</div>' +
+            '<a class="cf-d1-drawer-item" href="' + SPA + '">CronusFarm 설정</a>' +
+            '<a class="cf-d1-drawer-item" id="cf-d1-drawer-cronos" href="#">크로노스 개발현황</a>' +
+            '<a class="cf-d1-drawer-item" href="' + SPA_ADMIN + '">CronusFarm 관리</a>' +
+            '<p class="cf-d1-drawer-sec">대시보드</p>' +
+            '<div id="cf-d1-drawer-tabs"></div>';
+          nav.querySelector('a[href="' + SPA + '"]').addEventListener('click', function (e) { goHref(SPA, e); });
+          nav.querySelector('a[href="' + SPA_ADMIN + '"]').addEventListener('click', function (e) { goHref(SPA_ADMIN, e); });
+          document.body.appendChild(back);
+          document.body.appendChild(nav);
+        }
+        function buildMenubar() {
+          var bar = document.createElement('div');
+          bar.id = 'cf-d1-menubar';
+          bar.className = 'cf-mhdr';
+          bar.innerHTML =
+            '<button type="button" class="cf-mhdr-burger" aria-label="메뉴 열기">' +
+            '<span></span><span></span><span></span></button>' +
+            '<h1 class="cf-mhdr-title" id="cf-d1-title">CronusFarm 모니터</h1>' +
+            '<nav class="cf-mhdr-nav" aria-label="상단 메뉴">' +
+            '<a class="cf-mhdr-link" id="cf-d1-link-settings" href="' + SPA + '">CronusFarm 설정</a>' +
+            '<a class="cf-mhdr-link" id="cf-d1-link-cronos-devstatus" href="#">크로노스 개발현황</a>' +
+            '<a class="cf-mhdr-link" id="cf-d1-link-admin" href="' + SPA_ADMIN + '">CronusFarm 관리</a>' +
+            '</nav>';
+          bar.querySelector('.cf-mhdr-burger').addEventListener('click', function () {
+            if (drawerOpen) closeDrawer(); else openDrawer();
+          });
+          bar.querySelector('#cf-d1-link-settings').addEventListener('click', function (e) { goHref(SPA, e); });
+          bar.querySelector('#cf-d1-link-admin').addEventListener('click', function (e) { goHref(SPA_ADMIN, e); });
+
+          var lc = document.getElementById('cf-d1-link-cronos-devstatus');
+          if (lc && !lc.__cfCronos) { lc.__cfCronos = 1; lc.addEventListener('click', openCronosDevstatus); }
+          var dc = document.getElementById('cf-d1-drawer-cronos');
+          if (dc && !dc.__cfCronos) { dc.__cfCronos = 1; dc.addEventListener('click', openCronosDevstatus); }
+
+          return bar;
+        }
+        function ensureMenubar() {
+          var tools = findTools();
+          if (!tools) return false;
+          ensureDrawer();
+          var bar = document.getElementById('cf-d1-menubar');
+          if (bar && bar.parentElement === tools) return true;
+          if (bar) bar.remove();
+          bar = buildMenubar();
+          tools.insertBefore(bar, tools.firstChild);
+          var clock = document.getElementById('cf-monitor-tab-clock');
+          if (clock && clock.parentElement !== tools) tools.appendChild(clock);
+          return true;
+        }
+        function syncTitle() {
+          var t = document.getElementById('cf-d1-title');
+          if (t) t.textContent = activeTabTitle() || 'CronusFarm 모니터';
+        }
+        function boot() {
+          redirectSettingsTab();
+          hijackSettingsSidenav();
+          if (!ensureMenubar()) return;
+          syncTitle();
+        }
+        if (!window.__cfD1MenubarInit) {
+          window.__cfD1MenubarInit = 1;
+          document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeDrawer(); });
+          window.addEventListener('hashchange', function () {
+            if (redirectSettingsTab()) return;
+            syncTitle();
+          });
+          document.addEventListener('DOMContentLoaded', boot);
+          try {
+            var obs = new MutationObserver(function () {
+              if (!document.getElementById('cf-d1-menubar')) boot();
+            });
+            obs.observe(document.documentElement, { childList: true, subtree: true });
+          } catch (e) { /* ignore */ }
+          setInterval(boot, 3000);
+        }
+        boot();
+        var n = 0;
+        var iv = setInterval(function () {
+          boot();
+          if (++n > 120) clearInterval(iv);
+        }, 200);
+      })();
+    </script>
+<style>/* cf-d1-menubar */
+#nr-dashboard{--cf-border2:rgba(45,255,122,.16);--cf-accent:#2dff7a;--cf-accent2:#00e5ff;--cf-accent3:#ffb830;--cf-text:#c8e6c9;--cf-text2:#6b9c73;--cf-muted:#6b9c73;}
+body.nr-dashboard-theme md-toolbar .md-toolbar-tools:has(#cf-d1-menubar) md-tabs{display:none!important;}
+body.nr-dashboard-theme md-toolbar .md-toolbar-tools:has(#cf-d1-menubar){
+  display:flex!important;align-items:center!important;flex-wrap:nowrap!important;gap:8px!important;}
+#cf-d1-menubar.cf-mhdr{display:flex;align-items:center;gap:12px;flex:1 1 auto;min-width:0;margin:0;padding:4px 8px 4px 0;border-bottom:none;}
+#cf-d1-menubar .cf-mhdr-burger{display:flex;flex-direction:column;justify-content:center;gap:5px;width:42px;height:42px;padding:0;border:1px solid var(--cf-border2);border-radius:10px;background:rgba(0,0,0,.28);cursor:pointer;flex-shrink:0;}
+#cf-d1-menubar .cf-mhdr-burger span{display:block;width:18px;height:2px;margin:0 auto;background:var(--cf-accent);border-radius:1px;}
+#cf-d1-menubar .cf-mhdr-title{margin:0;flex:1 1 auto;min-width:0;font-size:1.05rem;font-weight:900;color:var(--cf-accent3);letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+#cf-d1-menubar .cf-mhdr-nav{display:flex;gap:8px;margin-left:auto;flex-shrink:0;}
+#cf-d1-menubar .cf-mhdr-link{font-size:12px;font-weight:800;color:var(--cf-accent2);text-decoration:none;padding:6px 10px;border-radius:8px;border:1px solid var(--cf-border2);white-space:nowrap;}
+#cf-d1-menubar .cf-mhdr-link:hover{color:#e6edf7;border-color:rgba(45,255,122,.45);background:rgba(45,255,122,.1);}
+#cf-d1-menubar #cf-d1-link-cronos-devstatus{color:var(--cf-accent);border-color:rgba(45,255,122,.35);}
+#cf-d1-menubar #cf-d1-link-settings{color:var(--cf-accent3);border-color:rgba(255,184,48,.45);font-weight:900;}
+#cf-d1-menubar .cf-mhdr-link.on{color:#e6edf7;border-color:rgba(45,255,122,.35);background:rgba(45,255,122,.1);}
+body.nr-dashboard-theme md-toolbar .md-toolbar-tools:has(#cf-d1-menubar){overflow-x:auto!important;overflow-y:visible!important;}
+.cf-d1-drawer-back{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);}
+.cf-d1-drawer{position:fixed;top:0;left:0;bottom:0;z-index:210;width:min(280px,86vw);padding:14px 12px 20px;background:rgba(4,13,7,.97);border-right:1px solid var(--cf-border2);box-shadow:8px 0 32px rgba(0,0,0,.45);transform:translateX(-105%);transition:transform .22s ease;}
+.cf-d1-drawer.open{transform:translateX(0);}
+.cf-d1-drawer-hd{margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid var(--cf-border2);font-size:11px;font-weight:800;color:var(--cf-text2);letter-spacing:.12em;text-transform:uppercase;}
+.cf-d1-drawer-item{display:block;width:100%;margin:0 0 6px;padding:11px 12px;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--cf-text);font-size:13px;font-weight:800;text-align:left;cursor:pointer;text-decoration:none;box-sizing:border-box;}
+.cf-d1-drawer-item:hover{background:rgba(45,255,122,.08);border-color:rgba(45,255,122,.2);}
+.cf-d1-drawer-sec{margin:14px 0 6px;font-size:11px;font-weight:800;color:var(--cf-text2);letter-spacing:.08em;}
+</style>
+</head>
 
   <body
     id="nr-dashboard"
@@ -46,8 +302,8 @@
     ng-swipe-left="onSwipeLeft();"
     ng-attr-ng-swipe-disable-mouse="{{main.allowSwipe !== 'mouse' ? '' : undefined}}"
   >
-    <!-- 프리뷰(로딩 전): Node-RED가 로드되면 자동 숨김 -->
-    <div id="cf-preview" ng-if="!main.loaded && !main.nothing" aria-label="CronusFarm preview">
+    <!-- 로딩 프리뷰 제거: NR Dashboard 본 UI만 표시 -->
+    <div id="cf-preview" ng-if="false" aria-hidden="true" style="display:none!important">
       <style>
         /* 첨부 HTML 디자인 컨셉(스코프 적용: #cf-preview 내부만) */
         #cf-preview{
@@ -190,11 +446,21 @@
       <script>
         (function(){
           function pad(n){return String(n).padStart(2,'0');}
+          var CF_TZ='Asia/Seoul';
+          function fmtKst(){
+            try{
+              var p={},d=new Date();
+              new Intl.DateTimeFormat('en-GB',{timeZone:CF_TZ,hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'}).formatToParts(d).forEach(function(x){p[x.type]=x.value;});
+              return {time:p.hour+':'+p.minute+':'+p.second,date:p.year+'.'+p.month+'.'+p.day};
+            }catch(e){
+              return {time:pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds()),date:d.getFullYear()+'.'+pad(d.getMonth()+1)+'.'+pad(d.getDate())};
+            }
+          }
           function tick(){
-            var d=new Date();
             var el=document.getElementById('clock');
             if(!el) return;
-            el.innerHTML = '<span>'+pad(d.getHours())+':'+pad(d.getMinutes())+':'+pad(d.getSeconds())+'</span>&nbsp; '+d.getFullYear()+'.'+pad(d.getMonth()+1)+'.'+pad(d.getDate());
+            var k=fmtKst();
+            el.innerHTML = '<span>'+k.time+'</span>&nbsp; '+k.date+' KST';
           }
           tick(); setInterval(tick,1000);
         })();

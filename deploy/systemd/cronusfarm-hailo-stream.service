@@ -1,7 +1,8 @@
 [Unit]
 Description=CronusFarm Hailo YOLO MJPEG (8081, best.hef)
-After=network-online.target mosquitto.service
-Wants=network-online.target
+After=network-online.target mosquitto.service cronusfarm-ustreamer.service
+Wants=network-online.target cronusfarm-ustreamer.service
+Conflicts=cronusfarm-camera-ai.service
 
 [Service]
 Type=simple
@@ -9,15 +10,25 @@ User=dooly
 Group=dooly
 WorkingDirectory=/home/dooly/CronusFarm
 Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/cronusfarm/nodered-telegram.env
 Environment=CRONUSFARM_HAILO_DIR=/home/dooly/CronusFarm/Hailo
 Environment=CRONUSFARM_HAILO_SOURCE=ustreamer
 Environment=CRONUSFARM_HAILO_USTREAMER_URL=http://127.0.0.1:8080/stream
 Environment=CRONUSFARM_HAILO_HTTP_PORT=8081
 Environment=CRONUSFARM_AI_MQTT_TOPIC=cronusfarm/camera/ai_count
+Environment=CRONUSFARM_CAPTION_GEMINI=1
+Environment=CRONUSFARM_CAPTION_CROP_HINT=무화과·토마토
+# AI 추정 자막 끄려면: Environment=CRONUSFARM_CAPTION_GEMINI=0
+# Gemini 작물 촬영·자막 주기(초). 600=10분
+Environment=CRONUSFARM_CAPTION_GEMINI_INTERVAL=600
+Environment=CRONUSFARM_CAPTION_GEMINI_RETRY=25
+Environment=CRONUSFARM_CAMERA_FLIP_VERTICAL=1
 TimeoutStartSec=120
 ExecStart=/usr/bin/python3 /home/dooly/CronusFarm/scripts/cronusfarm_hailo_stream.py
 Restart=on-failure
-RestartSec=10
+RestartSec=15
+TimeoutStopSec=30
+KillMode=mixed
 
 [Install]
 WantedBy=multi-user.target

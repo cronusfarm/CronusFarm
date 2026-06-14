@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>크로노스 개발현황</title>
+  <style>
+    html,body{min-height:100%;margin:0;background:#fff;color:#222;font-family:system-ui,'Malgun Gothic',sans-serif;overflow-x:hidden;}
+    .cf-drawer-back{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.35);}
+    .cf-drawer{position:fixed;top:0;left:0;bottom:0;z-index:210;width:min(280px,86vw);padding:14px 12px 20px;
+      background:#fff;border-right:1px solid #e0e0e0;transform:translateX(-105%);transition:transform .22s ease;color:#222;}
+    .cf-drawer.open{transform:translateX(0);}
+    .cf-drawer-hd{margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid #e0e0e0;font-size:11px;font-weight:800;color:#666;}
+    .cf-drawer-sec-title{margin:14px 0 6px;font-size:11px;font-weight:800;color:#666;}
+    .cf-drawer-item{display:block;width:100%;margin:0 0 6px;padding:11px 12px;border:1px solid transparent;border-radius:10px;
+      background:transparent;color:#222;font-size:13px;font-weight:800;text-align:left;cursor:pointer;text-decoration:none;box-sizing:border-box;}
+    .cf-drawer-item:hover{background:#f1f8f4;border-color:#c8e6c9;}
+    .cf-settings-app{max-width:1120px;margin:0 auto;padding:12px;background:#fff;}
+    .cf-settings-shell{position:relative;background:#fff;border:none;box-shadow:none;
+      padding:14px 16px 24px;overflow:visible;color:#222;}
+    .cf-settings-shell::before{display:none;}
+    .cf-settings-shell>*{position:relative;z-index:1;}
+    .cf-dev-lead{margin:0 0 16px;font-size:12px;color:#555;line-height:1.55;}
+    /* 섹션 — 박스 없음, 구분선만 */
+    .cf-nr-chunk{margin:0 0 24px;padding:0 0 20px;border-bottom:1px solid #e0e0e0;
+      overflow:visible;background:none!important;border-radius:0!important;box-shadow:none!important;color:#222;}
+    .cf-nr-chunk:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0;}
+    .cf-nr-chunk .cf-doc-h,.cf-nr-chunk .sec-h{display:flex;align-items:center;gap:10px;
+      margin:0 0 12px;font-size:1.05rem;font-weight:800;color:#111;}
+    .cf-nr-chunk .ch-n,.cf-nr-chunk .sec-n{flex:0 0 26px;width:26px;height:26px;border-radius:50%;
+      background:#2e7d32;color:#fff;font-size:11px;font-weight:800;line-height:26px;text-align:center;
+      display:inline-flex;align-items:center;justify-content:center;}
+    .cf-nr-chunk section.cf-doc-sec{margin:0;padding:0;border:none;background:none!important;}
+    .cf-nr-chunk .cf-pu-scroll,.cf-nr-chunk .flow-panel{max-height:none!important;overflow:visible!important;}
+    /* 본문 박스 제거 — 표·작은 카드·pre만 */
+    .cf-nr-chunk .cf-df .host,.cf-nr-chunk .cf-df details,.cf-nr-chunk .cf-df .arch-full,
+    .cf-nr-chunk .cf-df .det,.cf-nr-chunk .cf-df .note,.cf-nr-chunk .cf-df .snap,
+    .cf-nr-chunk .cfdev-mini .box{background:none!important;border:none!important;box-shadow:none!important;
+      border-radius:0!important;padding:0!important;margin:0 0 14px!important;max-height:none!important;overflow:visible!important;}
+    .cf-nr-chunk .cf-df pre,.cf-nr-chunk .cfdev-mini pre{margin:8px 0 14px!important;padding:10px 12px!important;
+      background:#f5f5f5!important;color:#1b5e20!important;border:1px solid #e0e0e0!important;border-radius:8px!important;
+      white-space:pre-wrap;word-break:break-all;}
+    /* NR #!/4 순서도 카드(PC·Pi·UNO·SQLite…) 동일 크기 */
+    .cf-nr-chunk .cf-df .row{display:flex!important;flex-wrap:wrap!important;gap:12px!important;
+      justify-content:center!important;margin:6px 0 14px!important;align-items:stretch!important;}
+    .cf-nr-chunk .cf-df .card{flex:1!important;min-width:136px!important;max-width:210px!important;
+      text-align:center!important;padding:14px 10px!important;border-radius:16px!important;
+      background:#fafafa!important;border:1px solid #e0e0e0!important;box-shadow:none!important;}
+    .cf-nr-chunk .cf-df .ic svg{width:64px!important;height:64px!important;display:block!important;margin:0 auto 8px!important;}
+    .cf-nr-chunk .cf-df .ar{align-self:center!important;font-size:1.3rem!important;color:#78909c!important;padding:0 2px!important;}
+    .cf-nr-chunk .cf-df .tag{font-size:0.85rem!important;padding:4px 10px!important;line-height:1.45!important;
+      color:#4e342e!important;background:#fff3e0!important;border:1px solid #ffcc80!important;border-radius:4px!important;}
+    /* 본문 폰트 통일 */
+    .cf-nr-chunk,.cf-nr-chunk p,.cf-nr-chunk li,.cf-nr-chunk ul,.cf-nr-chunk ol,
+    .cf-nr-chunk .hb,.cf-nr-chunk .det,.cf-nr-chunk .lead,.cf-nr-chunk .cf-doc-lead,
+    .cf-nr-chunk .cfdev-mini,.cf-nr-chunk .cfdev-mini p,.cf-nr-chunk .cfdev-mini li,
+    .cf-nr-chunk .cf-df .s,.cf-nr-chunk .cf-df .sub,.cf-nr-chunk .cf-df .lab,.cf-nr-chunk .cf-df .hint,
+    .cf-nr-chunk .cf-df .hb,.cf-nr-chunk .arch-full p,.cf-nr-chunk .note,.cf-nr-chunk pre{
+      font-size:14px!important;line-height:1.6!important;}
+    .cf-nr-chunk .cf-doc-h,.cf-nr-chunk h4{font-size:16px!important;}
+    .cf-nr-chunk .cf-df .t{font-size:16px!important;}
+    .cf-nr-chunk .cf-df .cap{font-size:11px!important;}
+    .cf-nr-chunk table.grid,.cf-nr-chunk table,.cf-nr-chunk .cf-ent table{
+      width:max-content!important;max-width:100%!important;table-layout:auto!important;
+      border:1px solid #ccc!important;border-collapse:collapse;}
+    .cf-nr-chunk .cf-def-sch-scroll{width:fit-content!important;max-width:100%!important;}
+    .cf-nr-chunk table th{background:#f5f5f5!important;color:#111!important;
+      border:1px solid #e0e0e0!important;padding:6px 8px;}
+    .cf-nr-chunk table td{background:#fff!important;color:#222!important;
+      border:1px solid #e8e8e8!important;padding:6px 8px;}
+    /* NR 다크 템플릿 → 흰 배경 가독 색 */
+    .cf-nr-chunk .cf-df,.cf-nr-chunk .cf-df *{color:#222;}
+    .cf-nr-chunk .cf-df .t,.cf-nr-chunk .cf-df .ht,.cf-nr-chunk .cfdev-mini h4{color:#2e7d32!important;}
+    .cf-nr-chunk .cf-df .sub,.cf-nr-chunk .cf-df .s,.cf-nr-chunk .cf-df .lab,.cf-nr-chunk .cf-df .hint,
+    .cf-nr-chunk .cf-df .hb,.cf-nr-chunk .cf-df .det,.cf-nr-chunk .cf-df li,.cf-nr-chunk .cfdev-mini,
+    .cf-nr-chunk .cfdev-mini p,.cf-nr-chunk .cfdev-mini li{color:#333!important;}
+    .cf-nr-chunk .cf-df .cap{color:#e65100!important;}
+    .cf-nr-chunk .cf-df b,.cf-nr-chunk .cf-df strong,.cf-nr-chunk .cfdev-mini b,.cf-nr-chunk .cfdev-mini strong{color:#111!important;}
+    .cf-nr-chunk .cf-df code,.cf-nr-chunk .cfdev-mini code{color:#c62828!important;background:#f5f5f5!important;}
+    .cf-nr-chunk .cf-df a,.cf-nr-chunk .cfdev-mini a{color:#006064!important;}
+    .cf-nr-chunk .cf-df .arch-full h6,.cf-nr-chunk .cf-df .host h5{color:#1565c0!important;}
+    .cf-nr-chunk .cf-dev-hw-panel,.cf-nr-chunk .cf-dev-hw-panel p,.cf-nr-chunk .cf-dev-hw-panel td,
+    .cf-nr-chunk .cf-dev-hw-panel th{color:#333!important;}
+    .cf-nr-chunk .cf-dev-hw-panel a{color:#006064!important;}
+    .cf-nr-chunk .lead,.cf-nr-chunk .cf-doc-lead{color:#444!important;}
+    /* 숨겨졌던 제목·요약 복구 */
+    .cf-dev-page .cf-df .host h5,.cf-dev-page .cf-df details summary{display:block!important;}
+    .cf-dev-page.cf-ent h4,.cf-dev-page .cf-ent h4{display:block!important;}
+    
+    /* NR #!/4 레이아웃 */
+    /* 개발현황 탭 — 설정·모니터와 동일 온실 배경 */
+    body.nr-dashboard-theme md-tab-content[aria-label*="개발현황"],
+    body.nr-dashboard-theme md-tab-content[aria-label*="개발환경"],
+    body.nr-dashboard-theme md-tab-content[aria-label*="개발"] md-content{
+      background:linear-gradient(180deg,var(--g0,#040d07) 0%,var(--cf-bg,#0a1a0f) 60%,var(--g0,#040d07) 100%)!important;
+      color:var(--cf-text,#c8e6c9)!important;
+    }
+    .nr-dashboard-theme .nr-dashboard-group.cf-monitor-grp .nr-dashboard-cardpanel,
+    .nr-dashboard-theme .nr-dashboard-group.cf-monitor-grp .nr-dashboard-template{
+      background:var(--cf-card,rgba(10,26,15,.9))!important;
+      border:1px solid var(--border,rgba(45,255,122,.07))!important;
+      box-shadow:var(--glow,0 0 28px rgba(45,255,122,.07))!important;
+    }
+    /* cf-pu · cf-df-paths · hw-panel — 흰 배경 가독 (템플릿 다크색 덮어씀) */
+    .cf-nr-chunk .cf-df-paths,.cf-nr-chunk .cf-df-paths p,.cf-nr-chunk .cf-df-paths li,.cf-nr-chunk .cf-df-paths ul{color:#333!important;}
+    .cf-nr-chunk .cf-df-paths h3{color:#2e7d32!important;}
+    .cf-nr-chunk .cf-df-paths strong{color:#111!important;}
+    .cf-nr-chunk .cf-df-paths code{color:#c62828!important;background:#f5f5f5!important;}
+    .cf-nr-chunk .cf-df-paths .pi{color:#006064!important;}
+    .cf-nr-chunk .cf-df-paths a{color:#006064!important;}
+    .cf-nr-chunk .cf-pu,.cf-nr-chunk .cf-pu p,.cf-nr-chunk .cf-pu li,.cf-nr-chunk .cf-pu ul,
+    .cf-nr-chunk .cf-pu span,.cf-nr-chunk .cf-pu .cap,.cf-nr-chunk .cf-pu .note{color:#333!important;}
+    .cf-nr-chunk .cf-pu h3{color:#2e7d32!important;}
+    .cf-nr-chunk .cf-pu h4{color:#1565c0!important;}
+    .cf-nr-chunk .cf-pu h5{color:#555!important;}
+    .cf-nr-chunk .cf-pu a{color:#006064!important;}
+    .cf-nr-chunk .cf-pu code{color:#c62828!important;background:#f5f5f5!important;}
+    .cf-nr-chunk .cf-pu .snap{background:#f5f5f5!important;color:#1b5e20!important;border:1px solid #e0e0e0!important;padding:10px 12px!important;white-space:pre!important;}
+    .cf-nr-chunk .cf-pu .dial{background:#f9f9f9!important;border:1px solid #e0e0e0!important;color:#333!important;}
+    .cf-nr-chunk .cf-pu .dial strong{color:#111!important;}
+    .cf-nr-chunk .cf-pu table th{background:#f5f5f5!important;color:#111!important;border-color:#e0e0e0!important;}
+    .cf-nr-chunk .cf-pu table td{background:#fff!important;color:#222!important;border-color:#e8e8e8!important;}
+    .cf-nr-chunk .cf-pu .note{background:#f9fbe7!important;border-left:3px solid #5c6bc0!important;color:#444!important;padding:8px 12px!important;}
+    .cf-nr-chunk .cf-dev-hw-panel,.cf-nr-chunk .cf-dev-hw-panel p,.cf-nr-chunk .cf-dev-hw-panel li,
+    .cf-nr-chunk .cf-dev-hw-panel td,.cf-nr-chunk .cf-dev-hw-panel th{color:#333!important;}
+    .cf-nr-chunk .cf-dev-hw-panel p[style*="color:#aed581"]{color:#2e7d32!important;font-weight:700!important;}
+    .cf-nr-chunk .cf-dev-hw-panel p[style*="color:#90caf9"]{color:#1565c0!important;font-weight:700!important;}
+    .cf-nr-chunk .cf-dev-hw-panel code{color:#c62828!important;background:#f5f5f5!important;}
+    .cf-nr-chunk .cf-dev-hw-panel a{color:#006064!important;}
+    .cf-nr-chunk .cf-dev-hw-panel table th{background:#f5f5f5!important;}
+    .cf-nr-chunk .cf-dev-hw-panel table td{background:#fff!important;}
+    .cf-nr-chunk .cf-dev-arch,.cf-nr-chunk .cf-dev-arch p,.cf-nr-chunk .cf-dev-arch li{color:#333!important;}
+    .cf-nr-chunk .cf-dev-arch h3{color:#1565c0!important;}
+    /* 기술발표 PPTX 뷰어 */
+    .cf-tech-pptx-wrap{margin:8px 0 0;}
+    .cf-tech-pptx-frame{display:block;width:100%;min-height:480px;height:720px;border:1px solid #e0e0e0;border-radius:10px;background:#fafafa;}
+    /* 펼치기/접기 — 긴 항목만, 기본 펼침 */
+    .cf-dev-fold{border:1px solid #e0e0e0;border-radius:8px;margin:12px 0;background:#fafafa;overflow:visible;}
+    .cf-dev-fold summary{list-style:none!important;display:flex!important;align-items:baseline;gap:8px;
+      cursor:pointer;padding:8px 12px!important;font-size:14px!important;font-weight:600!important;
+      color:#111!important;background:#f5f5f5!important;}
+    .cf-dev-fold summary::-webkit-details-marker{display:none;}
+    .cf-dev-fold .cf-fold-t{flex:1;color:#111!important;text-align:left;}
+    .cf-dev-fold .cf-fold-act{font-size:11px!important;font-weight:400!important;color:#666!important;white-space:nowrap;}
+    .cf-dev-fold[open]>summary{border-bottom:1px solid #e0e0e0;}
+    .cf-dev-fold[open] .cf-fold-act{color:#888!important;}
+    .cf-dev-fold:not([open]) .cf-fold-act{display:none!important;}
+    .cf-dev-fold:not([open])>summary{border-bottom:none!important;}
+    .cf-dev-fold-body{padding:10px 14px 14px;color:#222!important;text-align:left;}
+    .cf-boot-inline h1{font-size:16px!important;color:#111!important;margin:0 0 10px;}
+    .cf-boot-inline h2{font-size:14px!important;color:#333!important;border-bottom:1px solid #e0e0e0;padding-bottom:4px;}
+    .cf-boot-inline table th{background:#f5f5f5!important;color:#111!important;}
+    .cf-boot-inline table td{background:#fff!important;color:#222!important;}
+    .cf-boot-inline .note{color:#444!important;}
+    /* 2004A LCD 목업 — 실제 20자×4행 고정 폭(늘리지 않음) */
+    .cf-lcd2004-grid{display:grid;grid-template-columns:repeat(2,max-content);gap:14px 18px;margin:10px 0 16px;align-items:flex-start;}
+    .cf-lcd2004-unit{flex:0 0 auto;width:auto;max-width:100%;}
+    .cf-lcd2004-table-block{width:fit-content;max-width:100%;margin:10px 0 16px;clear:both;}
+    .cf-lcd2004-unit h5,.cf-lcd2004-table-block h5{margin:0 0 6px!important;font-size:13px!important;white-space:nowrap!important;max-width:none!important;}
+    .cf-pu h4,.cf-nr-chunk .cf-pu h4{white-space:nowrap!important;max-width:none!important;}
+    .cf-dev-fold .cf-fold-t{white-space:nowrap!important;}
+    .cf-lcd2004-unit .cap{display:block;margin:6px 0 0!important;font-size:11px!important;max-width:calc(20ch + 44px);}
+    .cf-lcd2004{display:inline-block;width:fit-content;max-width:100%;margin:0;vertical-align:top;}
+    .cf-lcd2004-bezel{position:relative;display:inline-block;width:fit-content;max-width:100%;
+      padding:10px 12px 12px;box-sizing:border-box;
+      background:linear-gradient(165deg,#3d3d3d 0%,#222 45%,#1a1a1a 100%);
+      border-radius:8px;border:1px solid #555;
+      box-shadow:0 3px 10px rgba(0,0,0,.22),inset 0 1px 0 rgba(255,255,255,.12);}
+    .cf-lcd2004-glass{position:absolute;inset:8px 10px 10px;border-radius:4px;
+      background:linear-gradient(135deg,rgba(255,255,255,.04) 0%,transparent 38%);
+      pointer-events:none;z-index:2;opacity:.55;}
+    .cf-lcd2004-screen{position:relative;z-index:3;display:block;box-sizing:content-box;
+      width:20ch;min-width:20ch;max-width:20ch;
+      background:#0d0d0d;
+      padding:8px 10px;border-radius:4px;border:1px solid #2a2a2a;
+      box-shadow:inset 0 1px 0 rgba(255,255,255,.06);
+      font-family:"Courier New",Consolas,"Liberation Mono",monospace;
+      font-size:15px;font-weight:700;line-height:1.34;letter-spacing:0;
+      color:#fff;text-shadow:none;
+      -webkit-font-smoothing:antialiased;}
+    .cf-lcd2004-row{height:1.34em;line-height:1.34;overflow:hidden;white-space:pre;margin:0;}
+    .cf-lcd2004-row span{display:block;width:20ch;min-width:20ch;max-width:20ch;
+      overflow:hidden;
+      color:#fff!important;opacity:1!important;text-shadow:none!important;}
+    .cf-nr-chunk .cf-pu .cf-lcd2004,
+    .cf-nr-chunk .cf-pu .cf-lcd2004-screen,
+    .cf-nr-chunk .cf-pu .cf-lcd2004-row,
+    .cf-nr-chunk .cf-pu .cf-lcd2004-row span,
+    .cf-settings-shell .cf-pu .cf-lcd2004-row span,
+    .cf-pu .cf-lcd2004-row span{color:#fff!important;opacity:1!important;text-shadow:none!important;}
+    .cf-nr-chunk .cf-pu .cf-lcd2004-screen{background:#0d0d0d!important;}
+    /* layout_css 보정 — 흰 배경·숨김 해제 */
+    .cf-dev-page .cf-df .host h5,.cf-dev-page .cf-df details summary{display:block!important;}
+    .cf-dev-page.cf-ent h4,.cf-dev-page .cf-ent h4{display:block!important;}
+    html,body,.cf-settings-app,.cf-settings-shell,.cf-nr-chunk,.cf-dev-page{background:#fff!important;color:#222!important;}
+    /* farm-ui SPA iframe embed */
+    body.cf-embed .cf-mhdr,body.cf-embed #cf-dev-drawer,body.cf-embed #cf-dev-drawer-back{display:none!important;}
+    body.cf-embed,html.cf-embed{overflow:visible!important;height:auto!important;min-height:0!important;}
+    body.cf-embed .cf-pu-scroll,.cf-nr-chunk .cf-pu-scroll{max-height:none!important;overflow:visible!important;}
+    body.cf-embed .cf-settings-app{max-width:none;margin:0;padding:0;}
+    body.cf-embed .cf-settings-shell{padding:8px 12px 20px;}
+    /* 흰 배경 — 인라인·템플릿 다크색 일괄 보정 (최종 우선) */
+    .cf-settings-shell .cf-df-paths,.cf-settings-shell .cf-df-paths p,.cf-settings-shell .cf-df-paths li,.cf-settings-shell .cf-df-paths ul{color:#333!important;}
+    .cf-settings-shell .cf-df-paths h3,.cf-settings-shell .cf-df-paths strong{color:#2e7d32!important;}
+    .cf-settings-shell .cf-df-paths code{color:#c62828!important;background:#f5f5f5!important;}
+    .cf-settings-shell .cf-df-paths .pi{color:#006064!important;}
+    .cf-settings-shell .cf-pu,.cf-settings-shell .cf-pu p,.cf-settings-shell .cf-pu li,.cf-settings-shell .cf-pu ul,.cf-settings-shell .cf-pu span,.cf-settings-shell .cf-pu .cap,.cf-settings-shell .cf-pu .note,.cf-settings-shell .cf-pu .dial,.cf-settings-shell .cf-pu .dial strong{color:#333!important;}
+    .cf-settings-shell .cf-pu h3{color:#2e7d32!important;}
+    .cf-settings-shell .cf-pu h4,.cf-settings-shell .cf-pu h5{color:#1565c0!important;}
+    .cf-settings-shell .cf-pu a,.cf-settings-shell .cf-df-paths a{color:#006064!important;}
+    .cf-settings-shell .cf-pu code{color:#c62828!important;background:#f5f5f5!important;}
+    .cf-settings-shell .cf-pu .snap{color:#1b5e20!important;background:#f5f5f5!important;border:1px solid #e0e0e0!important;}
+    .cf-settings-shell .cf-dev-hw-panel,.cf-settings-shell .cf-dev-hw-panel p,.cf-settings-shell .cf-dev-hw-panel li,.cf-settings-shell .cf-dev-hw-panel td,.cf-settings-shell .cf-dev-hw-panel th{color:#333!important;}
+    .cf-settings-shell .cf-dev-hw-panel a{color:#006064!important;}
+    .cf-settings-shell .cf-dev-hw-panel code{color:#c62828!important;background:#f5f5f5!important;}
+    .cf-settings-shell .cf-dev-hw-panel p[style*="font-weight:700"]{color:#2e7d32!important;}
+    .cf-settings-shell [style*="color:#ececec"],.cf-settings-shell [style*="color:#cfd8dc"],.cf-settings-shell [style*="color:#e8f0fe"],.cf-settings-shell [style*="color:#e6edf7"],.cf-settings-shell [style*="color:#b0bec5"],.cf-settings-shell [style*="color:#aed581"],.cf-settings-shell [style*="color:#90caf9"],.cf-settings-shell [style*="color:#80deea"],.cf-settings-shell [style*="color:#dde7f8"],.cf-settings-shell [style*="color:#e0e7ff"]{color:#222!important;}
+    .cf-settings-shell [style*="opacity"]{opacity:1!important;}
+    /* 원번호 · 본문 — 0·1번과 동일 좌측 여백(20px + 원26 + gap10) */
+    .cf-nr-chunk{display:block!important;padding:0 20px!important;margin-left:0!important;}
+    .cf-nr-chunk>.cf-sec-title{display:flex!important;flex-direction:row!important;align-items:center!important;
+      gap:10px!important;margin:0 0 12px!important;padding:0!important;
+      font-size:1.05rem!important;font-weight:800!important;color:#111!important;}
+    .cf-nr-chunk>.cf-sec-title .ch-n{flex:0 0 26px!important;width:26px!important;margin:0!important;}
+    .cf-nr-chunk>.cf-sec-body{margin-left:36px!important;padding:0!important;}
+    .cf-nr-chunk>.cf-sec-body h2.cf-doc-h:has(>.ch-n){display:none!important;}
+    .cf-nr-chunk .cf-df-paths,.cf-nr-chunk .cf-pu{margin:0!important;max-width:none!important;text-align:left!important;}
+    .cf-nr-chunk>.cf-sec-body>.cf-dev-page,
+    .cf-nr-chunk>.cf-sec-body>.cfdev-mini,
+    .cf-nr-chunk>.cf-sec-body>.cf-pu,
+    .cf-nr-chunk>.cf-sec-body>.cf-df-paths,
+    .cf-nr-chunk>.cf-sec-body>.cf-dev-hw-panel,
+    .cf-nr-chunk>.cf-sec-body>.cf-dev-arch{margin-left:0!important;padding-left:0!important;}
+    .cf-nr-chunk>.cf-sec-body ul,.cf-nr-chunk>.cf-sec-body ol{padding-left:1.25em!important;margin:6px 0 10px!important;}
+    .cf-nr-chunk>.cf-sec-body .cf-dev-fold{margin-left:0!important;}
+    .cf-settings-shell .cf-df,.cf-settings-shell .cf-pu,.cf-settings-shell .cf-df-paths,
+    .cf-settings-shell .cfdev-mini,.cf-settings-shell .cf-dev-hw-panel,.cf-settings-shell .cf-dev-arch{
+      max-width:100%!important;width:100%!important;margin-right:0!important;
+      padding-right:0!important;text-align:left!important;}
+    .cf-settings-shell .cf-dev-page{padding:0!important;margin:0!important;max-width:none!important;}
+    .cf-settings-shell .cf-df .row{justify-content:flex-start!important;margin-left:0!important;}
+    .cf-settings-shell .cf-df .s,.cf-settings-shell .cf-df .sub,.cf-settings-shell .cf-df .hint,
+    .cf-settings-shell .cf-df .hb,.cf-settings-shell .cf-df .det,.cf-settings-shell .cf-df .lab{color:#222!important;opacity:1!important;}
+    .cf-settings-shell .cfdev-mini,.cf-settings-shell .cfdev-mini p,.cf-settings-shell .cfdev-mini li{color:#222!important;}
+    .cf-settings-shell .cfdev-mini h4{color:#1565c0!important;}
+    .cf-settings-shell .cfdev-mini pre{color:#1b5e20!important;background:#f5f5f5!important;border:1px solid #e0e0e0!important;}
+    .cf-settings-shell .cf-df .ar{color:#546e7a!important;}
+    .cf-nr-chunk .cf-dev-page table.grid{width:max-content!important;max-width:100%!important;}
+    /* SPA devstatus 최종 보정 */
+    .cf-df-paths,.cf-df-paths p,.cf-df-paths li,.cf-df-paths ul,.cf-df-paths span{color:#333!important;}
+    .cf-df-paths h3,.cf-df-paths strong{color:#2e7d32!important;}
+    .cf-df-paths code{color:#c62828!important;background:#f5f5f5!important;}
+    .cf-df-paths .pi,.cf-df-paths a{color:#006064!important;}
+    .cf-pu,.cf-pu p,.cf-pu li,.cf-pu ul,.cf-pu span,.cf-pu .cap,.cf-pu .note,.cf-pu .dial,.cf-pu .dial strong{color:#333!important;}
+    .cf-pu h3{color:#2e7d32!important;}
+    .cf-pu h4,.cf-pu h5{color:#1565c0!important;}
+    .cf-pu a{color:#006064!important;}
+    .cf-pu code{color:#c62828!important;background:#f5f5f5!important;}
+    .cf-pu .snap{color:#1b5e20!important;background:#f5f5f5!important;border:1px solid #e0e0e0!important;}
+    .cf-pu table th{background:#f5f5f5!important;color:#111!important;}
+    .cf-pu table td{background:#fff!important;color:#222!important;}
+    .cf-dev-hw-panel,.cf-dev-hw-panel p,.cf-dev-hw-panel li,.cf-dev-hw-panel td,.cf-dev-hw-panel th{color:#333!important;}
+    .cf-dev-hw-panel a{color:#006064!important;}
+    .cf-dev-hw-panel code,.cf-dev-hw-panel code[style]{color:#c62828!important;background:#f5f5f5!important;}
+    .cf-dev-hw-panel table,.cf-dev-hw-panel table[style]{color:#222!important;}
+    .cf-dev-hw-panel table th,.cf-dev-hw-panel table th[style]{background:#f5f5f5!important;color:#111!important;border-color:#e0e0e0!important;}
+    .cf-dev-hw-panel table td,.cf-dev-hw-panel table td[style]{background:#fff!important;color:#222!important;border-color:#e8e8e8!important;}
+    .cf-dev-hw-panel [style*="color:#ececec"],.cf-dev-hw-panel [style*="color:#aed581"],.cf-dev-hw-panel [style*="color:#90caf9"],.cf-dev-hw-panel [style*="color:#ffcc80"]{color:#333!important;}
+    .cf-dev-hw-panel p[style*="aed581"]{color:#2e7d32!important;font-weight:700!important;}
+    .cf-dev-hw-panel p[style*="90caf9"]{color:#1565c0!important;font-weight:700!important;}
+    /* LCD 목업 — cf-pu span(#333) 덮어쓰기 최종 */
+    .cf-lcd2004-screen,.cf-lcd2004-row,.cf-lcd2004-row span,
+    .cf-pu .cf-lcd2004-screen,.cf-pu .cf-lcd2004-row span,
+    .cf-settings-shell .cf-pu .cf-lcd2004-row span{color:#fff!important;opacity:1!important;text-shadow:none!important;}
+    .cf-lcd2004-screen{background:#0d0d0d!important;}
+    </style>
+</head>
+<body>
+<div id="cf-dev-drawer-back" class="cf-drawer-back" style="display:none"></div>
+<nav id="cf-dev-drawer" class="cf-drawer" aria-label="개발현황 메뉴">
+  <div class="cf-drawer-hd">메뉴</div>
+  <a class="cf-drawer-item cf-drawer-route" data-cf-href="settings" href="#">CronusFarm 설정</a>
+  <a class="cf-drawer-item cf-drawer-route" data-cf-href="admin" href="#">CronusFarm 관리</a>
+  <p class="cf-drawer-sec-title">개발현황</p>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-local">개발현황 · 보는 방법</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-overview">시스템 개요 · 순서도</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-devdeploy">플로우(개발·배포)</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-camera-pipe">카메라 파이프라인</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-camera-tbl">카메라 · 용량</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-hailo">Hailo YOLO 학습</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-entity">호스트 · 소스 · URL</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-runtime">플로우(운영)</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-sched-defaults">기본 스케줄표</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-monitor-src">모니터 데이터 출처</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-control">제어 흐름(목표)</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-comm-a">통신 A · 하이브리드</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-comm-b">통신 B · MQTT</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-comm-c">통신 C · Pi</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-comm-d">통신 D · USB</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-flow-data">플로우(DB·연동)</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-arch">구성요소 · 데이터흐름</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-nr-paths">Node-RED 경로</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-hw">하드웨어 · 핀맵</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-panel">패널 LCD 가이드</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-tech-slides">기술발표 자료</button>
+</nav>
+<header class="cf-mhdr">
+  <button type="button" class="cf-mhdr-burger" id="cf-dev-burger" aria-label="메뉴 열기"><span></span><span></span><span></span></button>
+  <h1 class="cf-mhdr-title">크로노스 개발현황</h1>
+  <nav class="cf-mhdr-nav">
+    <a class="cf-mhdr-link" data-cf-href="settings" href="#">설정</a>
+    <a class="cf-mhdr-link" data-cf-href="admin" href="#">관리</a>
+  </nav>
+</header>
+<div class="cf-settings-app">
+  <div class="cf-settings-shell">
+    <p class="cf-dev-lead"><strong>개발 → 배포 → 서비스</strong> · PC 저장소 정본 → merge → Pi apply. 아래 섹션은 기존 Node-RED 문서·링크(mega.html, GitHub, Grafana 등)를 그대로 포함합니다.</p>
+<div id="sec-sched-defaults" class="cf-nr-chunk"><h2 class="cf-doc-h cf-sec-title"><span class="ch-n">8</span>기본 스케줄표</h2><div class="cf-sec-body"><div class="cf-dev-page"><section class="cf-def-sch cf-def-sch--plain"><p class="cf-def-sch-sub">Bed 순 · DB 시드·펌웨어 builtin 동일. 수동 60분 후 AUTO. 패널 먹통 시 리셋 없이 푸시 2회(0.45초 안)로 I2C·브라우즈 재동기화.</p><div class="cf-def-sch-scroll"><table class="cf-def-sch-tbl"><thead><tr><th>Bed</th><th>채널</th><th>종류</th><th>내용</th></tr></thead><tbody><tr><td class="cf-def-grp" rowspan="6">A Bed</td><td class="cf-def-ch">LED A1</td><td class="cf-def-kind">시간대</td><td class="cf-def-detail">06:30 ~ 18:30 ON · 그 외 OFF</td></tr>
+<tr><td class="cf-def-ch">LED A2</td><td class="cf-def-kind">시간대</td><td class="cf-def-detail">06:30 ~ 18:30 ON · 그 외 OFF</td></tr>
+<tr><td class="cf-def-ch">Pump A1</td><td class="cf-def-kind">주기</td><td class="cf-def-detail">0시부터 15분 ON / 20분 OFF 반복 (하루 종일)</td></tr>
+<tr><td class="cf-def-ch">Pump A2</td><td class="cf-def-kind">주기</td><td class="cf-def-detail">09:00~17:00 → 10분 ON / 50분 OFF · 그 외 5분 ON / 55분 OFF</td></tr>
+<tr><td class="cf-def-ch">Fan A1</td><td class="cf-def-kind">시간대</td><td class="cf-def-detail">06:00 ~ 24:00 ON · 그 외 OFF</td></tr>
+<tr><td class="cf-def-ch">Fan A2</td><td class="cf-def-kind">시간대</td><td class="cf-def-detail">06:00 ~ 24:00 ON · 그 외 OFF</td></tr>
+<tr><td class="cf-def-grp" rowspan="6">B Bed</td><td class="cf-def-ch">LED B1</td><td class="cf-def-kind">시간대</td><td class="cf-def-detail">07:30 ~ 17:30 ON · 그 외 OFF</td></tr>
+<tr><td class="cf-def-ch">LED B2</td><td class="cf-def-kind">시간대</td><td class="cf-def-detail">07:30 ~ 17:30 ON · 그 외 OFF</td></tr>
+<tr><td class="cf-def-ch">Pump B1</td><td class="cf-def-kind">주기</td><td class="cf-def-detail">07:30~17:30 → 3분 ON / 7분 OFF · 그 외 1분 ON / 9분 OFF</td></tr>
+<tr><td class="cf-def-ch">Pump B2</td><td class="cf-def-kind">주기</td><td class="cf-def-detail">09:00~17:00 → 10분 ON / 50분 OFF · 그 외 5분 ON / 55분 OFF</td></tr>
+<tr><td class="cf-def-ch">Fan B1</td><td class="cf-def-kind">시간대</td><td class="cf-def-detail">06:00 ~ 24:00 ON · 그 외 OFF</td></tr>
+<tr><td class="cf-def-ch">Fan B2</td><td class="cf-def-kind">시간대</td><td class="cf-def-detail">06:00 ~ 24:00 ON · 그 외 OFF</td></tr>
+<tr><td class="cf-def-grp" rowspan="2">C Bed</td><td class="cf-def-ch">Pump C1</td><td class="cf-def-kind">주기</td><td class="cf-def-detail">1시간 주기 · 1분 ON</td></tr>
+<tr><td class="cf-def-ch">Pump C2</td><td class="cf-def-kind">주기</td><td class="cf-def-detail">2시간 주기 · 1분 ON</td></tr>
+<tr><td class="cf-def-grp" rowspan="2">D Bed</td><td class="cf-def-ch">Pump D1</td><td class="cf-def-kind">주기</td><td class="cf-def-detail">3시간 주기 · 1분 ON</td></tr>
+<tr><td class="cf-def-ch">Pump D2</td><td class="cf-def-kind">주기</td><td class="cf-def-detail">4시간 주기 · 1분 ON</td></tr></tbody></table></div></section></div></div></div><div id="sec-tech-slides" class="cf-nr-chunk"><h2 class="cf-doc-h cf-sec-title"><span class="ch-n">20</span>기술발표 자료</h2><div class="cf-sec-body"><div class="cf-tech-pptx-wrap"><p class="cf-doc-lead">CronusFarm 기술발표 슬라이드 (v2). 아래에서 바로 볼 수 있고, <a href="/cronusfarm-static/docs/CronusFarm_tech_presentation_v2.pptx" download>PPTX 원본</a>도 내려받을 수 있습니다.</p><iframe id="cf-tech-pptx-frame" class="cf-tech-pptx-frame" title="CronusFarm 기술발표 v2" src="/cronusfarm-static/cronusfarm_tech_presentation_view.html" loading="lazy"></iframe></div></div></div>
+  </div>
+</div>
+<script>
+var O=location.origin||'';
+document.querySelectorAll('[data-cf-href]').forEach(function(el){
+  var role=el.getAttribute('data-cf-href');
+  if(role==='settings')el.setAttribute('href',O+'/farm/ui/#/');
+  if(role==='admin')el.setAttribute('href',O+'/farm/ui/#/admin');
+  el.addEventListener('click',function(e){
+    e.preventDefault();
+    var u=el.getAttribute('href');
+    try{(window.top||window).location.replace(u);}catch(err){location.replace(u);}
+  });
+});
+</script>
+<script>
+(function(){var e=/[?&]embed=1(?:&|$)/.test(location.search)||window.self!==window.top;
+if(e){document.documentElement.classList.add('cf-embed');document.body.classList.add('cf-embed');}})();
+var cfDevLastH=0;
+function cfDevContentHeight(){
+  var y=window.pageYOffset||document.documentElement.scrollTop||0;
+  var chunks=document.querySelectorAll('.cf-nr-chunk');
+  if(chunks.length){
+    var last=chunks[chunks.length-1];
+    return Math.ceil(last.getBoundingClientRect().bottom+y+8);
+  }
+  var root=document.querySelector('.cf-settings-shell');
+  if(root) return Math.ceil(root.getBoundingClientRect().bottom+y+8);
+  return document.documentElement.scrollHeight;
+}
+window.addEventListener('message',function(ev){
+  var d=ev.data;
+  if(d&&d.type==='cf-tech-pptx-resize'&&d.height){
+    var fr=document.getElementById('cf-tech-pptx-frame');
+    if(fr){ fr.style.height=Math.max(480,Math.ceil(d.height)+12)+'px'; cfDevResize(); }
+    return;
+  }
+  if(!d||d.type!=='cf-devflow-scroll'||!d.id)return;
+  document.getElementById(d.id)?.scrollIntoView({behavior:'smooth',block:'start'});
+  cfDevResize();
+});
+function cfDevResize(){try{
+  var h=cfDevContentHeight();
+  if(Math.abs(h-cfDevLastH)<2) return;
+  cfDevLastH=h;
+  parent.postMessage({type:'cf-cronos-devstatus-resize',height:h},'*');
+}catch(e){}}
+function cfDevFoldActs(){
+  document.querySelectorAll('details.cf-dev-fold').forEach(function(d){
+    d.open=true;
+    var act=d.querySelector('.cf-fold-act');
+    var s=d.querySelector('summary');
+    if(!act&&s){
+      var tEl=s.querySelector('.cf-fold-t');
+      var t=(tEl?tEl.textContent:s.textContent||'').replace(/\s*접기\s*$/,'').trim();
+      s.innerHTML='<span class="cf-fold-t">'+t.replace(/</g,'&lt;')+'</span><span class="cf-fold-act">접기</span>';
+      act=s.querySelector('.cf-fold-act');
+    }
+    function sync(){
+      if(act){ act.textContent='접기'; act.style.display=d.open?'':'none'; }
+    }
+    sync();
+    d.addEventListener('toggle',function(){ sync(); cfDevResize(); });
+  });
+}
+window.addEventListener('load',function(){
+  cfDevFoldActs();
+  cfDevResize(); setTimeout(cfDevResize,400);
+});
+window.addEventListener('resize',cfDevResize);
+if(window.ResizeObserver){
+  var roTarget=document.querySelector('.cf-settings-shell');
+  if(roTarget) new ResizeObserver(function(){ cfDevResize(); }).observe(roTarget);
+}
+document.querySelectorAll('[data-cf-scroll]').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    var id=btn.getAttribute('data-cf-scroll');
+    document.getElementById(id)?.scrollIntoView({behavior:'smooth',block:'start'});
+    var d=document.getElementById('cf-dev-drawer');var b=document.getElementById('cf-dev-drawer-back');
+    if(d)d.classList.remove('open');if(b)b.style.display='none';
+    cfDevResize();
+  });
+});
+var burger=document.getElementById('cf-dev-burger');
+var back=document.getElementById('cf-dev-drawer-back');
+if(burger){burger.addEventListener('click',function(){
+  var d=document.getElementById('cf-dev-drawer');var open=d&&d.classList.toggle('open');
+  if(back)back.style.display=open?'block':'none';
+});}
+if(back){back.addEventListener('click',function(){
+  document.getElementById('cf-dev-drawer')?.classList.remove('open');back.style.display='none';
+});}
+cfDevResize();
+</script>
+</body>
+</html>

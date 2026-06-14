@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Pi 로컬 시각 → MQTT cmd → R4 RV3028 RTC (CronusFarm.ino `rtc_local=`)
+# Pi 로컬 시각 → cmd → R4 소프트웨어 시계 (CronusFarm.ino `rtc_local=` / `time_local=`)
 # - Pi 타임존/ntp가 맞으면 R4 패널 날짜·시간이 Pi와 동일해짐
 #
 # 사용:
@@ -21,11 +21,4 @@ HOST="${CRONUSFARM_MQTT_HOST:-127.0.0.1}"
 PORT="${CRONUSFARM_MQTT_PORT:-1883}"
 TOPIC="cronusfarm/${DEVICE_ID}/cmd"
 PAYLOAD="rtc_local=$(date +%Y%m%d%H%M%S)"
-
-if ! command -v mosquitto_pub >/dev/null 2>&1; then
-  echo "[error] mosquitto_pub 없음. apt install mosquitto-clients" >&2
-  exit 1
-fi
-
-mosquitto_pub -h "$HOST" -p "$PORT" -t "$TOPIC" -m "$PAYLOAD" -q 1
-echo "[ok] $TOPIC <- $PAYLOAD"
+exec bash "$ROOT/scripts/pi-push-time-r4.sh"

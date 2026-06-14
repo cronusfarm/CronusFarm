@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>CronusFarm 개발현황</title>
+  <link rel="stylesheet" href="/cronusfarm-static/cronusfarm_d1_shared.css"/>
+  <style>
+    html,body{min-height:100%;margin:0;background:var(--g0);color:var(--text);font-family:var(--fb);overflow-x:hidden;}
+    .cf-mhdr{display:flex;align-items:center;gap:12px;margin-bottom:12px;padding:8px 4px 10px;border-bottom:1px solid var(--border2);}
+    .cf-mhdr-burger{display:flex;flex-direction:column;justify-content:center;gap:5px;width:42px;height:42px;padding:0;
+      border:1px solid var(--border2);border-radius:10px;background:rgba(0,0,0,.28);cursor:pointer;}
+    .cf-mhdr-burger span{display:block;width:18px;height:2px;margin:0 auto;background:var(--accent);border-radius:1px;}
+    .cf-mhdr-title{margin:0;flex:1;font-size:1.05rem;font-weight:900;color:var(--accent3);}
+    .cf-mhdr-nav{display:flex;gap:8px;margin-left:auto;}
+    .cf-mhdr-link{font-size:12px;font-weight:800;color:var(--accent2);text-decoration:none;padding:8px 12px;
+      border-radius:10px;border:1px solid var(--border2);cursor:pointer;}
+    .cf-drawer-back{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.45);}
+    .cf-drawer{position:fixed;top:0;left:0;bottom:0;z-index:210;width:min(280px,86vw);padding:14px 12px 20px;
+      background:rgba(4,13,7,.97);border-right:1px solid var(--border2);transform:translateX(-105%);transition:transform .22s ease;}
+    .cf-drawer.open{transform:translateX(0);}
+    .cf-drawer-hd{margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid var(--border2);font-size:11px;font-weight:800;color:var(--text2);}
+    .cf-drawer-sec-title{margin:14px 0 6px;font-size:11px;font-weight:800;color:var(--text2);}
+    .cf-drawer-item{display:block;width:100%;margin:0 0 6px;padding:11px 12px;border:1px solid transparent;border-radius:10px;
+      background:transparent;color:var(--text);font-size:13px;font-weight:800;text-align:left;cursor:pointer;text-decoration:none;box-sizing:border-box;}
+    .cf-drawer-item:hover{background:rgba(45,255,122,.08);border-color:rgba(45,255,122,.2);}
+    .cf-settings-app{max-width:1120px;margin:0 auto;padding:12px;}
+    .cf-settings-shell{position:relative;border-radius:var(--r);border:1px solid var(--border);
+      box-shadow:var(--glow);background:linear-gradient(180deg,var(--g0),var(--g1) 55%,var(--g0));
+      padding:14px 16px 24px;overflow:visible;}
+    .cf-settings-shell::before{content:'';position:absolute;inset:0;z-index:0;pointer-events:none;
+      background-image:linear-gradient(rgba(45,255,122,.022) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(45,255,122,.022) 1px,transparent 1px);background-size:48px 48px;}
+    .cf-settings-shell>*{position:relative;z-index:1;}
+    .cf-dev-lead{margin:0 0 16px;font-size:12px;color:var(--text2);line-height:1.55;}
+    .cf-dev-sec{margin:0 0 20px;padding:14px 16px;border-radius:var(--r);border:1px solid var(--border2);
+      background:rgba(15,36,21,.78);box-shadow:0 8px 24px rgba(0,0,0,.35);}
+    .cf-dev-sec-title{margin:0 0 12px;font-size:15px;color:var(--accent3);font-weight:900;}
+    .cf-dev-sec-body{overflow:visible;}
+    /* NR 템플릿 본문(cf-df·cf-dev-arch) — 온실 카드 안 가독 */
+    .cf-dev-sec-body .cf-df,.cf-dev-sec-body .cf-dev-arch,.cf-dev-sec-body .cfdev,.cf-dev-sec-body .cf-pu{color:var(--text)!important;max-width:100%!important;}
+    .cf-dev-sec-body .cf-df .t,.cf-dev-sec-body .cf-df .ht{color:var(--accent3)!important;}
+    .cf-dev-sec-body .cf-df .sub,.cf-dev-sec-body .cf-df .s,.cf-dev-sec-body .cf-df .lab,.cf-dev-sec-body .cf-df .hint{color:var(--text2)!important;}
+    .cf-dev-sec-body .cf-df .card{background:rgba(0,0,0,.28)!important;border:1px solid var(--border2)!important;color:var(--text)!important;}
+    .cf-dev-sec-body .cf-df .host,.cf-dev-sec-body .cf-df details,.cf-dev-sec-body .cf-df .arch-full{
+      background:rgba(0,0,0,.22)!important;border:1px solid var(--border2)!important;color:var(--text)!important;}
+    .cf-dev-sec-body .cf-df .arch-full{background:rgba(10,26,15,.92)!important;color:var(--text)!important;}
+    .cf-dev-sec-body .cf-df .arch-full h6{color:var(--accent)!important;}
+    .cf-dev-sec-body .cf-dev-arch h3{color:var(--accent2)!important;}
+    .cf-dev-sec-body svg,.cf-dev-sec-body svg.flow-svg{width:100%!important;max-width:100%!important;height:auto!important;}
+    .cf-dev-sec-body a{color:var(--accent2);}
+    .cf-dev-sec-body code{color:var(--accent3);background:rgba(0,0,0,.35);padding:1px 5px;border-radius:4px;}
+    .cf-dev-sec-body table.grid th{background:rgba(45,255,122,.08)!important;color:var(--accent3)!important;}
+    .cf-dev-sec-body table.grid td{color:var(--text)!important;border-color:var(--border)!important;}
+    .cf-dev-sec-body .cf-pu-scroll{max-height:none!important;overflow:visible!important;}
+    .cf-dev-sec-body .cf-pu h3{color:var(--accent3)!important;}
+    .cf-dev-sec-body .cf-pu .snap{background:rgba(0,0,0,.35)!important;color:var(--text)!important;border-color:var(--border2)!important;}
+    </style>
+</head>
+<body>
+<div id="cf-dev-drawer-back" class="cf-drawer-back" style="display:none"></div>
+<nav id="cf-dev-drawer" class="cf-drawer" aria-label="개발현황 메뉴">
+  <div class="cf-drawer-hd">메뉴</div>
+  <a class="cf-drawer-item cf-drawer-route" data-cf-href="settings" href="#">CronusFarm 설정</a>
+  <a class="cf-drawer-item cf-drawer-route" data-cf-href="admin" href="#">CronusFarm 관리</a>
+  <p class="cf-drawer-sec-title">개발현황</p>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-overview">시스템 개요 · 순서도</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-local">로컬 개발</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-devdeploy">플로우(개발·배포)</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-camera-pipe">카메라 파이프라인</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-camera-tbl">카메라 · 용량</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-hailo">Hailo YOLO 학습</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-entity">호스트 · 소스 · URL</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-runtime">플로우(운영)</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-monitor-src">모니터 데이터 출처</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-control">제어 흐름(목표)</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-comm-a">통신 A · 하이브리드</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-comm-b">통신 B · MQTT</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-comm-c">통신 C · Pi</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-comm-d">통신 D · USB</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-flow-data">플로우(DB·연동)</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-arch">구성요소 · 데이터흐름</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-nr-paths">Node-RED 경로</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-panel">패널 LCD 가이드</button>
+        <button type="button" class="cf-drawer-item" data-cf-scroll="sec-hw">하드웨어 · 핀맵</button>
+</nav>
+<header class="cf-mhdr">
+  <button type="button" class="cf-mhdr-burger" id="cf-dev-burger" aria-label="메뉴 열기"><span></span><span></span><span></span></button>
+  <h1 class="cf-mhdr-title">CronusFarm 개발현황</h1>
+  <nav class="cf-mhdr-nav">
+    <a class="cf-mhdr-link" data-cf-href="settings" href="#">설정</a>
+    <a class="cf-mhdr-link" data-cf-href="admin" href="#">관리</a>
+  </nav>
+</header>
+<div class="cf-settings-app">
+  <div class="cf-settings-shell">
+    <p class="cf-dev-lead"><strong>개발 → 배포 → 서비스</strong> · PC 저장소 정본 → merge → Pi apply. 아래 섹션은 기존 Node-RED 문서·링크(mega.html, GitHub, Grafana 등)를 그대로 포함합니다.</p>
+<section id="sec-overview" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">시스템 개요 · 순서도</h2><div class="cf-dev-sec-body"><section class="cf-doc-sec"><h2 class="cf-doc-h"><span class="ch-n">1</span>시스템 개요</h2><p class="cf-doc-lead">R4·Pi·Node-RED·MQTT·farm-ui 전체 연결 개요.</p><div class="ch-body"><p class="cf-doc-summary">R4·Pi·Node-RED·MQTT·farm-ui 전체 연결 개요.</p><div class="cf-df cf-dev-page"><style>
+.cf-df{font-family:system-ui,'Malgun Gothic',sans-serif;color:#ececec;line-height:1.5;max-width:1120px;margin:0 auto;overflow:visible}
+.cf-df *{box-sizing:border-box}
+.cf-df .t{margin:0 0 6px;font-size:1.08rem;color:#aed581;font-weight:700}
+.cf-df .sub{margin:0 0 12px;font-size:0.78rem;color:#b0bec5}
+.cf-df .s{margin:0 0 14px;font-size:0.8rem;opacity:0.92}
+.cf-df .row{display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin:6px 0 14px;align-items:stretch}
+.cf-df .card{flex:1;min-width:136px;max-width:210px;text-align:center;background:linear-gradient(168deg,#3d3d48,#28282e);border-radius:16px;padding:14px 10px;border:1px solid #555;box-shadow:0 4px 12px rgba(0,0,0,.35)}
+.cf-df .ic svg{width:64px;height:64px;display:block;margin:0 auto 8px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))}
+.cf-df .cap{font-size:0.64rem;color:#ffcc80;font-weight:800;letter-spacing:0.06em;text-transform:uppercase;margin-bottom:4px}
+.cf-df .lab{font-size:0.84rem;color:#fff;font-weight:600}
+.cf-df .hint{font-size:0.7rem;color:#b0bec5;margin-top:6px;line-height:1.35}
+.cf-df .ar{align-self:center;font-size:1.3rem;color:#78909c;padding:0 2px}
+.cf-df .host{margin-top:10px;background:#222228;border:1px solid #3f3f4a;border-radius:12px;padding:14px 16px 10px}
+.cf-df .host h5{margin:0 0 12px;font-size:0.86rem;color:#81c784}
+.cf-df .hg{margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #35353d}
+.cf-df .hg:last-child{border-bottom:none;margin-bottom:0;padding-bottom:0}
+.cf-df .ht{font-size:0.78rem;color:#ffcc80;font-weight:700;margin-bottom:6px}
+.cf-df .hb{font-family:Consolas,ui-monospace,monospace;font-size:0.71rem;color:#e6e6e6;line-height:1.55;word-break:break-all}
+.cf-df .hb a,.cf-df .det a,.cf-df .arch-full a{color:#80deea;text-decoration:none;border-bottom:1px dashed rgba(128,222,234,.45)}
+.cf-df details{border:1px solid #45454f;border-radius:10px;margin:10px 0;background:#292931;padding:2px 10px}
+.cf-df summary{cursor:pointer;font-size:0.84rem;color:#aed581;font-weight:700;padding:10px 4px;list-style-position:outside}
+.cf-df .det{font-size:0.73rem;color:#cfd8dc;padding:8px 6px 12px;border-top:1px solid #3a3a44}
+.cf-df ul{margin:6px 0 0;padding-left:1.1rem}
+.cf-df li{margin:6px 0}
+.cf-df .note{margin-top:12px;border-left:4px solid #5c6bc0;padding:10px 12px;background:#2a2a32;border-radius:0 10px 10px 0;font-size:0.72rem}
+.cf-df .note b{color:#fff}
+.cf-df pre{display:block;background:#16161c;color:#e6ee9c;padding:10px 12px;border-radius:8px;font-size:0.67rem;white-space:pre-wrap;word-break:break-all;margin-top:8px;border:1px solid #333}
+.cf-df .tag{display:inline-block;font-size:0.6rem;color:#ffecb3;background:#4e342e;padding:2px 7px;border-radius:4px;margin:2px 6px 0 0;font-weight:600}
+.cf-df code{font-size:0.88em;color:#fce4ec;background:#332833;padding:1px 5px;border-radius:3px}
+.cf-df .arch-full{background:#ffffff;border:1px solid #d9d9de;border-radius:10px;padding:14px 16px;margin:14px 0 10px;font-size:0.78rem;color:#111;line-height:1.6;text-align:left;overflow:visible;max-height:none}
+.cf-df .arch-full h6{margin:0 0 10px;font-size:0.9rem;color:#1b5e20;font-weight:800}
+.cf-df .arch-full p{margin:0 0 10px;line-height:1.55}
+.cf-df .arch-full ul{margin:6px 0 10px;padding-left:1.15rem}
+.cf-df .arch-full li{margin:5px 0}
+
+.cf-df .arch-full a{color:#006064;border-bottom:1px dashed rgba(0,96,100,.35)}
+.cf-df .arch-full code{color:#4a148c;background:#f3e5f5}
+</style>
+<p class="t">CronusFarm 개발환경</p>
+<p class="sub">누적 개발 구성 반영 · 긴 문단은 아래 회색 박스에 통째로 둠(대시보드 텍스트 위젯은 줄 수 제한으로 잘림)</p>
+<p class="s">워크플로우: 저장소 편집 → merge / deploy → Pi(ida)·USB 업로드 · Git(<code>git-push-with-backup.ps1</code>)</p>
+<div class="row">
+<div class="card"><div class="ic"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="10" y="10" width="44" height="32" rx="3" fill="#42a5f5"/><rect x="14" y="14" width="36" height="22" rx="1" fill="#0d47a1" opacity="0.35"/><rect x="6" y="44" width="52" height="10" rx="2" fill="#64b5f6"/></svg></div><div class="cap">개발</div><div class="lab">PC</div><div class="hint">Thalia · Artemis · Cursor</div></div><span class="ar">&#8594;</span>
+<div class="card"><div class="ic"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect x="10" y="8" width="44" height="14" rx="2" fill="#78909c"/><rect x="10" y="26" width="44" height="14" rx="2" fill="#90a4ae"/><rect x="10" y="44" width="44" height="14" rx="2" fill="#b0bec5"/><circle cx="48" cy="15" r="3" fill="#29b6f6"/><circle cx="48" cy="33" r="3" fill="#29b6f6"/><circle cx="48" cy="51" r="3" fill="#29b6f6"/></svg></div><div class="cap">배포</div><div class="lab">Pi ida</div><div class="hint">Node-RED · MQTT · SQLite 브리지</div></div><span class="ar">&#8594;</span>
+<div class="card"><div class="ic"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><path fill="#81d4fa" d="M46 38a11 11 0 0 0-10-8 13 13 0 0 0-24 2 10 10 0 0 0 9 17h23a8 8 0 0 0 2-11z"/></svg></div><div class="cap">현장</div><div class="lab">UNO R4 메인</div><div class="hint">MQTT tele/cmd · 릴레이/펌프/팬</div></div>
+</div>
+<p class="s">데이터 스택: SQLite(정합) &#8594; InfluxDB(시계열) &#8594; Grafana(대시·알림)</p>
+<div class="row">
+<div class="card"><div class="cap">SQLite</div><div class="lab">관계형</div><div class="hint"><code>smartfarm.sqlite</code><br/>작물·스케줄·메타·이벤트</div></div><span class="ar">&#8594;</span>
+<div class="card"><div class="cap">InfluxDB</div><div class="lab">시계열</div><div class="hint">tele·상태·알림·AI 등 시간축<br/>bucket 권장: <code>CronusFarm</code></div></div><span class="ar">&#8594;</span>
+<div class="card"><div class="cap">Grafana</div><div class="lab">시각화</div><div class="hint">Influx Flux 패널 · 알림</div></div>
+</div>
+<div class="host"><h5>호스트 · 패널 · 문서</h5>
+<div class="hg"><div class="ht">네트워크</div><div class="hb">LAN 192.168.0.222 · WAN ida.mango-larch.ts.net</div><div class="hb">SMB \\ida.mango-larch.ts.net\MyCode &#8594; /home/dooly/CronusFarm</div></div>
+<div class="hg"><div class="ht">2004A 패널 (RepRapDiscount)</div>
+<div class="hb"><span class="tag">Mega·TriGorilla 시절 문서화</span><span class="tag">현운영: UNO R3 패널 MCU</span></div>
+<div class="hb">R4(<code>CronusFarm.ino</code>) + R3(<code>CronusFarmPanel.ino</code>) · I2C 슬레이브 <code>0x38</code> · R4 A4/A5 &#8596; R3 A4/A5, GND 공통. UART D0/D1 직결 금지(업로드·충돌 방지).</div>
+<div class="hb"><a href="/cronusfarm-static/mega.html" target="_blank" rel="noopener">mega.html</a> · <code>docs/v07_2004a_exp_wiring.md</code></div>
+</div></div>
+<div class="arch-full"><h6>구성요소 역할 / 데이터 흐름 (전문, 잘림 없음)</h6>
+<p>Arduino(센서/릴레이) &#8594; Node-RED(수집·정규화·저장·제어 API) &#8594; InfluxDB(시계열: tele / alert_events / ai_detections 등) &#8594; Grafana(시각화·알림)</p>
+<p><strong>InfluxDB</strong>: 시간축 데이터(센서·장치상태·알림·AI)를 저장한다. <strong>bucket은 CronusFarm 권장.</strong> Pi에서는 NR 환경변수(CRONUSFARM_INFLUX_*)로 토큰·ORG·bucket·최소 기록 간격을 맞춘다.</p>
+<p><strong>SQLite</strong>: 관계형(작물·스케줄·이미지·AI 메타·이벤트). Grafana에서 SQLite를 직접 조회하려면 플러그인 등 추가 구성이 필요하므로, <strong>기본 구성에서는 Node-RED가 시계열을 Influx에도 함께 넣는 방식</strong>을 권장한다(정합은 SQLite·시각화용 시계열은 Influx).</p>
+<p><strong>통신(Arduino &#8594; Node-RED)</strong>: MQTT 권장 — 저전력·retain 상태·pub/sub 확장·끊김 복구에 유리. 토픽 예: <code>cronusfarm/&lt;DEVICE_ID&gt;/tele</code>, <code>cronusfarm/&lt;DEVICE_ID&gt;/cmd</code>.</p>
+</div>
+<div class="det"><ul>
+<li>2004A(EXP1/EXP2)용으로 TriGorilla·Mega2560(RAMPS류) 계열 문서·배선 레퍼런스가 있었고, <a href="/cronusfarm-static/mega.html" target="_blank" rel="noopener">mega.html</a> 에 남아 있다.</li>
+<li>운영에서는 메인(UNO R4 WiFi)과 분리하여 <strong>패널 전용 UNO R3</strong>로 고정: LCD·엔코더·부저 등은 R3, 제어·MQTT·릴레이는 R4.</li>
+<li>R4&#8596;R3 연결은 <strong>I2C</strong>(프로토콜 <code>panel_i2c_protocol.h</code>). EXP 핀맵은 &ldquo;현장 검증&rdquo;과 &ldquo;EXP 관례&rdquo; 두 갈래가 있어 하얀 화면 시 RS/EN/D4~7 정합을 문서 표와 맞출 것.</li>
+<li>스케치 경로: <code>arduino/CronusFarmPanel/</code>·<code>CronusFarmPanel_R3/</code> 등 저장소 기준.</li>
+</ul></div>
+<div class="det"><ul>
+<li><strong>SQLite</strong>: <code>smartfarm.sqlite</code> 및 브리지 스크립트·systemd(<code>cronusfarm-sqlite-bridge</code>)로 NR과 동기.</li>
+<li><strong>InfluxDB 2.x</strong>: tele 등 시계열 적재, NR 플로우의 Influx write 노드·환경변수 참고.</li>
+<li><strong>Grafana</strong>: <code>grafana/dashboards/*.json</code> 자산, Pi 배포 시 대시 복사·reload 스크립트 경로 있음.</li>
+</ul></div>
+<div class="det"><ul>
+<li><code>python scripts/merge_nodered_deploy.py --use-split</code></li>
+<li><code>.\scripts\deploy-cronusfarm-pi.ps1 -PiHostLan 192.168.0.222 -ApplyNodeRed -SkipArduino</code></li>
+<li>Pi: <code>sudo systemctl restart nodered.service</code></li>
+</ul>
+<div class="note"><b>upcode (Windows)</b><pre>cd D:\WorkSpace\Study\MyCode\Cursor\CronusFarm
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\upcode.ps1</pre><b style="display:block;margin-top:10px">Pi 빌드(R4)</b><pre>export FQBN=arduino:renesas_uno:unor4wifi
+~/CronusFarm/scripts/pi-arduino-build.sh ~/CronusFarm/arduino/CronusFarm</pre></div>
+</div>
+</div></section></div></section></div></section><section id="sec-local" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">로컬 개발</h2><div class="cf-dev-sec-body"><section class="cf-doc-sec">
+<h2 class="cf-doc-h"><span class="ch-n">0</span> 개발현황 · 보는 방법</h2>
+<p class="lead">Pi <code>/ui</code> → <b>CronusFarm 개발환경</b> 탭. 아래 전체를 한 페이지에서 자세히 표시합니다.</p>
+<ol style="margin:0;padding-left:1.3rem;font-size:0.88rem;color:#222;line-height:1.7">
+<li><code>py scripts/merge_nodered_deploy.py --use-split</code></li>
+<li><code>.\scripts\run-nodered-local-ui.ps1 -SyncFlows</code> (로컬) 또는 Pi <code>pi-nodered-apply-merged.sh</code></li>
+<li>브라우저 <code>/ui</code> → <b>CronusFarm 개발환경</b></li>
+</ol>
+</section></div></section><section id="sec-devdeploy" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">플로우(개발·배포)</h2><div class="cf-dev-sec-body"><h4>순서도 1) 개발 → 머지 → Pi 적용</h4>
+  <ul>
+    <li><b>분할 수정</b>: <code>nodered/flows_cronusfarm_*.json</code> (MQTT/대시보드/개발환경) + 필요 시 <code>arduino/</code>, <code>scripts/</code>, <code>docs/</code></li>
+    <li><b>머지</b>: <code>python scripts/merge_nodered_deploy.py --use-split</code> → <code>nodered/merged-deploy.json</code></li>
+    <li><b>반영(중요)</b>: scp로 파일 복사만이 아니라, Pi에서 <code>POST /admin/flows</code>로 <b>실행 중 플로우 전체 교체</b></li>
+  </ul>
+  <pre>개발 PC
+  └─ merge
+      python scripts/merge_nodered_deploy.py --use-split
+      => nodered/merged-deploy.json
+          └─ Pi(ida) 업로드(scp)
+              └─ Node-RED 적용(핵심)
+                  pi-nodered-apply-merged.sh
+                  => POST http://127.0.0.1:1880/admin/flows
+                  => 기존 flows.json 백업 생성</pre></div></section><section id="sec-camera-pipe" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">카메라 파이프라인</h2><div class="cf-dev-sec-body"><section class="cf-doc-sec">
+<h2 class="cf-doc-h"><span class="ch-n">4</span> AI 카메라 · 실시간 영상 파이프라인</h2>
+<p class="lead">동영상 파일(mp4)은 저장하지 않습니다. 실시간은 <strong>MJPEG 스트림</strong>만, 디스크에는 CCTV <strong>JPEG 스냅샷</strong>과 SQLite 메타·tele가 쌓입니다.</p>
+<div class="flow-panel">
+<svg class="flow-svg" viewBox="0 0 1040 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="카메라 파이프라인">
+  <defs>
+    <linearGradient id="gCam" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1b5e20"/><stop offset="100%" stop-color="#0d3d14"/></linearGradient>
+    <marker id="mG" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#66bb6a"/></marker>
+    <marker id="mB" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#42a5f5"/></marker>
+    <marker id="mO" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#ffb74d"/></marker>
+  </defs>
+  <rect x="8" y="8" width="1024" height="36" rx="8" fill="#0d2137" stroke="#4fc3f7"/>
+  <text x="520" y="31" text-anchor="middle" fill="#e3f2fd" font-size="13" font-weight="800">USB /dev/video0 — 단일 점유 (ustreamer만 정식)</text>
+  <rect x="24" y="62" width="130" height="56" rx="10" fill="url(#gCam)" stroke="#81c784" stroke-width="2"/>
+  <text x="89" y="86" text-anchor="middle" fill="#e8f5e9" font-size="11" font-weight="700">ustreamer</text>
+  <text x="89" y="104" text-anchor="middle" fill="#c8e6c9" font-size="10">:8080 /stream</text>
+  <line x1="154" y1="90" x2="198" y2="90" stroke="#66bb6a" stroke-width="3" marker-end="url(#mG)"/>
+  <rect x="200" y="58" width="150" height="64" rx="10" fill="#1a237e" stroke="#7986cb" stroke-width="2"/>
+  <text x="275" y="84" text-anchor="middle" fill="#e8eaf6" font-size="11" font-weight="700">hailo_stream</text>
+  <text x="275" y="102" text-anchor="middle" fill="#c5cae9" font-size="9">OpenCV←8080 · YOLO</text>
+  <text x="275" y="116" text-anchor="middle" fill="#c5cae9" font-size="9">:8081 /video_feed</text>
+  <line x1="350" y1="90" x2="394" y2="90" stroke="#42a5f5" stroke-width="3" marker-end="url(#mB)"/>
+  <rect x="396" y="62" width="120" height="56" rx="10" fill="#263238" stroke="#90a4ae"/>
+  <text x="456" y="86" text-anchor="middle" fill="#eceff1" font-size="10" font-weight="700">nginx</text>
+  <text x="456" y="104" text-anchor="middle" fill="#b0bec5" font-size="9">/farm/hailo-mjpeg</text>
+  <line x1="516" y1="90" x2="560" y2="90" stroke="#42a5f5" stroke-width="3" marker-end="url(#mB)"/>
+  <rect x="562" y="58" width="130" height="64" rx="10" fill="#4a148c" stroke="#ce93d8" stroke-width="2"/>
+  <text x="627" y="84" text-anchor="middle" fill="#f3e5f5" font-size="11" font-weight="700">대시보드</text>
+  <text x="627" y="102" text-anchor="middle" fill="#e1bee7" font-size="9">모니터 AI img</text>
+  <text x="627" y="116" text-anchor="middle" fill="#e1bee7" font-size="9">자막 오버레이</text>
+  <rect x="24" y="148" width="200" height="48" rx="8" fill="#33691e" stroke="#aed581"/>
+  <text x="124" y="170" text-anchor="middle" fill="#f1f8e9" font-size="10" font-weight="700">CCTV 캡처 (JPEG만)</text>
+  <text x="124" y="186" text-anchor="middle" fill="#dcedc8" font-size="8">/mnt/usb/CCTV/cam01/…</text>
+  <line x1="89" y1="118" x2="124" y2="146" stroke="#aed581" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#mG)"/>
+  <text x="124" y="208" text-anchor="middle" fill="#ffab91" font-size="8">스냅샷 URL (1분 주기) — 스트림과 별도</text>
+  <rect x="280" y="148" width="280" height="130" rx="10" fill="#2d1f1f" stroke="#ef5350" stroke-width="1.5"/>
+  <text x="420" y="172" text-anchor="middle" fill="#ffcdd2" font-size="11" font-weight="800">검정 화면 · 끊김 원인 (점검)</text>
+  <text x="300" y="194" fill="#ffccbc" font-size="9">① cronusfarm-camera.service (레거시 ustreamer) → 8080 충돌 → mask</text>
+  <text x="300" y="210" fill="#ffccbc" font-size="9">② 디스크 100% → 서비스·배포 실패</text>
+  <text x="300" y="226" fill="#ffccbc" font-size="9">③ hailo 빈 MJPEG 청크 / ustreamer 끊김</text>
+  <text x="300" y="242" fill="#a5d6a7" font-size="9">복구: scripts/_pi_fix_camera_ports.sh</text>
+  <rect x="600" y="148" width="420" height="130" rx="10" fill="#1a2836" stroke="#4fc3f7"/>
+  <text x="810" y="172" text-anchor="middle" fill="#e3f2fd" font-size="11" font-weight="800">저장 정책</text>
+  <text x="620" y="196" fill="#b3e5fc" font-size="9">실시간 AI: 디스크 저장 없음 (메모리 MJPEG)</text>
+  <text x="620" y="212" fill="#b3e5fc" font-size="9">CCTV: JPEG + SQLite cctv_photo 메타</text>
+  <text x="620" y="228" fill="#b3e5fc" font-size="9">tele/센서: cronusfarm.sqlite (동영상 아님)</text>
+  <text x="620" y="248" fill="#81c784" font-size="9">MQTT: cronusfarm/camera/ai_count (검출 수·자막)</text>
+</svg>
+</div>
+<p class="tip tip-warn"><b>중복 금지:</b> <code>cronusfarm-ustreamer</code> 와 <code>cronusfarm-camera</code>(레거시)를 동시에 켜지 마세요. Pi에서 <code>systemctl mask cronusfarm-camera</code> 권장.</p>
+</section></div></section><section id="sec-camera-tbl" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">카메라 · 용량</h2><div class="cf-dev-sec-body"><section class="cf-doc-sec">
+<h2 class="cf-doc-h"><span class="ch-n">5</span> 카메라 프로그램 · Pi 용량</h2>
+<p class="lead">정식: ustreamer(8080) + hailo_stream(8081) + CCTV JPEG. 레거시 camera 서비스는 mask.</p>
+<div class="stat-row">
+  <div class="stat"><b>29 GB</b><small>Pi 루트 전체</small></div>
+  <div class="stat"><b>~100%</b><small>사용률 (여유 ~130MB)</small></div>
+  <div class="stat"><b>4.1 GB</b><small>cronusfarm.sqlite</small></div>
+  <div class="stat"><b>2.6 GB</b><small>CCTV JPEG (~2.5만장)</small></div>
+  <div class="stat"><b>0</b><small>CCTV mp4</small></div>
+</div>
+<div class="panel">
+<table class="grid">
+<thead><tr><th>systemd 서비스</th><th>실행</th><th>포트</th><th>저장소 스크립트</th></tr></thead>
+<tbody>
+<tr><td><code>cronusfarm-ustreamer</code><span class="pill pill-ok">정식</span></td><td><code>/usr/bin/ustreamer</code></td><td><strong>8080</strong></td><td><code>deploy/systemd/cronusfarm-ustreamer.service</code></td></tr>
+<tr><td><code>cronusfarm-hailo-stream</code><span class="pill pill-ok">정식</span></td><td><code>scripts/cronusfarm_hailo_stream.py</code></td><td><strong>8081</strong></td><td><code>deploy/systemd/cronusfarm-hailo-stream.service</code></td></tr>
+<tr><td><code>cronusfarm-cctv</code><span class="pill pill-ok">JPEG</span></td><td><code>scripts/cronusfarm_cctv_capture_daemon.py</code></td><td>—</td><td>저장 <code>/mnt/usb/CCTV</code> · <code>/etc/cronusfarm/cctv.env</code></td></tr>
+<tr><td><code>cronusfarm-camera-ai</code><span class="pill pill-muted">비활성</span></td><td><code>scripts/cronusfarm_camera_ai.py</code></td><td>8081</td><td>Hailo 있으면 미사용</td></tr>
+<tr><td><code>cronusfarm-camera</code><span class="pill pill-warn">레거시</span></td><td>ustreamer 중복</td><td>8080</td><td><strong>mask/disable</strong></td></tr>
+</tbody>
+</table>
+</div>
+<div class="panel">
+<table class="grid">
+<thead><tr><th>역할</th><th>소스 파일</th><th>비고</th></tr></thead>
+<tbody>
+<tr><td>대시보드 AI 영상</td><td><code>scripts/patch_dashboard_ai_camera_mjpeg.py</code></td><td><code>/farm/hailo-mjpeg/video_feed</code> 단일 URL</td></tr>
+<tr><td>nginx 프록시</td><td><code>deploy/nginx/cronusfarm-nodered.conf</code></td><td>hailo·ai-mjpeg 경로</td></tr>
+<tr><td>작물 자막·검출</td><td><code>scripts/cronusfarm_crop_caption.py</code></td><td>공통 포맷</td></tr>
+<tr><td>포트 정리</td><td><code>scripts/_pi_fix_camera_ports.sh</code></td><td>8080/8081·video0</td></tr>
+<tr><td>사이트 가드</td><td><code>scripts/pi-cronusfarm-site-guard.sh</code></td><td>MJPEG 200 아니면 재시작</td></tr>
+</tbody>
+</table>
+</div>
+<p class="tip">로컬: <code>.\scripts\run-nodered-local-ui.ps1 -SyncFlows</code> → <code>http://127.0.0.1:1881/ui</code></p>
+</section></div></section><section id="sec-hailo" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">Hailo YOLO 학습</h2><div class="cf-dev-sec-body"><section class="cf-doc-sec">
+<h2 class="cf-doc-h"><span class="ch-n">6</span> Hailo YOLO 재학습 · 배포</h2>
+<p class="lead">Roboflow 라벨링 → YOLOv8 학습 → best.onnx → WSL(x86) HEF 컴파일 → Pi 배포. 잎 1장=박스 1개, 화분 라벨 금지.</p>
+<div class="steps">
+<div class="step"><b>①</b><small>데이터·라벨</small></div>
+<div class="step"><b>②</b><small>YOLO 학습</small></div>
+<div class="step"><b>③</b><small>ONNX</small></div>
+<div class="step"><b>④</b><small>HEF (WSL)</small></div>
+<div class="step"><b>⑤</b><small>Pi 배포</small></div>
+</div>
+<div class="flow-panel">
+<svg class="flow-svg" viewBox="0 0 1040 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Hailo 재학습 흐름">
+<defs>
+<linearGradient id="gH1" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#1a237e"/><stop offset="100%" stop-color="#0d1640"/></linearGradient>
+<marker id="mhG" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#66bb6a"/></marker>
+<marker id="mhO" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6 Z" fill="#ffb74d"/></marker>
+</defs>
+<text x="520" y="22" text-anchor="middle" fill="#e3f2fd" font-size="12" font-weight="800">재학습 파이프라인 (PC/WSL → Pi)</text>
+<rect x="16" y="40" width="118" height="52" rx="10" fill="#33691e" stroke="#aed581"/><text x="75" y="62" text-anchor="middle" fill="#f1f8e9" font-size="10" font-weight="700">Roboflow</text><text x="75" y="78" text-anchor="middle" fill="#dcedc8" font-size="8">tomato·fig 잎</text>
+<line x1="134" y1="66" x2="162" y2="66" stroke="#66bb6a" stroke-width="3" marker-end="url(#mhG)"/>
+<rect x="164" y="40" width="118" height="52" rx="10" fill="url(#gH1)" stroke="#7986cb"/><text x="223" y="62" text-anchor="middle" fill="#e8eaf6" font-size="10" font-weight="700">YOLOv8</text><text x="223" y="78" text-anchor="middle" fill="#c5cae9" font-size="8">Colab/GPU</text>
+<line x1="282" y1="66" x2="310" y2="66" stroke="#66bb6a" stroke-width="3" marker-end="url(#mhG)"/>
+<rect x="312" y="40" width="100" height="52" rx="10" fill="#4a148c" stroke="#ce93d8"/><text x="362" y="62" text-anchor="middle" fill="#f3e5f5" font-size="10" font-weight="700">best.onnx</text><text x="362" y="78" text-anchor="middle" fill="#e1bee7" font-size="8">640×640</text>
+<line x1="412" y1="66" x2="440" y2="66" stroke="#ffb74d" stroke-width="3" marker-end="url(#mhO)"/>
+<rect x="442" y="32" width="148" height="68" rx="10" fill="#e65100" stroke="#ffb74d" stroke-width="2"/><text x="516" y="54" text-anchor="middle" fill="#fff3e0" font-size="10" font-weight="800">WSL x86 + DFC</text><text x="516" y="70" text-anchor="middle" fill="#ffe0b2" font-size="8">hailo parser·optimize</text><text x="516" y="84" text-anchor="middle" fill="#ffe0b2" font-size="8">hailo compiler</text>
+<line x1="590" y1="66" x2="618" y2="66" stroke="#ffb74d" stroke-width="3" marker-end="url(#mhO)"/>
+<rect x="620" y="40" width="100" height="52" rx="10" fill="#1b5e20" stroke="#81c784"/><text x="670" y="62" text-anchor="middle" fill="#e8f5e9" font-size="10" font-weight="700">best.hef</text><text x="670" y="78" text-anchor="middle" fill="#c8e6c9" font-size="8">hailo8l</text>
+<line x1="720" y1="66" x2="748" y2="66" stroke="#66bb6a" stroke-width="3" marker-end="url(#mhG)"/>
+<rect x="750" y="40" width="130" height="52" rx="10" fill="#263238" stroke="#4fc3f7"/><text x="815" y="58" text-anchor="middle" fill="#eceff1" font-size="10" font-weight="700">Pi ~/CronusFarm</text><text x="815" y="74" text-anchor="middle" fill="#b3e5fc" font-size="8">Hailo/ + systemd</text>
+<line x1="880" y1="66" x2="908" y2="66" stroke="#42a5f5" stroke-width="3" marker-end="url(#mhG)"/>
+<rect x="910" y="40" width="110" height="52" rx="10" fill="#4a148c" stroke="#ba68c8"/><text x="965" y="62" text-anchor="middle" fill="#f3e5f5" font-size="10" font-weight="700">/ui AI</text><text x="965" y="78" text-anchor="middle" fill="#e1bee7" font-size="8">bbox·자막</text>
+<rect x="40" y="118" width="960" height="88" rx="10" fill="#1a2836" stroke="#455a64"/>
+<text x="520" y="142" text-anchor="middle" fill="#81d4fa" font-size="11" font-weight="800">Pi 런타임 (추론 경로)</text>
+<rect x="60" y="154" width="110" height="40" rx="8" fill="#33691e" stroke="#aed581"/><text x="115" y="178" text-anchor="middle" fill="#f1f8e9" font-size="9">ustreamer :8080</text>
+<text x="185" y="178" fill="#90a4ae" font-size="14">→</text>
+<rect x="200" y="154" width="130" height="40" rx="8" fill="#1a237e" stroke="#7986cb"/><text x="265" y="172" text-anchor="middle" fill="#e8eaf6" font-size="9">hailo_stream</text><text x="265" y="186" text-anchor="middle" fill="#c5cae9" font-size="8">best.hef NPU</text>
+<text x="345" y="178" fill="#90a4ae" font-size="14">→</text>
+<rect x="360" y="154" width="120" height="40" rx="8" fill="#4a148c" stroke="#ce93d8"/><text x="420" y="178" text-anchor="middle" fill="#f3e5f5" font-size="9">ONNX CPU 폴백</text>
+<text x="495" y="178" fill="#90a4ae" font-size="14">→</text>
+<rect x="510" y="154" width="110" height="40" rx="8" fill="#263238" stroke="#4fc3f7"/><text x="565" y="178" text-anchor="middle" fill="#eceff1" font-size="9">MJPEG :8081</text>
+<text x="635" y="178" fill="#90a4ae" font-size="14">→</text>
+<rect x="650" y="154" width="100" height="40" rx="8" fill="#1b4332" stroke="#2dff7a"/><text x="700" y="178" text-anchor="middle" fill="#d8ffe8" font-size="9">MQTT ai_count</text>
+<text x="765" y="178" fill="#ffab91" font-size="8">Gemini 자막(옵션)</text>
+</svg>
+</div>
+<div class="panel">
+<table class="grid">
+<thead><tr><th>단계</th><th>작업</th><th>산출물 / 명령</th></tr></thead>
+<tbody>
+<tr><td>① 데이터</td><td>Roboflow 또는 CVAT · <strong>잎 1장=박스 1개</strong> · 화분·토양 라벨 금지</td><td>클래스 순서: <code>tomato, fig, butterhead, basil</code> (<code>Hailo/yolov8.json</code> 와 동일)</td></tr>
+<tr><td>② 학습</td><td>노트북 <code>cronusfarm_yolov8_training.ipynb</code> 또는 Ultralytics</td><td><code>model.train(data=…, epochs=80, imgsz=640)</code></td></tr>
+<tr><td>③ ONNX</td><td><code>model.export(format='onnx')</code></td><td><code>runs/detect/train/weights/best.onnx</code></td></tr>
+<tr><td>④ HEF</td><td><strong>WSL Ubuntu x86</strong> + Hailo DFC (Pi ARM 불가)</td><td><code>.\scripts\cronusfarm-hailo-prepare-best.ps1 -RunCompileInWsl</code><br/>또는 <code>bash scripts/linux-x86-hailo-dfc-compile-best.sh</code></td></tr>
+<tr><td>⑤ Pi</td><td>HEF·ONNX·yolov8.json 동기화 + 서비스 재시작</td><td><code>.\scripts\cronusfarm-hailo-prepare-best.ps1 -DeployToPi -SetupOnPi</code><br/><code>sudo systemctl restart cronusfarm-hailo-stream</code></td></tr>
+</tbody>
+</table>
+</div>
+<div class="flow-panel">
+<svg class="flow-svg" viewBox="0 0 920 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="배포 순서">
+<text x="460" y="20" text-anchor="middle" fill="#e3f2fd" font-size="11" font-weight="800">배포 순서 (시간축)</text>
+<rect x="30" y="40" width="100" height="36" rx="8" fill="#263238" stroke="#90a4ae"/><text x="80" y="62" text-anchor="middle" fill="#eceff1" font-size="9">Windows</text>
+<rect x="160" y="40" width="140" height="36" rx="8" fill="#e65100" stroke="#ffb74d"/><text x="230" y="62" text-anchor="middle" fill="#fff3e0" font-size="9">WSL compile HEF</text>
+<rect x="330" y="40" width="120" height="36" rx="8" fill="#1b5e20" stroke="#81c784"/><text x="390" y="62" text-anchor="middle" fill="#e8f5e9" font-size="9">scp → Pi</text>
+<rect x="480" y="40" width="150" height="36" rx="8" fill="#1a237e" stroke="#7986cb"/><text x="555" y="62" text-anchor="middle" fill="#e8eaf6" font-size="9">pi-hailo-setup.sh</text>
+<rect x="660" y="40" width="130" height="36" rx="8" fill="#4a148c" stroke="#ba68c8"/><text x="725" y="62" text-anchor="middle" fill="#f3e5f5" font-size="9">restart hailo</text>
+<rect x="820" y="40" width="80" height="36" rx="8" fill="#1b4332" stroke="#2dff7a"/><text x="860" y="62" text-anchor="middle" fill="#d8ffe8" font-size="9">/ui 확인</text>
+<line x1="130" y1="58" x2="158" y2="58" stroke="#ffb74d" stroke-width="2"/>
+<line x1="300" y1="58" x2="328" y2="58" stroke="#81c784" stroke-width="2"/>
+<line x1="450" y1="58" x2="478" y2="58" stroke="#7986cb" stroke-width="2"/>
+<line x1="630" y1="58" x2="658" y2="58" stroke="#ba68c8" stroke-width="2"/>
+<line x1="790" y1="58" x2="818" y2="58" stroke="#2dff7a" stroke-width="2"/>
+<text x="80" y="100" text-anchor="middle" fill="#90a4ae" font-size="8">best.onnx</text>
+<text x="230" y="100" text-anchor="middle" fill="#90a4ae" font-size="8">best.hef</text>
+<text x="390" y="100" text-anchor="middle" fill="#90a4ae" font-size="8">Hailo/</text>
+<text x="555" y="100" text-anchor="middle" fill="#90a4ae" font-size="8">systemd</text>
+<text x="725" y="100" text-anchor="middle" fill="#90a4ae" font-size="8">8081 MJPEG</text>
+<rect x="40" y="120" width="840" height="68" rx="10" fill="#2d1f1f" stroke="#ef5350"/>
+<text x="460" y="142" text-anchor="middle" fill="#ffcdd2" font-size="10" font-weight="800">주의 · 현장 팁</text>
+<text x="60" y="162" fill="#ffccbc" font-size="9">• 저신뢰 단일 박스(화분 오탐) → filter_crop_dets + Gemini 자막 — 재학습 전 임시</text>
+<text x="60" y="178" fill="#a5d6a7" font-size="9">• 검증: <code>curl -X POST http://127.0.0.1:8081/detect_now</code> · <code>journalctl -u cronusfarm-hailo-stream -f</code></text>
+</svg>
+</div>
+<p class="tip">참고 파일: <code>Hailo/yolov8.json</code> · <code>Hailo/yolov8_crops.alls</code> · <code>scripts/cronusfarm_hailo_stream.py</code> · <code>scripts/cronusfarm_crop_caption.py</code></p>
+</section></div></section><section id="sec-entity" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">호스트 · 소스 · URL</h2><div class="cf-dev-sec-body"><section class="cf-doc-sec">
+<h2 class="cf-doc-h"><span class="ch-n">7</span> 호스트·소스·URL 정체</h2>
+<p class="lead">Pi·Node-RED·Grafana·저장소 경로와 배포 URL 요약 (정본 = PC 저장소 JSON).</p>
+<table>
+<tr><th>Pi 호스트</th><td><code>ida</code> · LAN <code>192.168.60.222</code> · Tailscale <code>ida.mango-larch.ts.net</code></td></tr>
+<tr><th>Node-RED 런타임</th><td><code>/home/dooly/.node-red/flows.json</code></td></tr>
+<tr><th>플로우 반영</th><td><code>bash ~/CronusFarm/scripts/pi-nodered-apply-merged.sh</code> · Admin <code>POST http://127.0.0.1:1880/admin/flows</code> (본문: <code>merged-deploy.json</code> 배열)</td></tr>
+<tr><th>NR 환경(systemd)</th><td><code>/etc/systemd/system/nodered.service.d/</code> (예: <code>cronusfarm-influx.conf</code>, <code>cronusfarm-kma.conf</code>)</td></tr>
+<tr><th>Grafana 대시보드(파일)</th><td><code>/var/lib/grafana/dashboards/cronusfarm_operator_ui.json</code> · 프로비저 <code>/etc/grafana/provisioning/dashboards/cronusfarm.yaml</code></td></tr>
+<tr><th>저장소(Windows)</th><td><code>CronusFarm\nodered\merged-deploy.json</code> · <code>CronusFarm\grafana\dashboards\cronusfarm_operator_ui.json</code></td></tr>
+<tr><th>백필 스크립트(Pi)</th><td><code>/home/dooly/CronusFarm/scripts/kma_backfill_influx.py</code></td></tr>
+<tr><th>CCTV 저장(USB)</th><td><code>/mnt/usb/CCTV/cam01/</code> · NR 정적 <code>/cctv/…</code> (settings·데몬 동일 루트)</td></tr>
+<tr><th>URL 예</th><td>Grafana: <code>http://ida.mango-larch.ts.net:3000/d/cronusfarm-operator-ui/...</code> · farm-ui: <code>/ui</code> · Hailo MJPEG: <code>/farm/hailo-mjpeg/video_feed</code> · CCTV: <code>http://192.168.60.222:1880/cctv/cam01/latest.jpg</code></td></tr>
+</table>
+<p class="note">정본은 PC 저장소 JSON이고, Pi에서는 위 경로가 런타임·프로비저닝 대상이다. <code>merged-deploy.json</code> 수정 → <code>merge_nodered_deploy.py --use-split</code> → Pi apply. (레이아웃만 2열 그룹 → 본문 7절로 이동, 행 삭제 없음)</p>
+</section></div></section><section id="sec-runtime" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">플로우(운영)</h2><div class="cf-dev-sec-body"><h4>순서도 2) 운영 런타임(하드웨어)</h4>
+  <ul>
+    <li><b>UNO R4 WiFi(메인)</b>: 릴레이/펌프/팬 GPIO + MQTT tele/cmd</li>
+    <li><b>UNO R3(패널)</b>: 2004A LCD/엔코더 + I2C 슬레이브(<code>0x38</code>)</li>
+    <li><b>결선</b>: R4 A4(SDA)/A5(SCL) ↔ R3 A4/A5 + GND 공통, 업로드 안정성 위해 UART(D0/D1) 직결 금지</li>
+  </ul>
+  <p style="margin-top:10px"><b>R3(UNO) + BigTreeTech 2004A</b> — 저장소 정본: <a href="https://github.com/cronusfarm/CronusFarm/blob/main/docs/cronusfarm_hardware_pins.md" target="_blank" rel="noopener">docs/cronusfarm_hardware_pins.md</a> §3</p>
+  <ul>
+    <li><b>EXP2 물리 3·5번</b> → R3 <code>A0</code>(ENC A), <code>A1</code>(ENC B) — 다이얼.</li>
+    <li><b>EXP2 물리 2번</b>(SW) → R3 <code>D10</code> — 클릭(기본 <code>CF_ENC_CLICK_USE_PIN=10</code>).</li>
+    <li><b>EXP2 물리 6번</b> → R3 <code>D13</code> — SD CS 미사용 시 <code>OUTPUT HIGH</code>.</li>
+  </ul>
+  <pre>UNO R4 WiFi(메인 제어)  ⇄  MQTT(Mosquitto on Pi)
+      ⇄(I2C A4/A5)⇄  UNO R3(패널 2004A, I2C slave 0x38)</pre></div></section><section id="sec-monitor-src" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">모니터 데이터 출처</h2><div class="cf-dev-sec-body"><style>
+.cf-dev-arch{font-family:system-ui,'Malgun Gothic',sans-serif;color:#e8f0fe;max-width:1100px;margin:0 auto;padding:4px 0}
+.cf-dev-arch h3{margin:0 0 8px;font-size:1rem;color:#aed581;font-weight:800}
+.cf-dev-arch .sub{font-size:11px;color:#9db0cc;margin:0 0 10px;line-height:1.45}
+.cf-dev-arch svg{width:100%;height:auto;display:block}
+</style>
+<h3>데이터 출처 (모니터)</h3>
+<p class="sub">모니터 화면에 보이는 값의 “진실” 경로 — UI 토글만으로는 DB/그래프가 바뀌지 않음</p>
+<svg viewBox="0 0 920 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="모니터 데이터 출처">
+  <defs>
+    <marker id="arr-g" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#7cb342"/></marker>
+  </defs>
+  <rect x="8" y="70" width="100" height="44" rx="8" fill="#1b5e20" stroke="#66bb6a" stroke-width="1.5"/>
+  <text x="58" y="97" text-anchor="middle" fill="#e8f5e9" font-size="11" font-weight="700">Arduino</text>
+  <rect x="140" y="70" width="90" height="44" rx="8" fill="#0d47a1" stroke="#42a5f5"/>
+  <text x="185" y="97" text-anchor="middle" fill="#e3f2fd" font-size="11" font-weight="700">MQTT tele</text>
+  <rect x="262" y="50" width="110" height="44" rx="8" fill="#263238" stroke="#90a4ae"/>
+  <text x="317" y="77" text-anchor="middle" fill="#eceff1" font-size="10" font-weight="700">NR tele 파싱</text>
+  <rect x="262" y="108" width="110" height="44" rx="8" fill="#1a237e" stroke="#7986cb"/>
+  <text x="317" y="128" text-anchor="middle" fill="#e8eaf6" font-size="10" font-weight="700">tele_channel_fact</text>
+  <rect x="400" y="108" width="120" height="44" rx="8" fill="#1a237e" stroke="#7986cb"/>
+  <text x="460" y="128" text-anchor="middle" fill="#e8eaf6" font-size="10" font-weight="700">Bed 24h 타임라인</text>
+  <rect x="8" y="8" width="100" height="44" rx="8" fill="#4a148c" stroke="#ba68c8"/>
+  <text x="58" y="28" text-anchor="middle" fill="#f3e5f5" font-size="10" font-weight="700">Tuya PHW3988</text>
+  <rect x="140" y="8" width="90" height="44" rx="8" fill="#263238" stroke="#ffb74d"/>
+  <text x="185" y="28" text-anchor="middle" fill="#fff3e0" font-size="10" font-weight="700">fn_map</text>
+  <rect x="262" y="8" width="110" height="44" rx="8" fill="#1a237e" stroke="#7986cb"/>
+  <text x="317" y="28" text-anchor="middle" fill="#e8eaf6" font-size="10" font-weight="700">sensor_reading</text>
+  <rect x="400" y="8" width="120" height="44" rx="8" fill="#1a237e" stroke="#7986cb"/>
+  <text x="460" y="28" text-anchor="middle" fill="#e8eaf6" font-size="10" font-weight="700">게이지·24h 수질</text>
+  <line x1="108" y1="92" x2="138" y2="92" stroke="#66bb6a" stroke-width="2" marker-end="url(#arr-g)"/>
+  <line x1="230" y1="92" x2="260" y2="72" stroke="#90a4ae" stroke-width="2" marker-end="url(#arr-g)"/>
+  <line x1="372" y1="72" x2="398" y2="130" stroke="#7986cb" stroke-width="2" marker-end="url(#arr-g)"/>
+  <line x1="108" y1="30" x2="138" y2="30" stroke="#ba68c8" stroke-width="2" marker-end="url(#arr-g)"/>
+  <line x1="230" y1="30" x2="260" y2="30" stroke="#ffb74d" stroke-width="2" marker-end="url(#arr-g)"/>
+  <line x1="372" y1="30" x2="398" y2="30" stroke="#7986cb" stroke-width="2" marker-end="url(#arr-g)"/>
+  <text x="540" y="40" fill="#81c784" font-size="10">수동/스케줄 → tele·cmd 경유 후 DB 적재</text>
+  <text x="540" y="130" fill="#90caf9" font-size="10">GET /api/channel/timeline</text>
+  <text x="540" y="58" fill="#ffcc80" font-size="10">POST /ingest/sensor · GET /api/sensor/series</text>
+</svg></div></section><section id="sec-control" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">제어 흐름(목표)</h2><div class="cf-dev-sec-body"><style>
+.cf-dev-arch{font-family:system-ui,'Malgun Gothic',sans-serif;color:#e8f0fe;max-width:1100px;margin:0 auto;padding:8px 0 4px}
+.cf-dev-arch h3{margin:0 0 8px;font-size:1rem;color:#aed581;font-weight:800}
+.cf-dev-arch .sub{font-size:11px;color:#9db0cc;margin:0 0 10px;line-height:1.45}
+.cf-dev-arch svg{width:100%;height:auto;display:block}
+</style>
+<h3>목표 데이터·제어 흐름</h3>
+<p class="sub">설정·모니터 UI는 표현만 — cmd/tele·DB는 MQTT 탭·bridge 단일 경로</p>
+<svg viewBox="0 0 920 340" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="제어 흐름">
+  <defs>
+    <marker id="arr-b" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#42a5f5"/></marker>
+  </defs>
+  <rect x="320" y="8" width="280" height="52" rx="10" fill="#0d2137" stroke="#4fc3f7" stroke-width="2"/>
+  <text x="460" y="32" text-anchor="middle" fill="#e3f2fd" font-size="12" font-weight="800">/ui Dashboard 1</text>
+  <text x="460" y="48" text-anchor="middle" fill="#90caf9" font-size="10">모니터 · 설정(iframe) · 개발환경</text>
+  <rect x="40" y="88" width="200" height="48" rx="8" fill="#1b4332" stroke="#2dff7a"/>
+  <text x="140" y="110" text-anchor="middle" fill="#d8ffe8" font-size="11" font-weight="700">CronusFarm-모니터</text>
+  <text x="140" y="126" text-anchor="middle" fill="#9ccc65" font-size="9">타일·타임라인·PHW·AI</text>
+  <rect x="360" y="88" width="200" height="48" rx="8" fill="#4a148c" stroke="#ce93d8"/>
+  <text x="460" y="110" text-anchor="middle" fill="#f3e5f5" font-size="11" font-weight="700">CronusFarm-설정</text>
+  <text x="460" y="126" text-anchor="middle" fill="#e1bee7" font-size="9">Bed/스케줄·API iframe</text>
+  <rect x="320" y="160" width="280" height="56" rx="10" fill="#263238" stroke="#ffb74d" stroke-width="2"/>
+  <text x="460" y="184" text-anchor="middle" fill="#fff3e0" font-size="11" font-weight="800">Node-RED (MQTT 탭)</text>
+  <text x="460" y="200" text-anchor="middle" fill="#ffcc80" font-size="9">공통 cmd · tele 파싱 · http→bridge</text>
+  <rect x="320" y="240" width="130" height="48" rx="8" fill="#1a237e" stroke="#7986cb"/>
+  <text x="385" y="262" text-anchor="middle" fill="#e8eaf6" font-size="10" font-weight="700">SQLite bridge</text>
+  <text x="385" y="276" text-anchor="middle" fill="#c5cae9" font-size="9">:18766</text>
+  <rect x="470" y="240" width="130" height="48" rx="8" fill="#0d47a1" stroke="#42a5f5"/>
+  <text x="535" y="262" text-anchor="middle" fill="#e3f2fd" font-size="10" font-weight="700">Mosquitto</text>
+  <rect x="620" y="240" width="120" height="48" rx="8" fill="#1b5e20" stroke="#66bb6a"/>
+  <text x="680" y="262" text-anchor="middle" fill="#e8f5e9" font-size="10" font-weight="700">Arduino R4</text>
+  <line x1="460" y1="60" x2="460" y2="86" stroke="#4fc3f7" stroke-width="2"/>
+  <line x1="140" y1="136" x2="140" y2="158" stroke="#2dff7a" stroke-width="2" marker-end="url(#arr-b)"/>
+  <line x1="460" y1="136" x2="460" y2="158" stroke="#ce93d8" stroke-width="2" marker-end="url(#arr-b)"/>
+  <line x1="400" y1="188" x2="385" y2="238" stroke="#7986cb" stroke-width="2" marker-end="url(#arr-b)"/>
+  <line x1="520" y1="188" x2="535" y2="238" stroke="#42a5f5" stroke-width="2" marker-end="url(#arr-b)"/>
+  <line x1="600" y1="264" x2="618" y2="264" stroke="#66bb6a" stroke-width="2" marker-end="url(#arr-b)"/>
+  <line x1="680" y1="240" x2="520" y2="200" stroke="#66bb6a" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#arr-b)"/>
+  <text x="720" y="210" fill="#81c784" font-size="9">tele 1Hz</text>
+  <text x="40" y="310" fill="#9db0cc" font-size="10">nginx /farm/* → NR:1882 → bridge · SCHED_JSON·채널 cmd → MQTT</text>
+</svg></div></section><section id="sec-comm-a" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">통신 A · 하이브리드</h2><div class="cf-dev-sec-body"><style>
+.cf-dev-arch{font-family:system-ui,'Malgun Gothic',sans-serif;color:#e8f0fe;max-width:1100px;margin:0 auto;padding:2px 0}
+.cf-dev-arch .tag{display:inline-block;margin:0 0 8px;padding:4px 10px;border-radius:6px;background:#263238;border:1px solid #aed581;color:#aed581;font-size:12px;font-weight:800;letter-spacing:.04em}
+.cf-dev-arch h3{margin:0 0 6px;font-size:1rem;color:#81d4fa;font-weight:700}
+.cf-dev-arch .sub{font-size:11px;color:#9db0cc;margin:0 0 8px;line-height:1.45}
+.cf-dev-arch svg{width:100%;height:auto;display:block}
+</style>
+<div class="cf-dev-arch"><span class="tag">통신흐름_하이브리드목표_20260525_01</span><h3>A. 목표 하이브리드 (USB primary + Mosquitto 유지)</h3><p class="sub">R4 farm tele/cmd → USB → bridge. Mosquitto는 KMA·NR 유지.</p><svg viewBox="0 0 920 280" xmlns="http://www.w3.org/2000/svg">
+  <defs><marker id="a1" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#66bb6a"/></marker></defs>
+  <rect x="30" y="100" width="100" height="44" rx="8" fill="#1b5e20" stroke="#66bb6a"/><text x="80" y="126" text-anchor="middle" fill="#e8f5e9" font-size="10" font-weight="700">R4</text>
+  <rect x="30" y="170" width="100" height="40" rx="8" fill="#33691e" stroke="#aed581"/><text x="80" y="194" text-anchor="middle" fill="#f1f8e9" font-size="9">USB ttyACM</text>
+  <line x1="80" y1="144" x2="80" y2="168" stroke="#aed581" stroke-width="2" marker-end="url(#a1)"/>
+  <rect x="160" y="170" width="120" height="40" rx="8" fill="#004d40" stroke="#4db6ac"/><text x="220" y="194" text-anchor="middle" fill="#e0f2f1" font-size="9">r4-serial :18767</text>
+  <rect x="310" y="155" width="140" height="55" rx="8" fill="#1a237e" stroke="#7986cb"/><text x="380" y="178" text-anchor="middle" fill="#e8eaf6" font-size="10" font-weight="700">sqlite_bridge</text><text x="380" y="196" text-anchor="middle" fill="#c5cae9" font-size="8">:18766</text>
+  <rect x="490" y="40" width="110" height="40" rx="8" fill="#263238" stroke="#90a4ae"/><text x="545" y="64" text-anchor="middle" fill="#eceff1" font-size="9">Node-RED</text>
+  <rect x="490" y="100" width="110" height="40" rx="8" fill="#0d47a1" stroke="#42a5f5"/><text x="545" y="124" text-anchor="middle" fill="#e3f2fd" font-size="9">Mosquitto</text>
+  <rect x="640" y="40" width="90" height="40" rx="8" fill="#4a148c" stroke="#ba68c8"/><text x="685" y="64" text-anchor="middle" fill="#f3e5f5" font-size="9">farm-ui</text>
+  <rect x="640" y="155" width="90" height="40" rx="8" fill="#1b4332" stroke="#2dff7a"/><text x="685" y="178" text-anchor="middle" fill="#d8ffe8" font-size="9">/ui</text>
+  <line x1="280" y1="190" x2="308" y2="182" stroke="#4db6ac" stroke-width="2" marker-end="url(#a1)"/>
+  <line x1="450" y1="180" x2="488" y2="60" stroke="#7986cb" stroke-width="2" marker-end="url(#a1)"/>
+  <line x1="450" y1="188" x2="638" y2="60" stroke="#7986cb" stroke-width="1.5" stroke-dasharray="4 3" marker-end="url(#a1)"/>
+  <line x1="450" y1="195" x2="638" y2="175" stroke="#2dff7a" stroke-width="2" marker-end="url(#a1)"/>
+</svg></div></div></section><section id="sec-comm-b" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">통신 B · MQTT</h2><div class="cf-dev-sec-body"><style>
+.cf-dev-arch{font-family:system-ui,'Malgun Gothic',sans-serif;color:#e8f0fe;max-width:1100px;margin:0 auto;padding:2px 0}
+.cf-dev-arch .tag{display:inline-block;margin:0 0 8px;padding:4px 10px;border-radius:6px;background:#263238;border:1px solid #aed581;color:#aed581;font-size:12px;font-weight:800;letter-spacing:.04em}
+.cf-dev-arch h3{margin:0 0 6px;font-size:1rem;color:#81d4fa;font-weight:700}
+.cf-dev-arch .sub{font-size:11px;color:#9db0cc;margin:0 0 8px;line-height:1.45}
+.cf-dev-arch svg{width:100%;height:auto;display:block}
+</style>
+<div class="cf-dev-arch"><span class="tag">통신흐름_MQTT미전환_20260525_02</span><h3>B. MQTT offline · USB 미적용</h3><p class="sub">구성 미전환 시 R4↔Pi farm 경로 끊김.</p><svg viewBox="0 0 920 180" xmlns="http://www.w3.org/2000/svg">
+  <defs><marker id="b1" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#ef5350"/></marker></defs>
+  <rect x="40" y="60" width="90" height="44" rx="8" fill="#1b5e20" stroke="#66bb6a"/><text x="85" y="86" text-anchor="middle" fill="#e8f5e9" font-size="10">R4</text>
+  <rect x="190" y="60" width="100" height="44" rx="8" fill="#b71c1c" stroke="#ef5350"/><text x="240" y="82" text-anchor="middle" fill="#ffcdd2" font-size="9">MQTT ✕</text>
+  <rect x="330" y="60" width="100" height="44" rx="8" fill="#0d47a1" stroke="#42a5f5"/><text x="380" y="86" text-anchor="middle" fill="#e3f2fd" font-size="9">Mosquitto</text>
+  <rect x="470" y="40" width="110" height="44" rx="8" fill="#263238" stroke="#90a4ae"/><text x="525" y="66" text-anchor="middle" fill="#ffcdd2" font-size="9">NR tele 없음</text>
+  <rect x="470" y="100" width="110" height="44" rx="8" fill="#4a148c" stroke="#ba68c8"/><text x="525" y="126" text-anchor="middle" fill="#ffcdd2" font-size="9">모니터 offline</text>
+  <rect x="640" y="70" width="120" height="44" rx="8" fill="#1a237e" stroke="#7986cb"/><text x="700" y="96" text-anchor="middle" fill="#ffcdd2" font-size="9">bridge/UI offline</text>
+  <line x1="130" y1="82" x2="188" y2="82" stroke="#ef5350" stroke-width="2" stroke-dasharray="6 4"/>
+  <line x1="430" y1="82" x2="468" y2="62" stroke="#ef5350" stroke-width="2" marker-end="url(#b1)"/>
+</svg></div></div></section><section id="sec-comm-c" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">통신 C · Pi</h2><div class="cf-dev-sec-body"><style>
+.cf-dev-arch{font-family:system-ui,'Malgun Gothic',sans-serif;color:#e8f0fe;max-width:1100px;margin:0 auto;padding:2px 0}
+.cf-dev-arch .tag{display:inline-block;margin:0 0 8px;padding:4px 10px;border-radius:6px;background:#263238;border:1px solid #aed581;color:#aed581;font-size:12px;font-weight:800;letter-spacing:.04em}
+.cf-dev-arch h3{margin:0 0 6px;font-size:1rem;color:#81d4fa;font-weight:700}
+.cf-dev-arch .sub{font-size:11px;color:#9db0cc;margin:0 0 8px;line-height:1.45}
+.cf-dev-arch svg{width:100%;height:auto;display:block}
+</style>
+<div class="cf-dev-arch"><span class="tag">통신흐름_하이브리드Pi_20260525_03</span><h3>C. 하이브리드 목표 (Pi·현장·/ui)</h3><p class="sub">현장=R4·R3 · Pi=USB·bridge·NR · farm-ui=/ui</p><svg viewBox="0 0 920 260" xmlns="http://www.w3.org/2000/svg">
+  <defs><marker id="c1" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#42a5f5"/></marker></defs>
+  <rect x="20" y="15" width="200" height="32" rx="6" fill="#1b4332" stroke="#2dff7a"/><text x="120" y="36" text-anchor="middle" fill="#d8ffe8" font-size="10" font-weight="700">현장 R4 ↔ I2C ↔ R3</text>
+  <rect x="260" y="15" width="400" height="32" rx="6" fill="#0d2137" stroke="#4fc3f7"/><text x="460" y="36" text-anchor="middle" fill="#e3f2fd" font-size="10" font-weight="700">Pi serial·bridge·NR·Mosq</text>
+  <rect x="700" y="15" width="180" height="32" rx="6" fill="#4a148c" stroke="#ba68c8"/><text x="790" y="36" text-anchor="middle" fill="#f3e5f5" font-size="10">/ui farm-ui</text>
+  <rect x="280" y="75" width="90" height="40" rx="8" fill="#1b5e20" stroke="#66bb6a"/><text x="325" y="99" text-anchor="middle" fill="#e8f5e9" font-size="9">R4</text>
+  <rect x="280" y="135" width="90" height="36" rx="8" fill="#33691e" stroke="#aed581"/><text x="325" y="157" text-anchor="middle" fill="#f1f8e9" font-size="8">USB</text>
+  <rect x="400" y="125" width="100" height="46" rx="8" fill="#004d40" stroke="#4db6ac"/><text x="450" y="152" text-anchor="middle" fill="#e0f2f1" font-size="9">데몬</text>
+  <rect x="530" y="115" width="120" height="56" rx="8" fill="#1a237e" stroke="#7986cb"/><text x="590" y="145" text-anchor="middle" fill="#e8eaf6" font-size="9">bridge</text>
+  <rect x="680" y="85" width="90" height="40" rx="8" fill="#263238" stroke="#90a4ae"/><text x="725" y="109" text-anchor="middle" fill="#eceff1" font-size="9">NR</text>
+  <rect x="680" y="145" width="90" height="40" rx="8" fill="#0d47a1" stroke="#42a5f5"/><text x="725" y="169" text-anchor="middle" fill="#e3f2fd" font-size="8">Mosq</text>
+  <line x1="325" y1="115" x2="325" y2="133" stroke="#aed581" stroke-width="2" marker-end="url(#c1)"/>
+  <line x1="370" y1="153" x2="398" y2="147" stroke="#4db6ac" stroke-width="2" marker-end="url(#c1)"/>
+  <line x1="500" y1="143" x2="678" y2="105" stroke="#7986cb" stroke-width="2" marker-end="url(#c1)"/>
+  <line x1="650" y1="143" x2="788" y2="47" stroke="#2dff7a" stroke-width="2" marker-end="url(#c1)"/>
+</svg></div></div></section><section id="sec-comm-d" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">통신 D · USB</h2><div class="cf-dev-sec-body"><style>
+.cf-dev-arch{font-family:system-ui,'Malgun Gothic',sans-serif;color:#e8f0fe;max-width:1100px;margin:0 auto;padding:2px 0}
+.cf-dev-arch .tag{display:inline-block;margin:0 0 8px;padding:4px 10px;border-radius:6px;background:#263238;border:1px solid #aed581;color:#aed581;font-size:12px;font-weight:800;letter-spacing:.04em}
+.cf-dev-arch h3{margin:0 0 6px;font-size:1rem;color:#81d4fa;font-weight:700}
+.cf-dev-arch .sub{font-size:11px;color:#9db0cc;margin:0 0 8px;line-height:1.45}
+.cf-dev-arch svg{width:100%;height:auto;display:block}
+</style>
+<div class="cf-dev-arch"><span class="tag">통신흐름_USB복구상태_20260525_04</span><h3>D. MQTT offline + USB primary 적용 후</h3><p class="sub">MQTT 로그 offline이어도 tele 1Hz면 farm 정상.</p><svg viewBox="0 0 920 200" xmlns="http://www.w3.org/2000/svg">
+  <defs><marker id="d1" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="#ff7043"/></marker></defs>
+  <rect x="50" y="35" width="80" height="40" rx="8" fill="#1b5e20" stroke="#66bb6a"/><text x="90" y="59" text-anchor="middle" fill="#e8f5e9" font-size="9">R4</text>
+  <text x="155" y="59" fill="#ef5350" font-size="11" font-weight="700">MQTT ✕</text>
+  <rect x="200" y="35" width="90" height="40" rx="8" fill="#0d47a1" stroke="#42a5f5"/><text x="245" y="59" text-anchor="middle" fill="#e3f2fd" font-size="9">Mosquitto</text>
+  <rect x="330" y="25" width="100" height="36" rx="8" fill="#263238" stroke="#ef5350"/><text x="380" y="47" text-anchor="middle" fill="#ffcdd2" font-size="8">NR MQTT탭</text>
+  <rect x="330" y="75" width="100" height="36" rx="8" fill="#4a148c" stroke="#ef5350"/><text x="380" y="97" text-anchor="middle" fill="#ffcdd2" font-size="8">connLineOk✕</text>
+  <rect x="480" y="50" width="130" height="50" rx="8" fill="#1a237e" stroke="#7986cb"/><text x="545" y="72" text-anchor="middle" fill="#e8eaf6" font-size="9">sqlite_bridge</text><text x="545" y="88" text-anchor="middle" fill="#81c784" font-size="8">USB ingest OK</text>
+  <rect x="50" y="120" width="80" height="36" rx="8" fill="#33691e" stroke="#aed581"/><text x="90" y="142" text-anchor="middle" fill="#f1f8e9" font-size="8">USB tele</text>
+  <line x1="130" y1="138" x2="478" y2="75" stroke="#66bb6a" stroke-width="2" marker-end="url(#d1)"/>
+  <text x="640" y="55" fill="#9db0cc" font-size="9">mqtt_status_log offline ≠ farm 중단</text>
+  <text x="640" y="75" fill="#81c784" font-size="9">tele_sample 1Hz = USB primary 정상</text>
+</svg></div></div></section><section id="sec-flow-data" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">플로우(DB·연동)</h2><div class="cf-dev-sec-body"><h4>순서도 3) 데이터/관측(DB · Influx · Grafana)</h4>
+  <ul>
+    <li><b>SQLite</b>: 정합(작물/스케줄/메타/이벤트·AI 메타)</li>
+    <li><b>InfluxDB 2.x</b>: 시계열(tele/상태/알림/AI) · bucket은 <b>CronusFarm</b> 권장</li>
+    <li><b>Grafana</b>: Influx(Flux) 대시보드/알림</li>
+  </ul>
+  <pre>Node-RED(허브)
+  ├─ SQLite(정합)
+  ├─ InfluxDB(시계열, bucket CronusFarm)
+  └─ Grafana(대시/알림)</pre></div></section><section id="sec-arch" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">구성요소 · 데이터흐름</h2><div class="cf-dev-sec-body"><h4>구성요소 역할 / 데이터 흐름(요약) — 전문(잘림 없이)</h4>
+  <p>Arduino(센서/릴레이) → Node-RED(수집·정규화·저장·제어 API) → InfluxDB(시계열: tele/alert_events/ai_detections 등) → Grafana(시각화·알림)</p>
+  <p><b>InfluxDB</b>: 시간축 데이터(센서·장치상태·알림·AI)를 저장. bucket은 <b>CronusFarm</b> 권장.</p>
+  <p><b>SQLite</b>: 관계형(작물/스케줄/이미지/AI 메타/이벤트). Grafana에서 직접 조회하려면 플러그인 등 추가 구성이 필요하므로, 기본 구성에서는 Node-RED가 시계열을 Influx에도 같이 저장하는 방식 권장.</p>
+  <p><b>통신</b>(Arduino → Node-RED): MQTT 권장(topic 예: <code>cronusfarm/&lt;DEVICE_ID&gt;/tele</code>, <code>cronusfarm/&lt;DEVICE_ID&gt;/cmd</code>)</p>
+  <ul>
+    <li><b>패널 이력</b>: Mega+TriGorilla 레퍼런스는 문서/mega.html로 남기되, 운영은 UNO R3 패널 + I2C로 단순화(2004A 대응).</li>
+  </ul></div></section><section id="sec-nr-paths" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">Node-RED 경로</h2><div class="cf-dev-sec-body"><motion.div class="cf-df-paths" layout>
+<style>
+.cf-df-paths{font-family:system-ui,'Malgun Gothic',sans-serif;color:#ececec;line-height:1.55;max-width:960px;margin:0 auto;font-size:0.82rem}
+.cf-df-paths h3{margin:0 0 8px;font-size:1rem;color:#aed581}
+.cf-df-paths code{background:#1e1e24;padding:2px 6px;border-radius:4px;font-size:0.78rem;color:#ffcc80}
+.cf-df-paths ul{margin:6px 0 12px 18px;padding:0}
+.cf-df-paths li{margin:4px 0}
+.cf-df-paths .pi{color:#81d4fa}
+</style>
+<h3>Node-RED 플로우 — 수정·배포 경로</h3>
+<p><strong>로컬(PC)에서 수정하는 파일</strong> (저장소 <code>d:\WorkSpace\Study\MyCode\Cursor\CronusFarm\nodered\</code>)</p>
+<ul>
+<li><code>flows_cronusfarm_dashboard.json</code> — /ui 대시보드·모니터·설정</li>
+<li><code>flows_cronusfarm_mqtt.json</code> — MQTT·tele·SQLite HTTP</li>
+<li><code>flows_cronusfarm_devflow_flow.json</code> — 개발환경 탭·PHW3988 플로우</li>
+</ul>
+<p>배포 전 병합: <code>python scripts/merge_nodered_deploy.py --use-split</code> → <code>merged-deploy.json</code></p>
+<p><strong>Pi 배포 후 실제 동작 파일</strong></p>
+<ul>
+<li class="pi">저장소 복사: <code>/home/dooly/CronusFarm/nodered/merged-deploy.json</code></li>
+<li class="pi">Node-RED 실행: <code>/home/dooly/.node-red/flows.json</code></li>
+</ul>
+<p>배포: <code>.\scripts\deploy-cronusfarm-pi.ps1 -PiHost 192.168.0.222 -ApplyNodeRed -UseSplitFlows -SkipArduino</code></p>
+</motion.div></div></section><section id="sec-panel" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">패널 LCD 가이드</h2><div class="cf-dev-sec-body"><style>
+/* Dashboard /ui ui_template 높이 제한 시에도 스크롤로 전체 표시 */
+.cf-pu-scroll{max-height:min(92vh,4800px);overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-right:10px;box-sizing:border-box}
+.cf-pu{font-family:system-ui,"Malgun Gothic",sans-serif;color:#eceff1;line-height:1.5;max-width:1040px;margin:0 auto}
+.cf-pu h3{margin:0 0 12px;font-size:1.05rem;color:#aed581;font-weight:800}
+.cf-pu h4{margin:16px 0 6px;font-size:0.92rem;color:#90caf9;font-weight:700}
+.cf-pu h5{margin:12px 0 4px;font-size:0.85rem;color:#b0bec5;font-weight:600}
+.cf-pu p,.cf-pu li{font-size:0.8rem;color:#cfd8dc;margin:5px 0}
+.cf-pu ul{margin:4px 0;padding-left:1.1rem}
+.cf-pu .snap{font-family:Consolas,"Courier New",monospace;font-size:0.7rem;color:#e1f5fe;background:#0a1620;padding:8px 10px;margin:6px 0;border-radius:6px;border:1px solid #37474f;white-space:pre;line-height:1.32;overflow-x:auto}
+.cf-pu .cap{font-size:0.68rem;color:#78909c;margin:0 0 8px}
+.cf-pu .dial{margin-top:10px;padding:10px 12px;background:#263238;border-radius:8px;border:1px solid #455a64;font-size:0.78rem}
+.cf-pu .dial strong{color:#fff7c2}
+.cf-pu code{font-size:0.82em;background:#37474f;padding:1px 5px;border-radius:3px;color:#ffe082}
+.cf-pu table{font-size:0.72rem;border-collapse:collapse;width:100%;margin:6px 0}
+.cf-pu th,.cf-pu td{border:1px solid #455a64;padding:4px 6px;text-align:left}
+.cf-pu th{background:#37474f;color:#ffcc80}
+.cf-pu .note{border-left:3px solid #5c6bc0;padding:6px 10px;background:#2a2a32;margin:8px 0;font-size:0.74rem;color:#b0bec5}
+</style>
+<div class="cf-pu">
+
+<h3>패널 LCD — 전체 상태 (20×4, 캡처 스타일)</h3>
+<h4>이 문서가 붙는 Node-RED 위치</h4>
+<ul>
+<li><strong>개발플로우 탭</strong> <code>ui_tab_devflow</code> → 그룹 <strong>하드웨어</strong> (<code>cf_grp_dev_hw</code>) → <code>cf_tpl_dev_hw_panel</code>(EXP1/EXP2 핀 요약) · 템플릿 <code>cf_tpl_dev_panel_usage</code> (표기상 “패널 LCD 사용 가이드” 전체).</li>
+<li><strong>Dashboard 1</strong> <code>/ui</code> 의 <strong>쉘(Shell)</strong> 탭 → <code>ui_tpl_shell_panel_usage</code> 노드(이 HTML과 동일 본문). 정본 파일은 저장소 <code>nodered/panel_usage_cf_tpl.html</code> — 수정 후 <code>python scripts/sync_panel_usage_into_dashboard_shell.py</code> 로 devflow·쉘에 동기.</li>
+</ul>
+<h4>R3 EXP1(2004A) ↔ UNO — 액정·부저·전원 (현장 검증)</h4>
+<p><strong>2×5 IDC:</strong> 확인 기준 <strong>오른쪽 위 = 9번(GND)</strong>, <strong>오른쪽 아래 = 10번(VCC)</strong>. <strong>엔코더 회전은 EXP2</strong> 리본, <strong>클릭은 EXP1-2 → D8</strong>(EXP1-2와 EXP2-2를 **잇지 않아도 됨**). EXP1-1은 <strong>부저</strong>, 타단 <strong>VCC</strong>(통상 10번).</p>
+<table>
+<thead><tr><th>EXP1 물리</th><th>역할</th><th>UNO(R3) 연결</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><strong>부저</strong> (타단 VCC·보통 10번)</td><td><strong>D9</strong></td></tr>
+<tr><td>2</td><td><strong>엔코더 클릭</strong> (BTN_ENC)</td><td><strong>D8</strong></td></tr>
+<tr><td>3</td><td>LCD EN</td><td><strong>D7</strong></td></tr>
+<tr><td>4</td><td>LCD RS</td><td><strong>D6</strong></td></tr>
+<tr><td>5</td><td>LCD D4</td><td><strong>D5</strong></td></tr>
+<tr><td>6</td><td>LCD D5</td><td><strong>D4</strong></td></tr>
+<tr><td>7</td><td>LCD D6</td><td><strong>D3</strong></td></tr>
+<tr><td>8</td><td>LCD D7</td><td><strong>D2</strong></td></tr>
+<tr><td>9</td><td>GND</td><td><strong>GND</strong></td></tr>
+<tr><td>10</td><td>5V (VCC)</td><td><strong>5V</strong></td></tr>
+</tbody>
+</table>
+<p>정본: <a href="https://github.com/cronusfarm/CronusFarm/blob/main/docs/cronusfarm_hardware_pins.md" target="_blank" rel="noopener">docs/cronusfarm_hardware_pins.md</a> §3.2.1.</p>
+
+<h4>R3 EXP2(2004A) ↔ UNO — 엔코더·SD (교차 배선)</h4>
+<p><strong>엔코더 회전(A/B)·SD SPI</strong>는 EXP2. 기본(교차): <strong>2→D10</strong>(MISO 등·클릭 아님), <strong>3·5→A0·A1</strong>, <strong>6→D13</strong>. 클릭은 <strong>EXP1-2→D8</strong>.</p>
+<table>
+<thead><tr><th>EXP2 물리</th><th>UNO 핀(연결)</th><th>역할(기본 펌웨어)</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>D12</td><td>풀업 고정</td></tr>
+<tr><td>2</td><td><strong>D10</strong></td><td>SPI/MISO 등 (클릭은 EXP1-2→D8)</td></tr>
+<tr><td>3</td><td>A0</td><td>ENC A</td></tr>
+<tr><td>4</td><td>D11</td><td>풀업 고정</td></tr>
+<tr><td>5</td><td>A1</td><td>ENC B</td></tr>
+<tr><td>6</td><td><strong>D13</strong></td><td>SD CS <code>OUTPUT HIGH</code></td></tr>
+</tbody>
+</table>
+<p>정본 <code>docs/cronusfarm_hardware_pins.md</code> §5·§5.6. 테두리 <code>|</code> 안은 <strong>정확히 20글자</strong>. R4 대기 2행은 <code>snprintf("%s %s", "WiFi …", " MQTT …")</code> 때문에 <strong>WiFi 끝과 MQTT 사이에 공백 두 칸</strong>이 들어간다.</p>
+
+<h4>A. R3만 (I2C 마스터 없음)</h4>
+<h5>A-1 부팅 직후</h5>
+<div class="snap">+--------------------+
+|CronusFarm Panel    |
+|                    |
+|                    |
+|                    |
++--------------------+</div>
+<h5>A-2 약 10초 후 로컬 환영 (<code>BOOT_MSG_MS</code>)</h5>
+<div class="snap">+--------------------+
+|Welcome to CronusFar|
+|----.--.-- (---)    |
+|--:--:--            |
+|                    |
++--------------------+</div>
+<span class="cap">1행 21자 소스 → 20자만 표시. 2·3행은 플레이스홀더(R3 RTC 미갱신).</span>
+
+<h4>B. R4 스플래시 (I2C 링크 직후, 각 <strong>최소 5초</strong>)</h4>
+<h5>B-1 WiFi OK / MQTT OK</h5>
+<div class="snap">+--------------------+
+|CronusFarm          |
+|WiFi OK             |
+|MQTT OK             |
+|Dial/Push Ready     |
++--------------------+</div>
+<h5>B-2 WiFi OK / MQTT --</h5>
+<div class="snap">+--------------------+
+|CronusFarm          |
+|WiFi OK             |
+|MQTT --             |
+|Dial/Push Ready     |
++--------------------+</div>
+<p class="cap"><strong>B-3(구·이론)</strong> WiFi <code>--</code> + MQTT <code>OK</code> 조합은 WiFi 경로만 쓰면 나오지 않는 것이 맞다. <strong>현재 펌웨어</strong>는 표시상 WiFi 끊기면 MQTT 줄도 무조건 <code>MQTT --</code> 로 맞춘다.</p>
+<h5>B-3 WiFi -- / MQTT --</h5>
+<div class="snap">+--------------------+
+|CronusFarm          |
+|WiFi --             |
+|MQTT --             |
+|Dial/Push Ready     |
++--------------------+</div>
+
+<h4>C. R4 WiFi 대기 (<code>lcdRenderUi</code>, 환영 전, <strong>최소 5초</strong> 타이머 구간)</h4>
+<p>1행: 채널·핀(기본 <code>LED A1 D2</code>). 2행: WiFi 미연결 시 MQTT 표시도 <code>--</code> 로 통일 → 실질적으로 <strong>3종</strong>(WiFi 끔 / WiFi 켬·MQTT 끔 / 둘 다 켬).</p>
+<h5>C-1 WiFi 미연결</h5>
+<div class="snap">+--------------------+
+|LED A1 D2           |
+|WiFi --  MQTT --    |
+|Waiting link...     |
+|                    |
++--------------------+</div>
+<h5>C-2 WiFi 연결·MQTT 미연결</h5>
+<div class="snap">+--------------------+
+|LED A1 D2           |
+|WiFi OK  MQTT --    |
+|Waiting link...     |
+|                    |
++--------------------+</div>
+<h5>C-3 WiFi·MQTT 연결 (환영 전이면 잠깐만 보일 수 있음)</h5>
+<div class="snap">+--------------------+
+|LED A1 D2           |
+|WiFi OK  MQTT OK    |
+|Waiting link...     |
+|                    |
++--------------------+</div>
+
+<h4>D. R4 환영 (<code>lcdWelcomeIfOk</code>, <strong>최대 약 5초</strong>)</h4>
+<h5>D-1 RTC 정상 (예시)</h5>
+<div class="snap">+--------------------+
+|Welcome to          |
+|CronusFarm          |
+|2026.05.12 (Mon)    |
+|12:34:56 PM         |
++--------------------+</div>
+<h5>D-2 RTC 읽기 실패</h5>
+<div class="snap">+--------------------+
+|Welcome to          |
+|CronusFarm          |
+|RTC -- set time     |
+|--:--:--            |
++--------------------+</div>
+<h5>D-3 RTC 칩만 이상·무효일 때 부트 1회 기본값 (<code>rtcEnsureValidOnce</code>)</h5>
+<div class="snap">+--------------------+
+|Welcome to          |
+|CronusFarm          |
+|2025.12.22 (Mon)    |
+|09:00:00 AM         |
++--------------------+</div>
+<span class="cap">연·월·일 요일은 펌웨어 고정(2025-12-22). 이후 NTP·수동으로 교정. 칩에 이미 유효 연도가 있으면 이 블록은 적용 안 됨.</span>
+
+<h4>FAQ — R4 켜 둔 채 R3만 리셋</h4>
+<p>R4는 패널 살아 있다고 착각할 수 있어 I2C가 <strong>1.5초 이상</strong> 응답 없으면 링크 해제 후 다시 스플래시·동기한다. 스플래시는 <strong>이미 환영된 세션</strong>에서도 <code>lcdBrowseDraw</code>가 덮지 않도록 유지 시간을 존중한다. 다이얼 돌릴 때 빈 줄은 I2C에서 <strong>4행 매번 전송</strong>으로 완화.</p>
+
+<h4>E. 브라우즈 (<code>lcdBrowseDraw</code>, 환영 5초 후 또는 다이얼로 생략)</h4>
+<p>2행: <code>MODE:AUTO</code> 또는 <code>MODE:MAN </code>(끝 공백). 3행: <code>STATE:ON </code> 또는 <code>STATE:OFF</code> + 고정 공백 + <code>CH순번/15</code>.</p>
+<h5>E-1 CH1 LED A1 · MAN · OFF</h5>
+<div class="snap">+--------------------+
+|LED A1 (D2)         |
+|MODE:MAN            |
+|STATE:OFF    CH1/15 |
+|Dial:Next, Push:Edit|
++--------------------+</div>
+<h5>E-2 CH1 · AUTO · ON</h5>
+<div class="snap">+--------------------+
+|LED A1 (D2)         |
+|MODE:AUTO           |
+|STATE:ON     CH1/15 |
+|Dial:Next, Push:Edit|
++--------------------+</div>
+<h5>E-3 CH8 FAN A1 · MAN · OFF</h5>
+<div class="snap">+--------------------+
+|FAN A1 (D9)         |
+|MODE:MAN            |
+|STATE:OFF    CH8/15 |
+|Dial:Next, Push:Edit|
++--------------------+</div>
+<h5>E-4 CH15 PUMP D2 · MAN · OFF</h5>
+<div class="snap">+--------------------+
+|PUMP D2 (A3)        |
+|MODE:MAN            |
+|STATE:OFF    CH15/15|
+|Dial:Next, Push:Edit|
++--------------------+</div>
+<h5>E-5 이상: 2행만 비어 보임 (현장)</h5>
+<div class="snap">+--------------------+
+|LED A1 (D2)         |
+|                    |
+|STATE:OFF    CH1/15 |
+|Dial:Next, Push:Edit|
++--------------------+</div>
+<span class="cap">정상 코드는 2행에 항상 MODE를 보냄. I2C 실패·캐시·대비·잔상 → §5.4. 최신 펌웨어는 전송 실패 시 캐시 미갱신.</span>
+
+<h5>E-6 브라우즈 1행 — 채널 15개 (괄호·핀, 펌웨어 그대로)</h5>
+<table>
+<thead><tr><th>순번</th><th>1행 내용 (20열로 패딩됨)</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>LED A1 (D2)         </code></td></tr>
+<tr><td>2</td><td><code>LED A2 (D3)         </code></td></tr>
+<tr><td>3</td><td><code>LED B1 (D6)         </code></td></tr>
+<tr><td>4</td><td><code>PUMP A1 (D4)        </code></td></tr>
+<tr><td>5</td><td><code>PUMP A2 (D5)        </code></td></tr>
+<tr><td>6</td><td><code>PUMP B1 (D7)        </code></td></tr>
+<tr><td>7</td><td><code>PUMP B2 (D8)        </code></td></tr>
+<tr><td>8</td><td><code>FAN A1 (D9)         </code></td></tr>
+<tr><td>9</td><td><code>FAN A2 (D10)        </code></td></tr>
+<tr><td>10</td><td><code>FAN B1 (D11)        </code></td></tr>
+<tr><td>11</td><td><code>FAN B2 (D12)        </code></td></tr>
+<tr><td>12</td><td><code>PUMP C1 (A0)        </code></td></tr>
+<tr><td>13</td><td><code>PUMP C2 (A1)        </code></td></tr>
+<tr><td>14</td><td><code>PUMP D1 (A2)        </code></td></tr>
+<tr><td>15</td><td><code>PUMP D2 (A3)        </code></td></tr>
+</tbody>
+</table>
+
+<h4>F. EDIT (<code>lcdRenderUi</code> EDIT 분기)</h4>
+<h5>F-1 SET:OFF (CH1 예)</h5>
+<div class="snap">+--------------------+
+|Setting Mode (EDIT) |
+|LED A1 (D2)         |
+|SET:OFF             |
+|Dial:Sel Push:OK    |
++--------------------+</div>
+<h5>F-2 SET:ON</h5>
+<div class="snap">+--------------------+
+|Setting Mode (EDIT) |
+|LED A1 (D2)         |
+|SET:ON              |
+|Dial:Sel Push:OK    |
++--------------------+</div>
+<h5>F-3 SET:AUTO</h5>
+<div class="snap">+--------------------+
+|Setting Mode (EDIT) |
+|LED A1 (D2)         |
+|SET:AUTO            |
+|Dial:Sel Push:OK    |
++--------------------+</div>
+<span class="cap">2행(장치명)은 E-6과 동일. 다이얼은 <strong>OFF→ON→AUTO</strong> 순환. AUTO=<code>chAuto</code>(펌웨어 펌프 주기·Pi MQTT <code>auto_*</code>·스케줄 연동).</span>
+
+<h4>G. 다이얼</h4>
+<div class="dial">
+<strong>브라우즈</strong> — 회전: 채널 이전/다음(표 E-6 순서). 누름: EDIT. 환영 5초 안 첫 입력은 CH1부터.<br/>
+<strong>EDIT</strong> — 회전: <strong>OFF / ON / AUTO</strong> 순환. 누름: 적용 후 브라우즈.
+</div>
+
+<h4>Node-RED / 동기</h4>
+<p>노드 부착 위치는 위 §「이 문서가 붙는 Node-RED 위치」. Dashboard 2: <code>/nrdb2</code>. 배포 머지는 <code>merge_nodered_deploy.py --use-split</code> 등 <code>docs/cronusfarm_hardware_pins.md</code> §4.</p>
+
+<div class="note">R3가 <code>PANEL_CMD_CLEAR</code> 직후 잠깐 빈 화면이 나올 수 있음(즉시 다음 <code>SET_LINE</code>으로 채워짐).</div>
+</div></div></section><section id="sec-hw" class="cf-dev-sec cf-monitor-grp"><h2 class="cf-dev-sec-title">하드웨어 · 핀맵</h2><div class="cf-dev-sec-body"><div class="cf-dev-hw-panel" style="font-family:system-ui,'Malgun Gothic',sans-serif;font-size:12px;line-height:1.45;color:#ececec">
+<p style="margin:0 0 8px;font-weight:700;color:#aed581">패널 LCD 표시 상태</p>
+<p style="margin:0 0 8px;opacity:.92">R3/R4 부팅 시 2004A 패널에 나오는 화면 순서(한 페이지).</p>
+<p style="margin:0 0 10px"><a href="/cronusfarm-static/cronusfarm_panel_lcd_boot.html" target="_blank" rel="noopener" style="color:#80deea">문서 열기 (패널 부팅 순서)</a></p>
+<p style="margin:0 0 6px;opacity:.85;font-size:11px">Pi 적용 후에도 링크가 안 열리면 <code style="color:#ffcc80">bash ~/CronusFarm/scripts/pi-nodered-apply-settings-farm.sh</code> 로 settings(httpStatic)를 한 번 실행하세요.</p>
+<svg xmlns="http://www.w3.org/2000/svg" width="100%" height="72" viewBox="0 0 420 72" preserveAspectRatio="xMidYMid meet" style="display:block;max-width:420px;margin:6px 0 0;border-radius:8px;background:rgba(255,255,255,.04)">
+<rect x="4" y="18" width="88" height="36" rx="6" fill="none" stroke="#80cbc4" stroke-width="1.5"/>
+<text x="48" y="40" text-anchor="middle" fill="#b2dfdb" font-size="11" font-family="system-ui,sans-serif">R4 WiFi</text>
+<path d="M96 36 L130 36" stroke="#90caf9" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="132" y="18" width="88" height="36" rx="6" fill="none" stroke="#90caf9" stroke-width="1.5"/>
+<text x="176" y="40" text-anchor="middle" fill="#bbdefb" font-size="11" font-family="system-ui,sans-serif">MQTT</text>
+<path d="M224 36 L258 36" stroke="#ce93d8" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="260" y="18" width="88" height="36" rx="6" fill="none" stroke="#ce93d8" stroke-width="1.5"/>
+<text x="304" y="40" text-anchor="middle" fill="#e1bee7" font-size="11" font-family="system-ui,sans-serif">Pi NR</text>
+<path d="M352 36 L386 36" stroke="#ffcc80" stroke-width="1.5" marker-end="url(#ah)"/>
+<rect x="388" y="14" width="28" height="44" rx="4" fill="none" stroke="#ffcc80" stroke-width="1.5"/>
+<text x="402" y="40" text-anchor="middle" fill="#ffe0b2" font-size="9" font-family="system-ui,sans-serif">LCD</text>
+<defs><marker id="ah" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#90caf9"/></marker></defs>
+<text x="210" y="12" text-anchor="middle" fill="#9db0cc" font-size="10" font-family="system-ui,sans-serif">현장 데이터 흐름(개념)</text>
+</svg>
+<p style="margin:12px 0 6px;font-weight:700;color:#90caf9">R3 EXP1 / EXP2 → UNO (CronusFarm 기본)</p>
+<table style="width:100%;border-collapse:collapse;font-size:11px;margin:0 0 10px;color:#ececec"><thead><tr style="background:rgba(255,255,255,.08)"><th style="border:1px solid #455a64;padding:3px 4px">EXP1</th><th style="border:1px solid #455a64;padding:3px 4px">UNO</th><th style="border:1px solid #455a64;padding:3px 4px">역할</th></tr></thead><tbody>
+<tr><td style="border:1px solid #455a64;padding:3px 4px">1</td><td style="border:1px solid #455a64;padding:3px 4px">D9</td><td style="border:1px solid #455a64;padding:3px 4px">부저 (반대 VCC·10)</td></tr>
+<tr><td style="border:1px solid #455a64;padding:3px 4px">2</td><td style="border:1px solid #455a64;padding:3px 4px">D8</td><td style="border:1px solid #455a64;padding:3px 4px">엔코더 클릭</td></tr>
+<tr><td style="border:1px solid #455a64;padding:3px 4px">3–8</td><td style="border:1px solid #455a64;padding:3px 4px">D7→D2</td><td style="border:1px solid #455a64;padding:3px 4px">LCD EN/RS/D4–D7</td></tr>
+<tr><td style="border:1px solid #455a64;padding:3px 4px">9</td><td style="border:1px solid #455a64;padding:3px 4px">GND</td><td style="border:1px solid #455a64;padding:3px 4px">오른쪽 위(확인)</td></tr>
+<tr><td style="border:1px solid #455a64;padding:3px 4px">10</td><td style="border:1px solid #455a64;padding:3px 4px">5V</td><td style="border:1px solid #455a64;padding:3px 4px">VCC 오른쪽 아래</td></tr>
+</tbody></table>
+<table style="width:100%;border-collapse:collapse;font-size:11px;margin:0 0 10px;color:#ececec"><thead><tr style="background:rgba(255,255,255,.08)"><th style="border:1px solid #455a64;padding:3px 4px">EXP2</th><th style="border:1px solid #455a64;padding:3px 4px">UNO</th><th style="border:1px solid #455a64;padding:3px 4px">역할</th></tr></thead><tbody>
+<tr><td style="border:1px solid #455a64;padding:3px 4px">1</td><td style="border:1px solid #455a64;padding:3px 4px">D12</td><td style="border:1px solid #455a64;padding:3px 4px">풀업</td></tr>
+<tr><td style="border:1px solid #455a64;padding:3px 4px">2</td><td style="border:1px solid #455a64;padding:3px 4px">D10</td><td style="border:1px solid #455a64;padding:3px 4px">MISO/SPI (클릭 아님)</td></tr>
+<tr><td style="border:1px solid #455a64;padding:3px 4px">3 / 5</td><td style="border:1px solid #455a64;padding:3px 4px">A0 / A1</td><td style="border:1px solid #455a64;padding:3px 4px">ENC A / B</td></tr>
+<tr><td style="border:1px solid #455a64;padding:3px 4px">4</td><td style="border:1px solid #455a64;padding:3px 4px">D11</td><td style="border:1px solid #455a64;padding:3px 4px">풀업</td></tr>
+<tr><td style="border:1px solid #455a64;padding:3px 4px">6</td><td style="border:1px solid #455a64;padding:3px 4px">D13</td><td style="border:1px solid #455a64;padding:3px 4px">SD CS HIGH</td></tr>
+</tbody></table>
+<p style="margin:0 0 8px;opacity:.85;font-size:11px">전체 표·LCD 상태 상세는 아래 <code style="color:#ffcc80">cf_tpl_dev_panel_usage</code> 노드와 동일 본문 <code style="color:#ffcc80">panel_usage_cf_tpl.html</code> — <code style="color:#ffcc80">python scripts/sync_panel_usage_into_dashboard_shell.py</code></p>
+<p style="margin:6px 0 0;opacity:.88;font-size:11px">저장소 파일: <code style="color:#ffcc80">nodered/dashboard/cronusfarm_panel_lcd_boot.html</code></p>
+</div></div></section>
+  </div>
+</div>
+<script>
+var O=location.origin||'';
+document.querySelectorAll('[data-cf-href]').forEach(function(el){
+  var role=el.getAttribute('data-cf-href');
+  if(role==='settings')el.setAttribute('href',O+'/farm/ui/#/');
+  if(role==='admin')el.setAttribute('href',O+'/farm/ui/#/admin');
+  el.addEventListener('click',function(e){
+    e.preventDefault();
+    var u=el.getAttribute('href');
+    try{(window.top||window).location.replace(u);}catch(err){location.replace(u);}
+  });
+});
+</script>
+<script>
+function cfDevResize(){try{var h=document.documentElement.scrollHeight;
+parent.postMessage({type:'cf-devflow-iframe-resize',height:h},'*');}catch(e){}}
+window.addEventListener('load',function(){cfDevResize();setTimeout(cfDevResize,400);});
+window.addEventListener('resize',cfDevResize);
+setInterval(cfDevResize,2500);
+document.querySelectorAll('[data-cf-scroll]').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    var id=btn.getAttribute('data-cf-scroll');
+    document.getElementById(id)?.scrollIntoView({behavior:'smooth',block:'start'});
+    var d=document.getElementById('cf-dev-drawer');var b=document.getElementById('cf-dev-drawer-back');
+    if(d)d.classList.remove('open');if(b)b.style.display='none';
+    cfDevResize();
+  });
+});
+var burger=document.getElementById('cf-dev-burger');
+var back=document.getElementById('cf-dev-drawer-back');
+if(burger){burger.addEventListener('click',function(){
+  var d=document.getElementById('cf-dev-drawer');var open=d&&d.classList.toggle('open');
+  if(back)back.style.display=open?'block':'none';
+});}
+if(back){back.addEventListener('click',function(){
+  document.getElementById('cf-dev-drawer')?.classList.remove('open');back.style.display='none';
+});}
+cfDevResize();
+</script>
+</body>
+</html>

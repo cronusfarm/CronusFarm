@@ -1,0 +1,1277 @@
+{
+  "uid": "cronusfarm-proto-b-native-mock",
+  "title": "CronusFarm — 프로토타입 B (Grafana Native + DB→Influx)",
+  "tags": [
+    "cronusfarm",
+    "prototype",
+    "B",
+    "db",
+    "influx"
+  ],
+  "timezone": "Asia/Seoul",
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "version": 8,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "templating": {
+    "list": [
+      {
+        "type": "query",
+        "name": "zone",
+        "label": "Zone",
+        "hide": 0,
+        "datasource": {
+          "type": "influxdb",
+          "uid": "efjwqrorrfxtsf"
+        },
+        "refresh": 1,
+        "includeAll": true,
+        "multi": true,
+        "query": "import \"influxdata/influxdb/schema\"\n\nschema.tagValues(\n  bucket: \"CronusFarm\",\n  tag: \"zone\",\n  predicate: (r) => r._measurement == \"tele_db\",\n  start: -30d,\n)",
+        "current": {
+          "text": "All",
+          "value": [
+            "$__all"
+          ]
+        }
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "text",
+      "id": 1,
+      "title": "설명",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 24,
+        "h": 4
+      },
+      "options": {
+        "mode": "markdown",
+        "content": "이 대시보드는 **Grafana 기본 패널(Stat/Gauge/Time series/Table)**만 사용해 UI를 구성한 **B 프로토타입**입니다.\\n\\n- 데이터는 SQLite 시드 데이터를 **Influx로 미러링**한 measurement(`device_state`, `device_run`, `alerts`, `schedules`)를 조회합니다.\\n- 따라서 Grafana는 Influx만 붙이면 되고, 화면은 **DB 기반 더미 데이터**로 항상 채워집니다."
+      }
+    },
+    {
+      "type": "row",
+      "id": 2,
+      "title": "🟩 MAIN (요약)",
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "id": 3,
+      "title": "현재 ON 장치 수",
+      "gridPos": {
+        "x": 0,
+        "y": 5,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -48h)\n  |> filter(fn: (r) => r._measurement == \"device_state\" and r._field == \"value\")\n  |> filter(fn: (r) => r.zone =~ /${zone:regex}/)\n  |> filter(fn: (r) => r._value == 1)\n  |> group(columns: [\"device\"])\n  |> last()\n  |> group()\n  |> count()"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              },
+              {
+                "color": "yellow",
+                "value": 3
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "id": 4,
+      "title": "최근 24h 총 가동시간 (분)",
+      "gridPos": {
+        "x": 4,
+        "y": 5,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"device_run\" and r._field == \"duration_sec\")\n  |> filter(fn: (r) => r.zone =~ /${zone:regex}/)\n  |> sum()\n  |> map(fn: (r) => ({ r with _value: float(v: r._value) / 60.0 }))"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "m",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 60
+              },
+              {
+                "color": "yellow",
+                "value": 240
+              },
+              {
+                "color": "red",
+                "value": 600
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "gauge",
+      "id": 5,
+      "title": "활성 스케줄 수",
+      "gridPos": {
+        "x": 8,
+        "y": 5,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"schedules\" and r._field == \"is_active\")\n  |> filter(fn: (r) => r.zone =~ /${zone:regex}/)\n  |> group(columns: [\"sqlite_id\"])\n  |> last()\n  |> filter(fn: (r) => r._value == 1)\n  |> group()\n  |> count()"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "max": 20,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "green",
+                "value": 3
+              },
+              {
+                "color": "yellow",
+                "value": 6
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "gauge",
+      "id": 6,
+      "title": "최근 30d 알람 총 건수",
+      "gridPos": {
+        "x": 12,
+        "y": 5,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"alerts\" and r._field == \"resolved\")\n  |> count()"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "max": 200,
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "green",
+                "value": 3
+              },
+              {
+                "color": "yellow",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 30
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "id": 10,
+      "title": "최근 7d 장치 이벤트(ON/OFF) 수",
+      "gridPos": {
+        "x": 16,
+        "y": 5,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"device_state\" and r._field == \"value\")\n  |> count()"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 2000
+              },
+              {
+                "color": "red",
+                "value": 6000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "id": 11,
+      "title": "미해결 알람 (건)",
+      "gridPos": {
+        "x": 20,
+        "y": 5,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"alerts\" and r._field == \"resolved\")\n  |> filter(fn: (r) => r._value == 0)\n  |> count()"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 7,
+      "title": "장치 가동시간 24h (초)",
+      "gridPos": {
+        "x": 0,
+        "y": 10,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"device_run\" and r._field == \"duration_sec\")\n  |> filter(fn: (r) => r.zone =~ /${zone:regex}/)\n  |> aggregateWindow(every: 1h, fn: sum, createEmpty: true)"
+        }
+      ],
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 12,
+      "title": "장치별 가동시간 24h (초)",
+      "gridPos": {
+        "x": 12,
+        "y": 10,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"device_run\" and r._field == \"duration_sec\")\n  |> filter(fn: (r) => r.zone =~ /${zone:regex}/)\n  |> group(columns: [\"device\"])\n  |> aggregateWindow(every: 1h, fn: sum, createEmpty: true)\n  |> map(fn: (r) => ({ r with _field: r.device }))"
+        }
+      ],
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "id": 8,
+      "title": "🔔 최근 알림 (DB 테이블)",
+      "gridPos": {
+        "x": 0,
+        "y": 19,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false
+    },
+    {
+      "type": "table",
+      "id": 9,
+      "title": "최근 알림(DB) 20건",
+      "gridPos": {
+        "x": 0,
+        "y": 20,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"alerts\")\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> keep(columns: [\"_time\", \"severity\", \"type\", \"source\", \"message\", \"resolved\", \"value_actual\", \"value_threshold\"])\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 20)"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "id": 20,
+      "title": "🟦 ENV (환경 상세)",
+      "gridPos": {
+        "x": 0,
+        "y": 29,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": true
+    },
+    {
+      "type": "timeseries",
+      "id": 21,
+      "title": "장치 이벤트(ON/OFF) 24h",
+      "gridPos": {
+        "x": 0,
+        "y": 30,
+        "w": 24,
+        "h": 8
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"device_state\" and r._field == \"value\")\n  |> filter(fn: (r) => r.zone =~ /${zone:regex}/)\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> map(fn: (r) => ({ r with _field: r.device }))"
+        }
+      ],
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "id": 30,
+      "title": "🟪 DEV (장비)",
+      "gridPos": {
+        "x": 0,
+        "y": 38,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": true
+    },
+    {
+      "type": "state-timeline",
+      "id": 31,
+      "title": "LED / Pump 상태 타임라인 (DB)",
+      "gridPos": {
+        "x": 0,
+        "y": 39,
+        "w": 24,
+        "h": 9
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r._measurement == \"device_state\" and r._field == \"value\")\n  |> filter(fn: (r) => r.zone =~ /${zone:regex}/)\n  |> filter(fn: (r) => r.type == \"led\" or r.type == \"pump\")\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\n  |> map(fn: (r) => ({ r with _field: r.device }))"
+        }
+      ],
+      "options": {
+        "mergeValues": false,
+        "rowHeight": 0.75,
+        "fillOpacity": 85,
+        "legend": {
+          "displayMode": "list"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#888780",
+                "value": null
+              },
+              {
+                "color": "#1D9E75",
+                "value": 1
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "OFF",
+                  "color": "#888780"
+                },
+                "1": {
+                  "text": "ON",
+                  "color": "#1D9E75"
+                }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "id": 40,
+      "title": "🟨 PWR (전력)",
+      "gridPos": {
+        "x": 0,
+        "y": 48,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": true
+    },
+    {
+      "type": "stat",
+      "id": 41,
+      "title": "최근 7d 총 가동시간 (시간)",
+      "gridPos": {
+        "x": 0,
+        "y": 49,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"device_run\" and r._field == \"duration_sec\")\n  |> filter(fn: (r) => r.zone =~ /${zone:regex}/)\n  |> sum()\n  |> map(fn: (r) => ({ r with _value: float(v: r._value) / 3600.0 }))"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "decimals": 1
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "id": 42,
+      "title": "최근 30d 총 가동시간 (시간)",
+      "gridPos": {
+        "x": 6,
+        "y": 49,
+        "w": 6,
+        "h": 5
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"device_run\" and r._field == \"duration_sec\")\n  |> filter(fn: (r) => r.zone =~ /${zone:regex}/)\n  |> sum()\n  |> map(fn: (r) => ({ r with _value: float(v: r._value) / 3600.0 }))"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "h",
+          "decimals": 1
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 43,
+      "title": "가동시간(초) 24h 추이",
+      "gridPos": {
+        "x": 12,
+        "y": 49,
+        "w": 12,
+        "h": 10
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"device_run\" and r._field == \"duration_sec\")\n  |> filter(fn: (r) => r.zone =~ /${zone:regex}/)\n  |> aggregateWindow(every: 1h, fn: sum, createEmpty: true)"
+        }
+      ],
+      "options": {
+        "tooltip": {
+          "mode": "single"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "id": 50,
+      "title": "🟥 ALRT (알람)",
+      "gridPos": {
+        "x": 0,
+        "y": 59,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": true
+    },
+    {
+      "type": "timeseries",
+      "id": 51,
+      "title": "알람 발생 추이 (DB)",
+      "gridPos": {
+        "x": 0,
+        "y": 60,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"alerts\" and r._field == \"resolved\")\n  |> aggregateWindow(every: 6h, fn: count, createEmpty: true)"
+        }
+      ],
+      "options": {
+        "tooltip": {
+          "mode": "single"
+        },
+        "legend": {
+          "displayMode": "hidden"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 40,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "table",
+      "id": 52,
+      "title": "전체 알람 이력 (DB)",
+      "gridPos": {
+        "x": 12,
+        "y": 60,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -30d)\n  |> filter(fn: (r) => r._measurement == \"alerts\")\n  |> pivot(rowKey: [\"_time\"], columnKey: [\"_field\"], valueColumn: \"_value\")\n  |> keep(columns: [\"_time\", \"severity\", \"type\", \"source\", \"message\", \"resolved\", \"value_actual\", \"value_threshold\"])\n  |> sort(columns: [\"_time\"], desc: true)\n  |> limit(n: 200)"
+        }
+      ],
+      "options": {
+        "showHeader": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "id": 60,
+      "title": "🌡️ ENV (tele_db: SQLite→Influx)",
+      "gridPos": {
+        "x": 0,
+        "y": 68,
+        "w": 24,
+        "h": 1
+      },
+      "collapsed": false
+    },
+    {
+      "type": "stat",
+      "id": 61,
+      "title": "온도 (℃)",
+      "gridPos": {
+        "x": 0,
+        "y": 69,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele_db\" and r._field == \"temp\")\n  |> filter(fn: (r) => r.zone =~ /${zone:regex}/)\n  |> last()"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "decimals": 1
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "id": 62,
+      "title": "습도 (%)",
+      "gridPos": {
+        "x": 4,
+        "y": 69,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele_db\" and r._field == \"humidity\")\n  |> filter(fn: (r) => r.zone =~ /${zone:regex}/)\n  |> last()"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "gauge",
+      "id": 63,
+      "title": "pH",
+      "gridPos": {
+        "x": 8,
+        "y": 69,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele_db\" and r._field == \"ph\")\n  |> filter(fn: (r) => r.zone =~ /${zone:regex}/)\n  |> last()"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "max": 14,
+          "decimals": 2
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "gauge",
+      "id": 64,
+      "title": "EC (mS/cm)",
+      "gridPos": {
+        "x": 12,
+        "y": 69,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele_db\" and r._field == \"ec\")\n  |> filter(fn: (r) => r.zone =~ /${zone:regex}/)\n  |> last()"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "showThresholdLabels": true,
+        "showThresholdMarkers": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "mS/cm",
+          "min": 0,
+          "max": 5,
+          "decimals": 2
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "stat",
+      "id": 65,
+      "title": "CO₂ (ppm)",
+      "gridPos": {
+        "x": 16,
+        "y": 69,
+        "w": 4,
+        "h": 5
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -30m)\n  |> filter(fn: (r) => r._measurement == \"tele_db\" and r._field == \"co2\")\n  |> filter(fn: (r) => r.zone =~ /${zone:regex}/)\n  |> last()"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ppm",
+          "decimals": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 66,
+      "title": "온도/습도 24h (tele_db)",
+      "gridPos": {
+        "x": 0,
+        "y": 74,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"tele_db\")\n  |> filter(fn: (r) => r.zone =~ /${zone:regex}/)\n  |> filter(fn: (r) => r._field == \"temp\" or r._field == \"humidity\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)"
+        }
+      ],
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 67,
+      "title": "pH/EC 24h (tele_db)",
+      "gridPos": {
+        "x": 12,
+        "y": 74,
+        "w": 12,
+        "h": 9
+      },
+      "datasource": {
+        "type": "influxdb",
+        "uid": "efjwqrorrfxtsf"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "efjwqrorrfxtsf"
+          },
+          "query": "from(bucket: \"CronusFarm\")\n  |> range(start: -24h)\n  |> filter(fn: (r) => r._measurement == \"tele_db\")\n  |> filter(fn: (r) => r.zone =~ /${zone:regex}/)\n  |> filter(fn: (r) => r._field == \"ph\" or r._field == \"ec\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)"
+        }
+      ],
+      "options": {
+        "tooltip": {
+          "mode": "multi"
+        },
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 8
+          }
+        },
+        "overrides": []
+      }
+    }
+  ]
+}
